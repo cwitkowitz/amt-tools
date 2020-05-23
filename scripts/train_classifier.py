@@ -60,11 +60,11 @@ class GuitarSet(Dataset):
 
             notes = track.notes  # Dictionary of notes for this track
 
+            # TODO - pad for context window
             cqt = abs(librosa.cqt(audio, fs, self.hop_len, n_bins=192, bins_per_octave=24))
+            cqt = np.expand_dims(cqt, axis=0)
 
-            num_frames = cqt.shape[-1]
-
-            tabs = np.zeros((NUM_FRETS + 2, num_frames))
+            tabs = np.zeros((NUM_STRINGS, NUM_FRETS + 2, num_frames))
 
             for i, s_key in enumerate(notes.keys()):
                 s_data = notes[s_key]
@@ -74,106 +74,61 @@ class GuitarSet(Dataset):
                 fret = (np.array(s_data.notes) - librosa.note_to_midi(TUNING[i])).astype('uint32')
 
                 for n in range(len(fret)):
-                    tabs[fret[n], onset[n]:offset[n]] = 1
+                    tabs[i, fret[n], onset[n]:offset[n]] = 1
 
                 tabs[-1, np.sum(tabs, axis=0) == 0] = 1
 
             np.savez(save_path, cqt=cqt, tabs=tabs)
 
-        if self.frame_len is not None:
-            step_begin = self.random.randint(num_frames - self.frame_len)
-            step_end = step_begin + self.frame_len
+        if self.frm_len is not None:
+            num_frames = cqt.shape[-1]
+            step_begin = self.random.randint(num_frames - self.frm_len)
+            step_end = step_begin + self.frm_len
 
-            data['cqt'] = cqt[:, step_begin:step_end]
-            data['tabs'] = tabs[:, step_begin:step_end]
+            data['cqt'] = cqt[:, :, step_begin:step_end]
+            data['tabs'] = tabs[:, :, step_begin + self.frm_len // 2]
         else:
             data['cqt'] = cqt
             data['tabs'] = tabs
 
         data['id'] = track_name
         data['cqt'] = torch.from_numpy(data['cqt']).float()
-        data['tabs'] = torch.from_numpy(data['tabs']).float()
+        data['tabs'] = torch.from_numpy(data['tabs']).long()
 
         return data
 
 class TabCNN(nn.Module):
-    def __init__(self, device, elems_per):
+    def __init__(self, device):
         super().__init__()
 
         self.device = device
 
-        num_filters = 1
-
-        num_elems = elems_per * NUM_GROUPS
-
-        self.bn1 = nn.BatchNorm2d(num_filters)
-        self.cn1 = nn.Conv2d(1, num_filters, (1, 512), (1, 256), (0, 0))
-        self.cn2 = nn.Conv2d(num_filters, 1, (1, 7), 1, (0, 3))
-        self.pl1 = nn.LPPool2d(1, (elems_per, 1), (elems_per, 1))
-
-        """
-        self.cn1 = nn.Conv2d(1, num_filters, (elems_per, 9), (elems_per, 1), (0, 4))
-        self.bn1 = nn.BatchNorm2d(num_filters)
-        self.rl1 = nn.ReLU()
-
-        self.pl1 = nn.MaxPool2d((elems_per, 1), (elems_per, 1))
-        self.dp1 = nn.Dropout()
-
-        self.fc_in = num_filters * NUM_STRINGS * (NUM_FRETS + 1)
-
-        self.fco = nn.Linear(self.fc_in, num_groups)
-        self.dp2 = nn.Dropout()
-        self.gro = nn.GRU(num_groups, num_groups, batch_first=True)
-
-        self.fcf = nn.Linear(self.fc_in, num_groups)
-        self.dp3 = nn.Dropout()
-        self.grf = nn.GRU(num_groups, num_groups, batch_first=True)
-        """
+        self.cn1 = nn.Conv2d(1, 32, 3)
+        self.cn2 = nn.Conv2d(32, 64, 3)
+        self.cn3 = nn.Conv2d(64, 64, 3)
+        self.mxp = nn.MaxPool2d(2)
+        self.fc1 = nn.Linear(5952, 128)
+        self.fc2 = nn.Linear(128, 126)
 
         self.to(device)
 
     def forward(self, batch):
-        acts = batch['samples'].to(self.device)
-        onsets = batch['tab_onsets'].to(self.device)
-        frames = batch['tab_frames'].to(self.device)
+        cqt = batch['cqt'].to(self.device)
+        tabs = batch['tabs'].to(self.device)
 
-        """
-        #x = self.rl1(self.bn1(self.cn1(acts.unsqueeze(1))))
-        x = self.rl1(self.cn1(acts.unsqueeze(1)))
-        #x = self.dp1(self.pl1(x))
+        x = F.relu(self.cn1(cqt))
+        x = F.relu(self.cn2(x))
+        x = F.relu(self.cn3(x))
+        x = self.mxp(x).flatten().view(-1, 5952)
+        x = F.relu(self.fc1(x))
+        out = self.fc2(x).view(tabs.shape)
 
-        bs, nflts, nntes, nfrms = x.size()
+        preds = torch.argmax(torch.softmax(out, dim=-1), dim=-1)
 
-        onsets = onsets.view(bs, num_groups, -1)
-        frames = frames.view(bs, num_groups, -1)
-
-        x = x.permute(0, 3, 1, 2).view(bs, nfrms, nflts * nntes)
-
-        x_o, _ = self.gro(self.dp2(self.fco(x)), torch.randn(1, 1, num_groups).to(self.device))
-        x_f, _ = self.grf(self.dp3(self.fcf(x)), torch.randn(1, 1, num_groups).to(self.device))
-
-        x_o = x_o.permute(0, 2, 1)
-        x_f = x_f.permute(0, 2, 1)
-
-        loss = {'onset': F.binary_cross_entropy_with_logits(x_o, onsets),
-                'frame': F.binary_cross_entropy_with_logits(x_f, frames)}
-
-        preds = {'onsets': torch.sigmoid(x_o), 'frames': torch.sigmoid(x_f)}
-        """
-
-        x = self.bn1(self.cn1(acts.unsqueeze(1)))
-        #x = self.cn1(acts.unsqueeze(1))
-        #x = torch.relu(self.cn1(self.bn1(acts.unsqueeze(1))))
-        #x = torch.relu(self.cn1(acts.unsqueeze(1)))
-        #x = self.cn2(torch.relu(self.cn1(self.bn1(acts.unsqueeze(1)))))
-        #x = self.pl1(self.cn2(self.cn1(acts.unsqueeze(1))))
-        #x = F.relu(self.cn1(acts.unsqueeze(1)))
-        x = self.pl1(torch.max(x, dim = 1)[0])
-
-        x = x.view(batch['tab_onsets'].shape)
-
-        loss = {'onset': F.binary_cross_entropy_with_logits(x, batch['tab_onsets'].to(self.device))}
-        preds = {'onsets': torch.sigmoid(x)}
+        out = out.view(-1, NUM_FRETS + 2)
+        tabs = tabs.view(-1, NUM_FRETS + 2)
+        loss = F.cross_entropy(out, torch.argmax(tabs, dim=-1), reduction='none')
+        loss = torch.sum(loss.view(-1, NUM_STRINGS), dim=-1)
 
         return preds, loss
 
@@ -187,9 +142,6 @@ def config():
     # Example = '00'
     # Use this attribute if a single file is not chosen
     player = '00'
-
-    # Name of the chosen dictionary
-    dict_name = '00_BN1-129-Eb_comp'
 
     win_len = 512 # samples
 
@@ -205,12 +157,12 @@ def config():
 
     batch_size = 1
 
-    l_rate = 1e-2
+    l_rate = 1e0
 
     seed = 0
 
 @ex.automain
-def main(single, player, dict_name, win_len, hop_len, gpu_num, frm_len, iterations, batch_size, l_rate, seed):
+def main(single, player, win_len, hop_len, gpu_num, frm_len, iterations, batch_size, l_rate, seed):
     # Create the activation directory if it does not already exist
 
     # Path for saving the dictionary
@@ -219,8 +171,8 @@ def main(single, player, dict_name, win_len, hop_len, gpu_num, frm_len, iteratio
     else:
         class_dir = f'{single}'
 
-    reset_generated_dir(GEN_CLASS_DIR, [class_dir], False)
-    reset_generated_dir(GEN_GT_DIR, [], True)
+    reset_generated_dir(GEN_CLASS_DIR, [class_dir], True)
+    reset_generated_dir(GEN_GT_DIR, [], False)
 
     class_dir = os.path.join(GEN_CLASS_DIR, class_dir)
     out_path = os.path.join(class_dir, 'model.pt')
@@ -229,7 +181,7 @@ def main(single, player, dict_name, win_len, hop_len, gpu_num, frm_len, iteratio
     writer = SummaryWriter(class_dir)
 
     # Obtain the track list for the chosen data partition
-    track_keys = clean_track_list(GuitarSet, single, player, False)
+    track_keys = clean_track_list(GuitarSetHandle, single, player, False)
 
     torch.backends.cudnn.deterministic = True
     torch.manual_seed(seed)
@@ -251,13 +203,12 @@ def main(single, player, dict_name, win_len, hop_len, gpu_num, frm_len, iteratio
     for i in tqdm(range(iterations)):
         for batch in loader:
             preds, loss = classifier(batch)
-            writer.add_scalar(f'train_loss', sum(loss.values()), global_step = i)
-            #print(loss)
-
-            optimizer.zero_grad()
-            torch.mean(sum(loss.values())).backward()
+            writer.add_scalar(f'train_loss', torch.mean(loss), global_step=i)
+            print(f'Average Loss: {torch.mean(loss)}')
+            torch.mean(loss).backward()
             optimizer.step()
             scheduler.step()
+            optimizer.zero_grad()
 
     if os.path.exists(out_path):
         os.remove(out_path)
