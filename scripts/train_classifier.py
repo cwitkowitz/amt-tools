@@ -7,34 +7,58 @@ from constants import *
 from utils import *
 
 # Regular imports
-from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Dataset, DataLoader
 from tensorboardX import SummaryWriter
 from sacred import Experiment
 from tqdm import tqdm
 from torch import nn
 
-import matplotlib.pyplot as plt
 import torch.nn.functional as F
-import soundfile as sf
 import numpy as np
-import mirdata
 import librosa
 import random
 import torch
+import jams
 import os
 
 # TODO - seed this S
 
-ex = Experiment('Step 2.5: Train Classifier')
+ex = Experiment('Train Classifier')
+
+@ex.config
+def config():
+    # Use this single file if not empty
+    # Example - '00_BN1-129-Eb_comp'
+    single = ''#'00_BN1-129-Eb_comp'
+
+    # Remove this player from the split if not empty
+    # Example = '00'
+    # Use this attribute if a single file is not chosen
+    player = '01'
+
+    win_len = 512 # samples
+
+    # Number of samples between frames
+    hop_len = 512 # samples
+
+    # GPU to use for convolutional sparse coding
+    gpu_num = 0
+
+    iters = 8000
+
+    batch_size = 300
+
+    l_rate = 1e0
+
+    seed = 0
 
 class GuitarSet(Dataset):
-    def __init__(self, track_ids, win_len, hop_len, frm_len, seed):
+    def __init__(self, track_ids, win_len, hop_len, mode, seed):
         self.track_ids = track_ids
 
         self.win_len = win_len
         self.hop_len = hop_len
-        self.frm_len = frm_len
+        self.mode = mode
         self.random = np.random.RandomState(seed)
 
     def __len__(self):
@@ -48,6 +72,8 @@ class GuitarSet(Dataset):
 
         data = {}
 
+        cnt_wn = 9
+
         if os.path.exists(save_path):
             clip = np.load(save_path)
 
@@ -56,40 +82,71 @@ class GuitarSet(Dataset):
         else:
             audio, fs = track.audio_mic
 
-            assert fs == SAMPLE_RATE
+            audio = librosa.util.normalize(audio)
+
+            audio = librosa.resample(audio, fs, SAMPLE_RATE)
 
             notes = track.notes  # Dictionary of notes for this track
 
-            # TODO - pad for context window
             cqt = abs(librosa.cqt(audio, fs, self.hop_len, n_bins=192, bins_per_octave=24))
+
+            num_bins = cqt.shape[0]
+            num_frames = cqt.shape[-1]
+
+            pad = cnt_wn // 2
+
+            cqt = np.concatenate((np.zeros((num_bins, pad)),
+                                  cqt, np.zeros((num_bins, pad))), axis=-1)
+
             cqt = np.expand_dims(cqt, axis=0)
 
             tabs = np.zeros((NUM_STRINGS, NUM_FRETS + 2, num_frames))
 
+            """
             for i, s_key in enumerate(notes.keys()):
                 s_data = notes[s_key]
-                onset = ((s_data.start_times * SAMPLE_RATE) // self.hop_len).astype('uint32')
-                offset = ((s_data.end_times * SAMPLE_RATE) // self.hop_len).astype('uint32')
+                onset = np.round((s_data.start_times * SAMPLE_RATE) // self.hop_len).astype('uint32')
+                offset = np.round((s_data.end_times * SAMPLE_RATE) // self.hop_len).astype('uint32')
 
-                fret = (np.array(s_data.notes) - librosa.note_to_midi(TUNING[i])).astype('uint32')
+                fret = np.round(np.array(s_data.notes) - librosa.note_to_midi(TUNING[i])).astype('uint32')
 
                 for n in range(len(fret)):
                     tabs[i, fret[n], onset[n]:offset[n]] = 1
 
-                tabs[-1, np.sum(tabs, axis=0) == 0] = 1
+                tabs[i, -1, np.sum(tabs[i], axis=0) == 0] = 1
+            """
+
+            jam = jams.load(track.jams_path)
+            frame_indices = range(num_frames)
+            t_ref = librosa.frames_to_time(frame_indices, SAMPLE_RATE, self.hop_len)
+
+            for s in range(NUM_STRINGS):
+                anno = jam.annotations['note_midi'][s]
+                pitch = anno.to_samples(t_ref)
+                silent = [pitch[i] == [] for i in range(len(pitch))]
+                tabs[s, -1, silent] = 1
+                for i in range(len(pitch)):
+                    if silent[i]:
+                        pitch[i] = [0]
+                pitch = np.array(pitch).squeeze()
+                midi_pitches = (np.round(pitch[pitch != 0] - librosa.note_to_midi(TUNING[s]))).astype('uint32')
+                tabs[s, midi_pitches, pitch != 0] = 1
 
             np.savez(save_path, cqt=cqt, tabs=tabs)
 
-        if self.frm_len is not None:
-            num_frames = cqt.shape[-1]
-            step_begin = self.random.randint(num_frames - self.frm_len)
-            step_end = step_begin + self.frm_len
+        num_frames = cqt.shape[-1] - cnt_wn + 1
+
+        if self.mode == 'train':
+            step_begin = self.random.randint(num_frames)
+            step_end = step_begin + cnt_wn
 
             data['cqt'] = cqt[:, :, step_begin:step_end]
-            data['tabs'] = tabs[:, :, step_begin + self.frm_len // 2]
+            data['tabs'] = tabs[:, :, step_begin]
         else:
-            data['cqt'] = cqt
-            data['tabs'] = tabs
+            # Batch size must be 1
+            cqt = np.concatenate([cqt[:, :, i : i + cnt_wn] for i in range(num_frames)], axis=0)
+            data['cqt'] = np.expand_dims(cqt, axis=1)
+            data['tabs'] = np.transpose(tabs, (2, 0, 1))
 
         data['id'] = track_name
         data['cqt'] = torch.from_numpy(data['cqt']).float()
@@ -101,16 +158,22 @@ class TabCNN(nn.Module):
     def __init__(self, device):
         super().__init__()
 
-        self.device = device
+        self.device = None
 
         self.cn1 = nn.Conv2d(1, 32, 3)
         self.cn2 = nn.Conv2d(32, 64, 3)
         self.cn3 = nn.Conv2d(64, 64, 3)
         self.mxp = nn.MaxPool2d(2)
+        self.dp1 = nn.Dropout(0.25)
         self.fc1 = nn.Linear(5952, 128)
+        self.dp2 = nn.Dropout(0.50)
         self.fc2 = nn.Linear(128, 126)
 
-        self.to(device)
+        self.changeDevice(device)
+
+    def changeDevice(self, device):
+        self.device = device
+        self.to(self.device)
 
     def forward(self, batch):
         cqt = batch['cqt'].to(self.device)
@@ -120,7 +183,9 @@ class TabCNN(nn.Module):
         x = F.relu(self.cn2(x))
         x = F.relu(self.cn3(x))
         x = self.mxp(x).flatten().view(-1, 5952)
+        x = self.dp1(x)
         x = F.relu(self.fc1(x))
+        x = self.dp2(x)
         out = self.fc2(x).view(tabs.shape)
 
         preds = torch.argmax(torch.softmax(out, dim=-1), dim=-1)
@@ -132,37 +197,8 @@ class TabCNN(nn.Module):
 
         return preds, loss
 
-@ex.config
-def config():
-    # Use this single file if not empty
-    # Example - '00_BN1-129-Eb_comp'
-    single = '00_BN1-129-Eb_comp'
-
-    # Remove this player from the split if not empty
-    # Example = '00'
-    # Use this attribute if a single file is not chosen
-    player = '00'
-
-    win_len = 512 # samples
-
-    # Number of samples between frames
-    hop_len = 512 # samples
-
-    # GPU to use for convolutional sparse coding
-    gpu_num = 0
-
-    frm_len = 9
-
-    iterations = 5000
-
-    batch_size = 1
-
-    l_rate = 1e0
-
-    seed = 0
-
 @ex.automain
-def main(single, player, win_len, hop_len, gpu_num, frm_len, iterations, batch_size, l_rate, seed):
+def main(single, player, win_len, hop_len, gpu_num, iters, batch_size, l_rate, seed):
     # Create the activation directory if it does not already exist
 
     # Path for saving the dictionary
@@ -171,7 +207,7 @@ def main(single, player, win_len, hop_len, gpu_num, frm_len, iterations, batch_s
     else:
         class_dir = f'{single}'
 
-    reset_generated_dir(GEN_CLASS_DIR, [class_dir], True)
+    reset_generated_dir(GEN_CLASS_DIR, [class_dir], False)
     reset_generated_dir(GEN_GT_DIR, [], False)
 
     class_dir = os.path.join(GEN_CLASS_DIR, class_dir)
@@ -181,34 +217,32 @@ def main(single, player, win_len, hop_len, gpu_num, frm_len, iterations, batch_s
     writer = SummaryWriter(class_dir)
 
     # Obtain the track list for the chosen data partition
-    track_keys = clean_track_list(GuitarSetHandle, single, player, False)
+    track_keys = clean_track_list(GuitarSetHandle, single, player, True)
 
     torch.backends.cudnn.deterministic = True
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     random.seed(seed)
 
-    tabs = GuitarSet(track_keys, win_len, hop_len, frm_len, seed)
+    train_tabs = GuitarSet(track_keys, win_len, hop_len, 'train', seed)
 
-    loader = DataLoader(tabs, batch_size, shuffle=True, num_workers=0, drop_last=True)
+    loader = DataLoader(train_tabs, batch_size, shuffle=True, num_workers=16, drop_last=False)
 
     device = f'cuda:{gpu_num}' if torch.cuda.is_available() else 'cpu'
 
     classifier = TabCNN(device)
     classifier.train()
 
-    optimizer = torch.optim.Adam(classifier.parameters(), l_rate)
-    scheduler = StepLR(optimizer, step_size=iterations/2, gamma=0.98)
+    optimizer = torch.optim.Adadelta(classifier.parameters(), l_rate)
 
-    for i in tqdm(range(iterations)):
+    # TODO - explicit epochs
+    for i in tqdm(range(iters)):
         for batch in loader:
+            optimizer.zero_grad()
             preds, loss = classifier(batch)
             writer.add_scalar(f'train_loss', torch.mean(loss), global_step=i)
-            print(f'Average Loss: {torch.mean(loss)}')
             torch.mean(loss).backward()
             optimizer.step()
-            scheduler.step()
-            optimizer.zero_grad()
 
     if os.path.exists(out_path):
         os.remove(out_path)

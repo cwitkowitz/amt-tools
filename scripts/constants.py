@@ -2,9 +2,9 @@ import numpy as np
 import librosa
 import os
 
+HOME = os.path.expanduser('~')
 SCPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCPT_DIR, '..'))
-DATA_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'data'))
 GENR_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'generated'))
 
 GEN_AUDIO_DIR   = os.path.join(GENR_DIR, 'audio')
@@ -16,7 +16,7 @@ GEN_FIGS_DIR    = os.path.join(GENR_DIR, 'figures')
 GEN_CLASS_DIR    = os.path.join(GENR_DIR, 'classifiers')
 GEN_GT_DIR    = os.path.join(GENR_DIR, 'ground_truth')
 
-GSET_DIR = os.path.join(DATA_DIR, 'GuitarSet')
+GSET_DIR = os.path.join(HOME, 'Desktop', 'GuitarSet')
 
 TUNING = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4']
 
@@ -35,6 +35,6 @@ HIGHEST_NOTE = librosa.note_to_midi(TUNING[NUM_STRINGS - 1]) + NUM_FRETS
 NUM_NOTES = HIGHEST_NOTE - LOWEST_NOTE + 1
 NUM_GROUPS = NUM_STRINGS * (NUM_FRETS + 1)
 
-SAMPLE_RATE = 44100
+SAMPLE_RATE = 22050
 
 SEED = 0
