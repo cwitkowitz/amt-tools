@@ -33,7 +33,7 @@ def config():
     # Remove this player from the split if not empty
     # Example = '00'
     # Use this attribute if a single file is not chosen
-    player = '01'
+    player = '03'
 
     hop_len = 512
 
@@ -59,7 +59,7 @@ def write_and_print_results(file, verbose, f_pr, f_re, f_f1,
     write_and_print(file, f'  F1-Score  : {n2_f1}\n\n', verbose)
 
 @ex.automain
-def main(single, player, hop_len, verbose):
+def evaluate(single, player, hop_len, verbose):
     # Create the dictionary directory if it does not already exist
     reset_generated_dir(GEN_RESULTS_DIR, [], False)
 
@@ -143,17 +143,19 @@ def main(single, player, hop_len, verbose):
         n2_f1 = np.mean(metrics['n2_f1'])
 
         # Construct a path for the overall results
-        ovr_results_path = os.path.join(GEN_RESULTS_DIR, f'_overall.txt')
+        ovr_results_path = os.path.join(GEN_RESULTS_DIR, f'overall_{player}.txt')
 
         # Open the file with writing permissions
         ovr_results_file = open(ovr_results_path, 'w')
 
         # Add heading to file
-        write_and_print(ovr_results_file, 'Overall Results\n', verbose)
+        write_and_print(ovr_results_file, 'Overall Results\n', True)
 
         # Print the average results across this run
-        write_and_print_results(ovr_results_file, verbose, f_pr, f_re, f_f1,
+        write_and_print_results(ovr_results_file, True, f_pr, f_re, f_f1,
                                 n1_pr, n1_re, n1_f1, n2_pr, n2_re, n2_f1)
 
         # Close the results file
         ovr_results_file.close()
+
+    return metrics

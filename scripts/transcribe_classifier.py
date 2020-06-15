@@ -28,10 +28,10 @@ def config():
     # Remove this player from the split if not empty
     # Example = '00'
     # Use this attribute if a single file is not chosen
-    player = '01'
+    player = '03'
 
     #
-    class_dir = 'excl_00'#'00_BN1-129-Eb_comp'
+    class_dir = 'excl_03'#'00_BN1-129-Eb_comp'
 
     win_len = 512 # samples
 
@@ -93,7 +93,7 @@ def extract_notes(frames, win_len, hop_len, min_note_span):
     return pitches, intervals
 
 @ex.automain
-def main(single, player, class_dir, win_len, hop_len, gpu_num, seed, min_note_span):
+def transcribe_classifier(single, player, class_dir, win_len, hop_len, gpu_num, seed, min_note_span):
 
     # Obtain the track list for the chosen data partition
     track_keys = clean_track_list(GuitarSetHandle, single, player, False)
