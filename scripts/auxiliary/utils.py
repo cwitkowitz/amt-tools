@@ -14,9 +14,6 @@ import jams
 import math
 import os
 
-# Get a reference to the dataset
-GuitarSetHandle = mirdata.guitarset.load(data_home=GSET_DIR)
-
 def sample_pitches(new_times, orig_times, orig_pitches):
     new_pitches = []
     for i in range(len(new_times)):

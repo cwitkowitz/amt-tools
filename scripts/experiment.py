@@ -10,6 +10,7 @@ from sacred import Experiment
 import numpy as np
 import os
 
+# TODO - multithreading?
 ex = Experiment('6-Fold Cross Validation')
 
 @ex.config

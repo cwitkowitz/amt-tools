@@ -3,63 +3,21 @@ from constants import *
 
 # Regular imports
 from torch.utils.data import Dataset
+from abc import abstractmethod
 
 import torch.nn.functional as F
 import numpy as np
+import mirdata
+import shutil
+import os
+
+# TODO - ComboDataset
+
+# TODO - build data proc module on top which is general - i.e. whole/local cqt or filterbank learning module
 
 class TranscriptionDataset(Dataset):
     def __init__(self, splits, win_len, hop_len, seed):
         self.track_ids = track_ids
-
-        self.win_len = win_len
-        self.hop_len = hop_len
-        self.random = np.random.RandomState(seed)
-
-    def __len__(self):
-        return len(self.track_ids)
-
-    def __getitem__(self, index):
-        track_name = self.track_ids[index]
-
-class MAPS(Dataset):
-    def __init__(self, splits, win_len, hop_len, seed):
-        self.track_ids = track_ids
-
-        self.win_len = win_len
-        self.hop_len = hop_len
-        self.random = np.random.RandomState(seed)
-
-    def __len__(self):
-        return len(self.track_ids)
-
-    def __getitem__(self, index):
-        track_name = self.track_ids[index]
-
-class MAESTRO(Dataset):
-    def __init__(self, track_ids, win_len, hop_len, mode, seed):
-        self.track_ids = track_ids
-
-        self.win_len = win_len
-        self.hop_len = hop_len
-        self.mode = mode
-        self.random = np.random.RandomState(seed)
-
-    def __len__(self):
-        return len(self.track_ids)
-
-    def __getitem__(self, index):
-        track_name = self.track_ids[index]
-
-class GuitarSet(Dataset):
-    def __init__(self, track_ids, win_len, hop_len, mode, seed):
-        self.track_ids = track_ids
-
-        self.win_len = win_len
-        self.hop_len = hop_len
-        self.mode = mode
-        self.random = np.random.RandomState(seed)
-
-        # TODO - ensure data exists before multithreading
 
     def __len__(self):
         return len(self.track_ids)
@@ -140,3 +98,56 @@ class GuitarSet(Dataset):
         data['tabs'] = torch.from_numpy(data['tabs']).long()
 
         return data
+
+    @staticmethod
+    @abstractmethod
+    def available_splits():
+        return NotImplementedError
+
+    @staticmethod
+    @abstractmethod
+    def download(save_dir):
+        return NotImplementedError
+
+class MAPS(TranscriptionDataset):
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def available_splits():
+        return ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'ENSTDkAm', 'ENSTDkCl', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
+
+class MAESTRO(TranscriptionDataset):
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def available_splits():
+        return ['train', 'validation', 'test']
+
+class GuitarSet(TranscriptionDataset):
+    def __init__(self, base_dir, track_ids, win_len, hop_len, mode, seed):
+        super().__init__()
+
+        # Get a reference to the dataset
+        handle = mirdata.guitarset.load(data_home=base_dir)
+
+        self.track_ids = track_ids
+
+        self.win_len = win_len
+        self.hop_len = hop_len
+        self.mode = mode
+        self.random = np.random.RandomState(seed)
+
+    @staticmethod
+    def available_splits():
+        return ['train', 'validation', 'test']
+
+    @staticmethod
+    def download(save_dir):
+        if os.path.exists(save_dir):
+            shutil.rmtree(save_dir)
+
+        os.mkdir(save_dir)
+
+        mirdata.guitarset.download(data_home=save_dir)
