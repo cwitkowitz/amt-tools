@@ -1,5 +1,5 @@
 # My imports
-from constants import *
+from .constants import *
 
 # Regular imports
 from mir_eval.multipitch import resample_multipitch
@@ -8,11 +8,134 @@ from mir_eval.io import load_valued_intervals
 
 import numpy as np
 import librosa
-import mirdata
+import random
 import shutil
+import torch
 import jams
 import math
 import os
+
+def seed_everything(seed):
+    torch.backends.cudnn.deterministic = True
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    random.seed(seed)
+
+def rms_norm(audio):
+    rms = np.sqrt(np.mean(audio ** 2))
+
+    assert rms != 0
+
+    audio = audio / rms
+
+    return audio
+
+def load_audio(wav_path):
+    audio, fs = librosa.load(wav_path, sr=None)
+    assert fs == SAMPLE_RATE
+
+    #audio = librosa.resample(audio, fs, SAMPLE_RATE)
+    #audio = librosa.util.normalize(audio) <- infinity norm
+
+    audio = rms_norm(audio)
+
+    return audio, fs
+
+def framify_tfr(tfr, win_length, hop_length, pad=None):
+    # TODO - avoid conversion in collate_fn instead?
+    to_torch = False
+    if 'torch' in str(tfr.dtype):
+        to_torch = True
+        tfr = tfr.cpu().detach().numpy()
+
+    # TODO - parameterize axis or just assume -1?
+    if pad is not None:
+        pad_amts = [(0,)] * (len(tfr.shape) - 1) + [(pad,)]
+        tfr = np.pad(tfr, tuple(pad_amts))
+
+    tfr = np.asfortranarray(tfr)
+    # TODO - this seems to be very unstable when called inside forward()
+    stack = librosa.util.frame(tfr, win_length, hop_length).copy()
+
+    if to_torch:
+        stack = torch.from_numpy(stack)
+
+    return stack
+
+def load_jams_guitar_notes(jams_path, hop_length):
+    jam = jams.load(jams_path)
+
+    duration = jam.file_metadata['duration']
+
+    num_frames = 1 + int((SAMPLE_RATE * duration - 1) // hop_length)
+
+    tabs = np.zeros((NUM_STRINGS, NUM_FRETS + 2, num_frames))
+
+    frame_times = librosa.frames_to_time(range(num_frames), SAMPLE_RATE, hop_length)
+
+    for s in range(NUM_STRINGS):
+        string_notes = jam.annotations['note_midi'][s]
+        frame_string_pitch = string_notes.to_samples(frame_times)
+
+        silent = [pitch == [] for pitch in frame_string_pitch]
+
+        tabs[s, -1, silent] = 1
+
+        # TODO - is this for-loop absolutely necessary?
+        for i in range(len(frame_string_pitch)):
+            if silent[i]:
+                frame_string_pitch[i] = [0]
+
+        frame_string_pitch = np.array(frame_string_pitch).squeeze()
+
+        open_string_midi_val = librosa.note_to_midi(TUNING[s])
+
+        frets = frame_string_pitch[frame_string_pitch != 0] - open_string_midi_val
+        frets = np.round(frets).astype('int')
+
+        tabs[s, frets, frame_string_pitch != 0] = 1
+
+    return tabs
+
+def tabs_to_pianoroll(tabs):
+    num_frames = tabs.shape[-1]
+
+    tabs = np.argmax(tabs, axis=1)
+
+    pianoroll = np.zeros((NUM_STRINGS, NOTE_RANGE, num_frames))
+
+    for i in range(NUM_STRINGS):
+        non_silent = tabs[i] != NUM_FRETS + 1
+
+        pitches = librosa.note_to_midi(TUNING[i]) + tabs[i, non_silent] - LOWEST_NOTE
+
+        pianoroll[i, pitches, non_silent] = 1
+
+    pianoroll = np.max(pianoroll, axis=0)
+
+    return pianoroll
+
+def get_tab_onsets(tabs):
+    # TODO - just use pianoroll function
+    pass
+
+def get_tab_offsets(tabs):
+    # TODO - just use pianoroll function
+    pass
+
+def get_pianoroll_onsets(pianoroll):
+    pass
+
+def get_pianoroll_offsets(pianoroll):
+    pass
+
+def load_jams_guitar_contours(jams_path, hop_length):
+    # TODO - should this even be a function? - are there even any other variants?
+    pass
+
+########################################
+# TODO - Re-verify everything underneath
+########################################
 
 def sample_pitches(new_times, orig_times, orig_pitches):
     new_pitches = []
@@ -134,53 +257,6 @@ def fill_in_dict_with_empties(pitch_dict, places = 2, t_start = 0., t_end = -1):
             pitch_dict[t] = np.array([])
 
     return pitch_dict
-
-def reset_generated_dir(dir_path, subdirs, rmv = True):
-    """
-    Description
-
-    Parameters
-    ----------
-    dir_path : str
-      Base-directory path
-    subdirs : list of str
-      List of sub-directories underneath the base directory
-    rmv : bool
-      Switch for recursive removal of base directory
-    """
-    # TODO - os.makedirs(exist_ok = true)
-    # Remove the directory and everything underneath it if it exists
-    if os.path.exists(dir_path) and rmv:
-        shutil.rmtree(dir_path)
-
-    # If the directory was removed, create it again
-    if not os.path.exists(dir_path):
-        os.mkdir(dir_path)
-
-    for dir in subdirs:
-        # Subdirectory path
-        path = os.path.join(dir_path, dir)
-
-        # If the sub-directory was removed, create it again
-        if not os.path.exists(path):
-            reset_generated_dir(path, [], False)
-
-def clean_track_list(dset, single, player, rmv):
-    if single != '':
-        track_keys = [single]
-    else:
-        # Create a copy of the track list to iterate through
-        track_keys = list(dset.keys())
-        track_keys_copy = track_keys.copy()
-        # Remove any tracks that will not be used for testing data
-        for id in track_keys_copy:
-            track = dset[id]
-
-            # Remove any tracks with non-matching selected attributes
-            if (track.player_id != player and not rmv) or (track.player_id == player and rmv):
-                track_keys.remove(id)
-
-    return track_keys
 
 def write_and_print(file, text, verbose = True):
     try:
