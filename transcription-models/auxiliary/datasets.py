@@ -37,7 +37,10 @@ class TranscriptionDataset(Dataset):
 
         self.frame_length = frame_length
 
-        self.seq_length = max(self.data_proc.get_sample_range(self.frame_length))
+        if self.frame_length is None:
+            self.seq_length = None
+        else:
+            self.seq_length = max(self.data_proc.get_sample_range(self.frame_length))
 
         os.makedirs(self.get_gt_dir(), exist_ok=True)
 
@@ -72,7 +75,7 @@ class TranscriptionDataset(Dataset):
 
         feats_path = self.get_feats_dir(track)
 
-        if os.path.exists(feats_path):
+        if os.path.exists(feats_path) and track != '00_Jazz3-150-C_comp':
             # TODO - different key for each module?
             feats = np.load(feats_path)['feats']
         else:
@@ -196,8 +199,10 @@ class GuitarSet(TranscriptionDataset):
             audio, _ = load_audio(wav_path)
             data['audio'] = audio
 
+            num_frames = self.data_proc.get_expected_frames(audio)
+
             jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
-            tabs = load_jams_guitar_notes(jams_path, self.hop_length)
+            tabs = load_jams_guitar_tabs(jams_path, self.hop_length, num_frames)
             data['tabs'] = tabs
 
             gt_path = self.get_gt_dir(track)

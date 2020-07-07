@@ -54,7 +54,7 @@ class TabCNN(nn.Module):
         feats = framify_tfr(feats, 9, 1, 4)
         feats = feats.transpose(-1, -2)
         feats = feats.transpose(-2, -3)
-        feats = feats.squeeze()
+        feats = feats.squeeze(1)
 
         feats = feats.to(self.device)
         tabs = tabs.to(self.device)

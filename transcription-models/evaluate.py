@@ -3,13 +3,16 @@ Get average scores and various other metrics across entire dataset
 """
 
 # My imports
-from constants import *
-from utils import *
+from auxiliary.constants import *
+from auxiliary.datasets import *
+from auxiliary.dataproc import *
+from auxiliary.utils import *
 
 # Regular imports
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes
 from mir_eval.separation import bss_eval_sources as evaluate_separation
 from mir_eval.multipitch import evaluate as evaluate_frames
+from torch.utils.data import Dataset, DataLoader
 from scipy.stats import hmean
 from sacred import Experiment
 from tqdm import tqdm
@@ -26,16 +29,9 @@ ex = Experiment('Evaluate_Predictions')
 
 @ex.config
 def config():
-    # Evaluate this single file if not empty
-    # Example - '00_BN1-129-Eb_comp'
-    single = ''#'00_BN1-129-Eb_comp'
+    splits = ['00']
 
-    # Remove this player from the split if not empty
-    # Example = '00'
-    # Use this attribute if a single file is not chosen
-    player = '03'
-
-    hop_len = 512
+    hop_length = 512
 
     # Switch for console printing in addition to saving text to file
     verbose = True
@@ -59,15 +55,19 @@ def write_and_print_results(file, verbose, f_pr, f_re, f_f1,
     write_and_print(file, f'  F1-Score  : {n2_f1}\n\n', verbose)
 
 @ex.automain
-def evaluate(single, player, hop_len, verbose):
-    # Create the dictionary directory if it does not already exist
-    reset_generated_dir(GEN_RESULTS_DIR, [], False)
+def evaluate(splits, hop_length, verbose):
+    data_proc = CQT(hop_length, None, 192, 24)
 
-    # Obtain the track list for the chosen data partition
-    track_keys = clean_track_list(GuitarSetHandle, single, player, False)
+    gset_test = GuitarSet(None, splits, hop_length, data_proc, None)
+
+    # TODO - this might be overkill
+    loader = DataLoader(gset_test, 1, shuffle=False, num_workers=0, drop_last=False)
+
+    # Create the dictionary directory if it does not already exist
+    os.makedirs(GEN_RESULTS_DIR, exist_ok=True)
 
     # Initialize an array to hold a metric for each tracks
-    empty = np.zeros(len(track_keys))
+    empty = np.zeros(len(loader))
 
     # Create a dictionary to hold the metrics of each track
     metrics = {'f_pr' : empty.copy(),
@@ -80,18 +80,29 @@ def evaluate(single, player, hop_len, verbose):
                'n2_re' : empty.copy(),
                'n2_f1' : empty.copy()}
 
-    for idx, track_id in tqdm(enumerate(track_keys)):
+    for idx, track in enumerate(loader):
+        track_id = track['track'][0]
+
         # Construct a path for the track's transcription and separation results
         results_path = os.path.join(GEN_RESULTS_DIR, f'{track_id}.txt')
-
         # Open the file with writing permissions
         results_file = open(results_path, 'w')
 
         # Add heading to file
         write_and_print(results_file, f'Evaluating track : {track_id}\n', verbose)
 
-        t_est, f_est, t_ref, f_ref = get_frames_contours(track_id, hop_len)
-        #t_est2, f_est2, t_ref2, f_ref2 = get_frames_notes(track_id, hop_len)
+        # Get the path to the frame-wise pitch estimations
+        frm_txt_path = os.path.join(GEN_ESTIM_DIR, 'frames', f'{track_id}.txt')
+        # Load the frame-wise pitch estimations
+        t_est, f_est = load_ragged_time_series(frm_txt_path)
+
+        tabs = track['tabs'][0].numpy()
+        tabs = np.transpose(tabs, (2, 0, 1))
+        tabs = np.argmax(tabs, axis=-1).T
+
+        f_ref = pianoroll_to_pitchlist(tabs_to_pianoroll(tabs))
+        # TODO - why a slight difference?
+        t_ref = librosa.frames_to_time(range(len(f_ref)), SAMPLE_RATE, hop_length)
 
         # Compare the ground-truth to the predictions to get the frame-wise metrics
         # TODO - mir_eval resampling is causing problems
@@ -104,7 +115,14 @@ def evaluate(single, player, hop_len, verbose):
         # Add the frame-wise metrics to the dictionary
         metrics['f_pr'][idx], metrics['f_re'][idx], metrics['f_f1'][idx] = f_pr, f_re, f_f1
 
-        i_est, p_est, i_ref, p_ref = get_notes(track_id)
+        # Get the path to the note-wise estimations
+        nte_txt_path = os.path.join(GEN_ESTIM_DIR, 'notes', f'{track_id}.txt')
+        # Load the note-wise estimations
+        i_est, p_est = load_valued_intervals(nte_txt_path)
+
+        # TODO - put the notes directly in the dataset entry?
+        jams_path = os.path.join(gset_test.base_dir, 'annotation', track_id + '.jams')
+        i_ref, p_ref = load_jams_guitar_notes(jams_path)
 
         # Calculate frame-wise precision, recall, and f1 score ignoring a correct offset
         n1_pr, n1_re, n1_f1, _ = evaluate_notes(i_ref, p_ref, i_est, p_est, offset_ratio=None)
@@ -129,33 +147,32 @@ def evaluate(single, player, hop_len, verbose):
             # Add a newline to the console
             print()
 
-    if single == '':
-        # TODO - cleanup using .values()
-        # Obtain the average value across tracks for each metric
-        f_pr = np.mean(metrics['f_pr'])
-        f_re = np.mean(metrics['f_re'])
-        f_f1 = np.mean(metrics['f_f1'])
-        n1_pr = np.mean(metrics['n1_pr'])
-        n1_re = np.mean(metrics['n1_re'])
-        n1_f1 = np.mean(metrics['n1_f1'])
-        n2_pr = np.mean(metrics['n2_pr'])
-        n2_re = np.mean(metrics['n2_re'])
-        n2_f1 = np.mean(metrics['n2_f1'])
+    # TODO - cleanup using .values()
+    # Obtain the average value across tracks for each metric
+    f_pr = np.mean(metrics['f_pr'])
+    f_re = np.mean(metrics['f_re'])
+    f_f1 = np.mean(metrics['f_f1'])
+    n1_pr = np.mean(metrics['n1_pr'])
+    n1_re = np.mean(metrics['n1_re'])
+    n1_f1 = np.mean(metrics['n1_f1'])
+    n2_pr = np.mean(metrics['n2_pr'])
+    n2_re = np.mean(metrics['n2_re'])
+    n2_f1 = np.mean(metrics['n2_f1'])
 
-        # Construct a path for the overall results
-        ovr_results_path = os.path.join(GEN_RESULTS_DIR, f'overall_{player}.txt')
+    # Construct a path for the overall results
+    ovr_results_path = os.path.join(GEN_RESULTS_DIR, f'overall_{splits[0]}.txt')
 
-        # Open the file with writing permissions
-        ovr_results_file = open(ovr_results_path, 'w')
+    # Open the file with writing permissions
+    ovr_results_file = open(ovr_results_path, 'w')
 
-        # Add heading to file
-        write_and_print(ovr_results_file, 'Overall Results\n', True)
+    # Add heading to file
+    write_and_print(ovr_results_file, 'Overall Results\n', True)
 
-        # Print the average results across this run
-        write_and_print_results(ovr_results_file, True, f_pr, f_re, f_f1,
-                                n1_pr, n1_re, n1_f1, n2_pr, n2_re, n2_f1)
+    # Print the average results across this run
+    write_and_print_results(ovr_results_file, True, f_pr, f_re, f_f1,
+                            n1_pr, n1_re, n1_f1, n2_pr, n2_re, n2_f1)
 
-        # Close the results file
-        ovr_results_file.close()
+    # Close the results file
+    ovr_results_file.close()
 
-    return metrics
+    #return metrics

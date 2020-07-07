@@ -53,7 +53,7 @@ def train_classifier(splits, hop_length, gpu_num, iters, batch_size, l_rate):
 
     data_proc = CQT(hop_length, None, 192, 24)
 
-    gset_fold = GuitarSet(None, splits, hop_length, data_proc, 10)
+    gset_fold = GuitarSet(None, splits, hop_length, data_proc, 50)
 
     loader = DataLoader(gset_fold, batch_size, shuffle=True, num_workers=16, drop_last=True)
 

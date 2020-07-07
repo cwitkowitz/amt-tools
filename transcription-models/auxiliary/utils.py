@@ -53,21 +53,31 @@ def framify_tfr(tfr, win_length, hop_length, pad=None):
         pad_amts = [(0,)] * (len(tfr.shape) - 1) + [(pad,)]
         tfr = np.pad(tfr, tuple(pad_amts))
 
-    tfr = np.asfortranarray(tfr)
-    # TODO - this seems to be very unstable when called inside forward()
-    stack = librosa.util.frame(tfr, win_length, hop_length).copy()
+    #tfr = np.asfortranarray(tfr)
+    # TODO - this is a cleaner solution but seems to be very unstable
+    #stack = librosa.util.frame(tfr, win_length, hop_length).copy()
+
+    dims = tfr.shape
+    num_hops = (dims[-1] - 2 * pad) // hop_length
+    hops = np.arange(0, num_hops, hop_length)
+    new_dims = dims[:-1] + (win_length, num_hops)
+
+    tfr = tfr.reshape(np.prod(dims[:-1]), dims[-1])
+    tfr = [np.expand_dims(tfr[:, i : i + win_length], axis=-1) for i in hops]
+
+    stack = np.concatenate(tfr, axis=-1)
+    stack = np.reshape(stack, new_dims)
 
     if to_torch:
         stack = torch.from_numpy(stack)
 
     return stack
 
-def load_jams_guitar_notes(jams_path, hop_length):
+def load_jams_guitar_tabs(jams_path, hop_length, num_frames):
     jam = jams.load(jams_path)
 
-    duration = jam.file_metadata['duration']
-
-    num_frames = 1 + int((SAMPLE_RATE * duration - 1) // hop_length)
+    # TODO - fails at 00_Jazz3-150-C_comp bc of an even division
+    # duration = jam.file_metadata['duration']
 
     tabs = np.zeros((NUM_STRINGS, NUM_FRETS + 2, num_frames))
 
@@ -97,10 +107,33 @@ def load_jams_guitar_notes(jams_path, hop_length):
 
     return tabs
 
-def tabs_to_pianoroll(tabs):
-    num_frames = tabs.shape[-1]
+def load_jams_guitar_contours(jams_path, hop_length):
+    # TODO - should this even be a function? - are there even any other variants?
+    pass
 
-    tabs = np.argmax(tabs, axis=1)
+def load_jams_guitar_notes(jams_path):
+    jam = jams.load(jams_path)
+
+    i_ref = []
+    p_ref = []
+
+    for s in range(NUM_STRINGS):
+        string_notes = jam.annotations['note_midi'][s]
+
+        for note in string_notes:
+            p_ref += [note.value]
+            i_ref += [[note.time, note.time + note.duration]]
+
+    # Obtain an array of time intervals for all note occurrences
+    i_ref = np.array(i_ref)
+
+    # Extract the ground-truth note pitch values into an array
+    p_ref = librosa.midi_to_hz(np.array(p_ref))
+
+    return i_ref, p_ref
+
+def tabs_to_multi_pianoroll(tabs):
+    num_frames = tabs.shape[-1]
 
     pianoroll = np.zeros((NUM_STRINGS, NOTE_RANGE, num_frames))
 
@@ -110,6 +143,11 @@ def tabs_to_pianoroll(tabs):
         pitches = librosa.note_to_midi(TUNING[i]) + tabs[i, non_silent] - LOWEST_NOTE
 
         pianoroll[i, pitches, non_silent] = 1
+
+    return pianoroll
+
+def tabs_to_pianoroll(tabs):
+    pianoroll = tabs_to_multi_pianoroll(tabs)
 
     pianoroll = np.max(pianoroll, axis=0)
 
@@ -129,9 +167,64 @@ def get_pianoroll_onsets(pianoroll):
 def get_pianoroll_offsets(pianoroll):
     pass
 
-def load_jams_guitar_contours(jams_path, hop_length):
-    # TODO - should this even be a function? - are there even any other variants?
-    pass
+def pianoroll_to_pitchlist(pianoroll):
+    active_pitches = []
+
+    for i in range(pianoroll.shape[-1]): # For each frame
+        # Determine the activations across this frame
+        active_pitches += [librosa.midi_to_hz(np.where(pianoroll[:, i] != 0)[0] + LOWEST_NOTE)]
+
+    return active_pitches
+
+def extract_notes(frames, hop_len, min_note_span):
+    # TODO - clean this ish up
+    # Create empty lists for note pitches and their time intervals
+    pitches, ints = [], []
+
+    onsets = np.concatenate([frames[:, :1], frames[:, 1:] - frames[:, :-1]], axis=1) == 1
+
+    # Find the nonzero indices
+    nonzeros = onsets.nonzero()
+    for i in range(len(nonzeros[0])):
+        # Get the frame and pitch index
+        pitch, frame = nonzeros[0][i], nonzeros[1][i]
+
+        # Mark onset and start offset counter
+        onset, offset = frame, frame
+
+        # Increment the offset counter until the pitch activation
+        # turns negative or until the last frame is reached
+        while frames[pitch, offset]:
+            if onset == offset and np.sum(onsets[:, max(0, onset - int(0.10 * SAMPLE_RATE // hop_len)) : onset]) > 0:
+                break
+            offset += 1
+            if offset == frames.shape[1]:
+                break
+
+        # Make sure the note duration exceeds a minimum frame length
+        if offset >= onset + min_note_span:
+            # Determine the absolute frequency
+            freq = librosa.midi_to_hz(pitch + LOWEST_NOTE)
+
+            # Add the frequency to the list
+            pitches.append(freq)
+
+            # TODO - can probs utilize librosa here - it does same thing but with array
+            # Determine the time where the onset and offset occur
+            onset, offset = onset * hop_len / SAMPLE_RATE, offset * hop_len / SAMPLE_RATE
+
+            # TODO - window length is ambiguous - remove? - also check librosa func
+            # Add half of the window time for frame-centered predictions
+            #bias = (0.5 * win_len / SAMPLE_RATE)
+            #onset, offset = onset + bias, offset + bias
+
+            # Add the interval to the list
+            ints.append([onset, offset])
+
+    # Convert the lists to numpy arrays
+    pitches, intervals = np.array(pitches), np.array(ints)
+
+    return pitches, intervals
 
 ########################################
 # TODO - Re-verify everything underneath
@@ -267,12 +360,12 @@ def write_and_print(file, text, verbose = True):
             # Print the text to console
             print(text, end = '')
 
-def write_frames(path, w_len, h_len, pitches, places = 3):
+def write_frames(path, h_len, pitches, places = 3):
     # Open a file at the path with writing permissions
     file = open(path, 'w')
 
     # Calculate the times corresponding to each frame prediction
-    # TODO - librosa here
+    # TODO - window length is ambiguous - remove? - also check librosa func
     #times = (0.5 * w_len + np.arange(pitches.shape[0]) * h_len) / SAMPLE_RATE
     times = (np.arange(pitches.shape[0]) * h_len) / SAMPLE_RATE
 
@@ -320,137 +413,6 @@ def write_notes(path, pitches, intervals, places = 3):
 
     # Close the file
     file.close()
-
-def get_frames_contours(id, hop_len):
-    track = GuitarSetHandle[id]  # Track data handle
-
-    # Get the path to the frame-wise pitch estimations
-    frm_txt_path = os.path.join(GEN_ESTIM_DIR, 'frames', f'{id}.txt')
-
-    # Load the frame-wise pitch estimations
-    t_est, f_est = load_ragged_time_series(frm_txt_path)
-
-    #frames = track.pitch_contours
-
-    # Load the ground-truth predictions and convert from JAMS to arrays
-    # TODO - possibly leverage track data instead of my convoluted JAMS reading approach
-    #t_ref = np.concatenate([frames[key].times for key in frames.keys()])
-    #f_ref = np.concatenate([frames[key].frequencies for key in frames.keys()])
-    #t_ref, f_ref = jams_to_pitch_arr(jams.load(track.jams_path), 2)
-    #t_ref, f_ref = sample_pitches(t_est, t_ref, f_ref)
-
-    num_frames = len(t_est)
-    tabs = np.zeros((NUM_STRINGS, NUM_FRETS + 2, num_frames))
-
-    jam = jams.load(track.jams_path)
-    frame_indices = range(num_frames)
-    t_ref = librosa.frames_to_time(frame_indices, SAMPLE_RATE, hop_len)
-
-    for s in range(NUM_STRINGS):
-        anno = jam.annotations['note_midi'][s]
-        pitch = anno.to_samples(t_ref)
-        silent = [pitch[i] == [] for i in range(len(pitch))]
-        tabs[s, -1, silent] = 1
-        for i in range(len(pitch)):
-            if silent[i]:
-                pitch[i] = [0]
-        pitch = np.array(pitch).squeeze()
-        midi_pitches = (np.round(pitch[pitch != 0] - librosa.note_to_midi(TUNING[s]))).astype('uint32')
-        tabs[s, midi_pitches, pitch != 0] = 1
-
-    tabs = np.argmax(tabs, axis=1).astype('uint32')
-    midi_range = HIGHEST_NOTE - LOWEST_NOTE + 1
-    frames = np.zeros((NUM_STRINGS, midi_range, num_frames))
-
-    for i in range(NUM_STRINGS):
-        non_silent = tabs[i] != NUM_FRETS + 1
-        pitches = librosa.note_to_midi(TUNING[i]) + tabs[i] - LOWEST_NOTE
-        frames[i, pitches[non_silent], non_silent] = 1
-
-    frames = np.max(frames, axis=0).T
-
-    t_ref = t_est
-    f_ref = []
-
-    for i in range(t_ref.size): # For each frame
-        # Determine the activations across this frame
-        f_ref += [librosa.midi_to_hz(np.where(frames[i] != 0)[0] + LOWEST_NOTE)]
-
-    return t_est, f_est, t_ref, f_ref
-
-# TODO - split into two and re-use in train/transcribe
-def get_frames_notes(id, hop_len):
-    track = GuitarSetHandle[id]  # Track data handle
-
-    # Get the path to the frame-wise pitch estimations
-    frm_txt_path = os.path.join(GEN_ESTIM_DIR, 'frames', f'{id}.txt')
-
-    # Load the frame-wise pitch estimations
-    t_est, f_est = load_ragged_time_series(frm_txt_path)
-
-    notes = track.notes
-
-    num_frames = len(t_est)
-    midi_range = HIGHEST_NOTE - LOWEST_NOTE + 1
-
-    tabs = np.zeros((NUM_STRINGS, NUM_FRETS + 2, num_frames))
-
-    for i, s_key in enumerate(notes.keys()):
-        s_data = notes[s_key]
-        onset = np.round((s_data.start_times * SAMPLE_RATE) // hop_len).astype('uint32')
-        offset = np.round((s_data.end_times * SAMPLE_RATE) // hop_len).astype('uint32')
-
-        fret = np.round(np.array(s_data.notes) - librosa.note_to_midi(TUNING[i])).astype('uint32')
-
-        for n in range(len(fret)):
-            tabs[i, fret[n], onset[n]:offset[n]] = 1
-
-        tabs[i, -1, np.sum(tabs[i], axis=0) == 0] = 1
-
-    tabs = np.argmax(tabs, axis=1).astype('uint32')
-
-    frames = np.zeros((NUM_STRINGS, midi_range, num_frames))
-
-    for i in range(NUM_STRINGS):
-        non_silent = tabs[i] != NUM_FRETS + 1
-        pitches = librosa.note_to_midi(TUNING[i]) + tabs[i] - LOWEST_NOTE
-        frames[i, pitches[non_silent], non_silent] = 1
-
-    frames = np.max(frames, axis=0).T
-
-    t_ref = t_est
-    f_ref = []
-
-    for i in range(t_ref.size): # For each frame
-        # Determine the activations across this frame
-        f_ref += [librosa.midi_to_hz(np.where(frames[i] != 0)[0] + LOWEST_NOTE)]
-
-    return t_est, f_est, t_ref, f_ref
-
-def get_notes(id):
-    track = GuitarSetHandle[id]  # Track data handle
-
-    # Get the path to the note-wise estimations
-    nte_txt_path = os.path.join(GEN_ESTIM_DIR, 'notes', f'{id}.txt')
-
-    # Load the note-wise estimations
-    i_est, p_est = load_valued_intervals(nte_txt_path)
-
-    notes = track.notes  # Dictionary of notes for this track
-
-    # Extract the ground-truth note start times into an array
-    i_ref_st = np.concatenate([notes[key].start_times for key in notes.keys()])
-
-    # Extract the ground-truth note end times into an array
-    i_ref_fn = np.concatenate([notes[key].end_times for key in notes.keys()])
-
-    # Obtain an array of time intervals for all note occurrences
-    i_ref = np.array([[i_ref_st[i], i_ref_fn[i]] for i in range(len(i_ref_st))])
-
-    # Extract the ground-truth note pitch values into an array
-    p_ref = librosa.midi_to_hz(np.concatenate([notes[key].notes for key in notes.keys()]))
-
-    return i_est, p_est, i_ref, p_ref
 
 def get_tabs(id):
     track = GuitarSetHandle[id]  # Track data handle
