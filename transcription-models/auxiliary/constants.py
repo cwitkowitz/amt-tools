@@ -15,9 +15,9 @@ GEN_CLASS_DIR   = os.path.join(GENR_DIR, 'classifiers')
 GEN_DATA_DIR    = os.path.join(GENR_DIR, 'data')
 
 # Guitar properties
-NUM_STRINGS = 6
-NUM_FRETS = 19
 TUNING = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4']
+NUM_STRINGS = len(TUNING)
+NUM_FRETS = 19
 
 # Create an array with the midi numbers of each open string
 TUNING_MIDI = np.array([librosa.note_to_midi(TUNING)]).T
@@ -29,9 +29,6 @@ LOWEST_NOTE = librosa.note_to_midi(TUNING[0])
 HIGHEST_NOTE = librosa.note_to_midi(TUNING[NUM_STRINGS - 1]) + NUM_FRETS
 
 NOTE_RANGE = HIGHEST_NOTE - LOWEST_NOTE + 1
-
-NUM_NOTES = HIGHEST_NOTE - LOWEST_NOTE + 1
-NUM_GROUPS = NUM_STRINGS * (NUM_FRETS + 1)
 
 SAMPLE_RATE = 44100
 

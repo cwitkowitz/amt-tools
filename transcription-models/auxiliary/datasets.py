@@ -17,6 +17,7 @@ import os
 
 # TODO - ComboDataset
 
+
 class TranscriptionDataset(Dataset):
     def __init__(self, base_dir, splits, hop_length, data_proc, frame_length):
 
@@ -166,6 +167,7 @@ class MAESTRO(TranscriptionDataset):
         # TODO - "flac" option which download flac instead
         pass
 """
+
 
 class GuitarSet(TranscriptionDataset):
     def __init__(self, base_dir=None, splits=None, hop_length=512, data_proc=None, frame_length=None):
