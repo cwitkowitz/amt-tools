@@ -15,14 +15,19 @@ import math
 
 class TranscriptionModel(nn.Module):
     def __init__(self, dim_in, dim_out, model_complexity=1, device='cpu'):
+        super().__init__()
+
         self.dim_in = dim_in
         self.dim_out = dim_out
         self.model_complexity = model_complexity
+        self.device = device
 
-        self.device = None
-        self.change_device(device)
+    def change_device(self, device=None):
+        if device is None:
+            device = self.device
 
-    def change_device(self, device):
+        device = torch.device(f'cuda:{device}'
+                              if torch.cuda.is_available() else 'cpu')
         self.device = device
         self.to(self.device)
 
@@ -71,6 +76,11 @@ class TranscriptionModel(nn.Module):
 
         return preds, loss
 
+    @staticmethod
+    @abstractmethod
+    def model_name():
+        return NotImplementedError
+
 class TabCNN(TranscriptionModel):
     def __init__(self, dim_in, dim_out, model_complexity=1, device='cpu'):
         super().__init__(dim_in, dim_out, model_complexity, device)
@@ -110,8 +120,8 @@ class TabCNN(TranscriptionModel):
         # Stage 1 dropout
         self.dp1 = nn.Dropout(dp1)
 
-        feat_map_height = (dim_in - 6) / 2
-        feat_map_width = (sample_width - 6) / 2
+        feat_map_height = (dim_in - 6) // 2
+        feat_map_width = (sample_width - 6) // 2
         self.feat_map_size = nf3 * feat_map_height * feat_map_width
 
         # Stage 1 fully-connected
@@ -141,6 +151,10 @@ class TabCNN(TranscriptionModel):
         out = self.fc2(x)
 
         return out
+
+    @staticmethod
+    def model_name():
+        return 'TabCNN'
 
 class OnsetsFrames(TranscriptionModel):
     # TODO - separate acoustic model from mlm

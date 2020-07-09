@@ -97,5 +97,6 @@ class CQT:
 
         return cqt_log_db
 
-    def get_name(self):
+    @staticmethod
+    def features_name():
         return 'cqt'
