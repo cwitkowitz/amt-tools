@@ -5,6 +5,7 @@ from .constants import *
 from mir_eval.multipitch import resample_multipitch
 from mir_eval.io import load_ragged_time_series
 from mir_eval.io import load_valued_intervals
+from copy import deepcopy
 
 import numpy as np
 import librosa
@@ -16,6 +17,20 @@ import math
 import os
 
 def seed_everything(seed):
+    # TODO - remove the following but check it in so it's saved somewhere
+    # WARNING: the validation loop seems to unavoidably consume an RNG state:
+    #          this means that behavior/results are dependent on
+    #          1.) whether validation takes place at all, and
+    #          2.) how many validation checkpoints there are
+    #          see - https://github.com/pytorch/pytorch/pull/20749
+    #          TODO - I will fix this in the future if possible - can I evaluate on the Dataset object instead of the loader to avoid this?
+
+    # WARNING: the number of workers in the training loader affects behavior:
+    #          this is because each sample will inevitably end up being processed
+    #          by a different worker if num_workers is changed, and each worker
+    #          has its own random seed
+    #          TODO - I will fix this in the future if possible
+
     torch.backends.cudnn.deterministic = True
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -35,7 +50,7 @@ def load_audio(wav_path):
     assert fs == SAMPLE_RATE
 
     #audio = librosa.resample(audio, fs, SAMPLE_RATE)
-    #audio = librosa.util.normalize(audio) <- infinity norm
+    #audio = librosa.util.normalize(audio)# <- infinity norm
 
     audio = rms_norm(audio)
 
@@ -72,6 +87,17 @@ def framify_tfr(tfr, win_length, hop_length, pad=None):
         stack = torch.from_numpy(stack)
 
     return stack
+
+def track_to_batch(track):
+    batch = deepcopy(track)
+
+    batch['track'] = [batch['track']]
+    batch['audio'] = torch.from_numpy(batch['audio']).unsqueeze(0)
+    batch['tabs'] = torch.from_numpy(batch['tabs']).unsqueeze(0)
+    batch['feats'] = torch.from_numpy(batch['feats']).unsqueeze(0)
+    batch['notes'] = torch.from_numpy(batch['notes']).unsqueeze(0)
+
+    return batch
 
 def load_jams_guitar_tabs(jams_path, hop_length, num_frames):
     jam = jams.load(jams_path)

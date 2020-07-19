@@ -86,7 +86,7 @@ def get_metrics_format():
                'F1-Score' : []}
     return metrics
 
-def evaluate(loader, hop_length, estim_dir, log_dir, verbose):
+def evaluate(dataset, hop_length, estim_dir, log_dir, verbose):
     # Create a dictionary to hold the metrics of each track
     results = {'Frame' : get_metrics_format(),
                'Note-on' : get_metrics_format(),
@@ -94,7 +94,8 @@ def evaluate(loader, hop_length, estim_dir, log_dir, verbose):
 
     os.makedirs(log_dir, exist_ok=True)
 
-    for idx, track in enumerate(loader):
+    for idx, track in enumerate(dataset):
+        track = track_to_batch(track)
         track_id = track['track'][0]
 
         # Construct a path for the track's transcription and separation results

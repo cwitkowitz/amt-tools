@@ -22,25 +22,28 @@ def config():
     hop_length = 512
 
     # Number of consecutive frames within each example fed to the model
-    seq_length = 50
+    seq_length = 100
 
     # Number of training iterations to conduct
     iterations = 2000
 
-    # How many training iterations in between each save point
+    # How many training iterations in between each save/validation point - 0 to disable
     checkpoints = iterations // 10
 
     # Number of samples to gather for a batch
-    batch_size = 128
+    batch_size = 64
 
     # The initial learning rate
-    learning_rate = 1e0
+    learning_rate = 1.0
 
     # Minimum number of active frames required for a note
     min_note_span = 5
 
     # The id of the gpu to use, if available
-    gpu_id = 0
+    gpu_id = 1
+
+    # Flag to control whether sampled blocks of frames can split notes
+    split_notes = False
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
@@ -63,7 +66,7 @@ def config():
 
 @ex.automain
 def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size, learning_rate,
-                     min_note_span, gpu_id, reset_data, verbose, seed, root_dir):
+                     min_note_span, gpu_id, split_notes, reset_data, verbose, seed, root_dir):
     # Seed everything with the same seed
     seed_everything(seed)
 
@@ -86,13 +89,17 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         # Determine the name of the split being removed
         hold_out = '0' + str(k)
 
+        print(f'Fold {hold_out}:')
+
         # Remove the hold out split to get the training partition
         train_splits = splits.copy()
         train_splits.remove(hold_out)
 
+        print('Loading training partition...')
+
         # Create a data loader for this training partition of GuitarSet
-        gset_train = GuitarSet(None, train_splits, hop_length, data_proc, seq_length, reset_data)
-        train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=0, drop_last=True)
+        gset_train = GuitarSet(None, train_splits, hop_length, data_proc, seq_length, split_notes, reset_data, seed)
+        train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
 
         # Initialize a new instance of the model
         tabcnn = TabCNN(dim_in, dim_out, model_complexity, gpu_id)
@@ -105,23 +112,29 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         # Create a log directory for the training experiment
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
 
-        # Train the model
-        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir)
+        print('Loading testing partition...')
 
         # Create a data loader for this testing partition of GuitarSet
         test_splits = [hold_out]
         gset_test = GuitarSet(None, test_splits, hop_length, data_proc, None, reset_data)
-        test_loader = DataLoader(gset_test, 1, shuffle=False, num_workers=0, drop_last=False)
 
+        print('Training classifier...')
+
+        # Train the model
+        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, gset_test)
         estim_dir = os.path.join(root_dir, 'estimated')
+
+        print('Transcribing test partition...')
 
         # Generate predictions for the test set
         tabcnn.eval()
-        transcribe(tabcnn, test_loader, hop_length, min_note_span, estim_dir)
+        transcribe(tabcnn, gset_test, hop_length, min_note_span, estim_dir)
 
         results_dir = os.path.join(root_dir, 'results')
 
+        print('Evaluating on test partition...')
+
         # Evaluate the test set predictions
-        fold_results += [evaluate(test_loader, hop_length, estim_dir, results_dir, verbose)]
+        fold_results += [evaluate(gset_test, hop_length, estim_dir, results_dir, verbose)]
 
         ex.log_scalar('fold_results', fold_results[k], k)

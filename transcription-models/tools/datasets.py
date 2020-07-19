@@ -10,7 +10,6 @@ from random import randint
 from copy import deepcopy
 from tqdm import tqdm
 
-import torch.nn.functional as F
 import numpy as np
 import mirdata
 import shutil
@@ -20,7 +19,7 @@ import os
 
 
 class TranscriptionDataset(Dataset):
-    def __init__(self, base_dir, splits, hop_length, data_proc, frame_length, reset_data):
+    def __init__(self, base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed):
 
         # Check if the dataset exists in memory
         if not os.path.isdir(base_dir):
@@ -64,7 +63,7 @@ class TranscriptionDataset(Dataset):
         self.data = {}
 
         # TODO - do I need this for-loop?
-        print('Loading ground-truth')
+        # Loading ground truth
         for track in tqdm(self.tracks):
             self.data[track] = self.load(track)
 
@@ -91,7 +90,13 @@ class TranscriptionDataset(Dataset):
         if self.frame_length is not None:
             # TODO - how much will it hurt to pad with zeros instead of actual previous/later frames?
 
-            # TODO - note splitting here for sample start
+            # TODO - note splitting here for sample start - check Google's code
+            """
+            note_intervals = SAMPLE_RATE * data['notes'][:, :2]
+
+            valid_start = False
+            while not valid_start:
+            """
             sample_start = randint(0, len(data['audio']) - self.seq_length)
 
             frame_start = sample_start // self.hop_length
@@ -104,7 +109,7 @@ class TranscriptionDataset(Dataset):
             data['audio'] = data['audio'][sample_start : sample_end]
             data['tabs'] = data['tabs'][:, :, frame_start : frame_end]
             data['feats'] = feats[:, :, frame_start : frame_end]
-            #data.pop('notes')
+            data.pop('notes')
 
         return data
 
@@ -175,13 +180,13 @@ class MAESTRO(TranscriptionDataset):
 
 class GuitarSet(TranscriptionDataset):
     def __init__(self, base_dir=None, splits=None, hop_length=512,
-                 data_proc=None, frame_length=None, reset_data=False):
+                 data_proc=None, frame_length=None, split_notes=False, reset_data=False, seed=0):
 
         self.base_dir = base_dir
         if self.base_dir is None:
             self.base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
 
-        super().__init__(self.base_dir, splits, hop_length, data_proc, frame_length, reset_data)
+        super().__init__(self.base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed)
 
     def get_tracks(self, split):
         jams_dir = os.path.join(self.base_dir, 'annotation')
