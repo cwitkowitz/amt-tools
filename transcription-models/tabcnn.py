@@ -1,6 +1,6 @@
 # My imports
 from pipeline.transcribe import transcribe
-from pipeline.evaluate import evaluate
+from pipeline.evaluate import *
 from pipeline.train import train
 
 from tools.datasets import *
@@ -25,7 +25,7 @@ def config():
     seq_length = 100
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 800
 
     # How many training iterations in between each save/validation point - 0 to disable
     checkpoints = iterations // 10
@@ -40,7 +40,7 @@ def config():
     min_note_span = 5
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to control whether sampled blocks of frames can split notes
     split_notes = False
@@ -99,7 +99,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
 
         # Create a data loader for this training partition of GuitarSet
         gset_train = GuitarSet(None, train_splits, hop_length, data_proc, seq_length, split_notes, reset_data, seed)
-        train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
+        train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=0, drop_last=True)
 
         # Initialize a new instance of the model
         tabcnn = TabCNN(dim_in, dim_out, model_complexity, gpu_id)
@@ -124,17 +124,17 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, gset_test)
         estim_dir = os.path.join(root_dir, 'estimated')
 
-        print('Transcribing test partition...')
-
-        # Generate predictions for the test set
-        tabcnn.eval()
-        transcribe(tabcnn, gset_test, hop_length, min_note_span, estim_dir)
+        print('Transcribing and evaluating test partition...')
 
         results_dir = os.path.join(root_dir, 'results')
 
-        print('Evaluating on test partition...')
+        # Generate predictions for the test set
+        tabcnn.eval()
+        fold_results = get_results_format()
+        for track in gset_test:
+            predictions = transcribe(tabcnn, track, hop_length, min_note_span, estim_dir)
+            track_results = evaluate(predictions, track, hop_length, results_dir, verbose)
+            fold_results = add_result_dicts(fold_results, track_results)
+        fold_results = average_results(fold_results)
 
-        # Evaluate the test set predictions
-        fold_results += [evaluate(gset_test, hop_length, estim_dir, results_dir, verbose)]
-
-        ex.log_scalar('fold_results', fold_results[k], k)
+        ex.log_scalar('fold_results', fold_results, k)

@@ -3,6 +3,9 @@ TODO
 """
 
 # My imports
+from pipeline.transcribe import *
+from pipeline.evaluate import *
+
 from tools.constants import *
 from tools.datasets import *
 from tools.dataproc import *
@@ -51,7 +54,6 @@ def train(classifier, train_loader, optimizer, iterations,
             optimizer.zero_grad()
             _, batch_loss = classifier.run_on_batch(batch)
             batch_loss = torch.mean(batch_loss)
-            print(batch['track'])
             train_loss.append(batch_loss.item())
             batch_loss.backward()
             optimizer.step()
@@ -69,18 +71,22 @@ def train(classifier, train_loader, optimizer, iterations,
             if val_set is not None:
                 classifier.eval()
                 with torch.no_grad():
-                    val_loss = []
+                    val_results = get_results_format()
                     for track in val_set:
-                        # TODO - is it better to use a loader? - messes up seed
-                        # TODO - metrics in addition to loss
-                        # TODO - am I getting the correct loss here? it doesn't fluctuate much - maybe it goes down before the first val checkpoint
-                        batch = track_to_batch(track)
-                        _, batch_loss = classifier.run_on_batch(batch)
-                        batch_loss = torch.mean(batch_loss)
-                        val_loss.append(batch_loss.item())
-                    val_loss = np.mean(val_loss) if len(val_loss) > 0 else 0
+                        # TODO - bring out hop length and min note span
+                        predictions = transcribe(classifier, track, hop_length=512, min_note_span=5)
+                        track_results = evaluate(predictions, track, hop_length=512)
+                        val_results = add_result_dicts(val_results, track_results)
+
+                    val_results = average_results(val_results)
                     val_step = i // checkpoints
-                    writer.add_scalar(f'val/loss', val_loss, global_step=val_step)
+
+                    for type in val_results.keys():
+                        if isinstance(val_results[type], dict):
+                            for metric in val_results[type].keys():
+                                writer.add_scalar(f'val/{type}/{metric}', val_results[type][metric], global_step=val_step)
+                        else:
+                            writer.add_scalar(f'val/{type}', val_results[type], global_step=val_step)
                 classifier.train()
 
     return classifier

@@ -47,11 +47,11 @@ class TranscriptionDataset(Dataset):
 
         if os.path.exists(self.get_gt_dir()) and self.reset_data:
             shutil.rmtree(self.get_gt_dir())
-            os.makedirs(self.get_gt_dir())
+        os.makedirs(self.get_gt_dir(), exist_ok=True)
 
         if os.path.exists(self.get_feats_dir()) and self.reset_data:
             shutil.rmtree(self.get_feats_dir())
-            os.makedirs(self.get_feats_dir())
+        os.makedirs(self.get_feats_dir(), exist_ok=True)
 
         # Load the paths of the audio tracks
         self.tracks = []
@@ -218,8 +218,7 @@ class GuitarSet(TranscriptionDataset):
             data['tabs'] = tabs
 
             i_ref, p_ref = load_jams_guitar_notes(jams_path)
-            p_ref = np.array([p_ref]).T
-            notes = np.concatenate((i_ref, p_ref), axis=-1)
+            notes = note_groups_to_arr(p_ref, i_ref)
             data['notes'] = notes
 
             gt_path = self.get_gt_dir(track)

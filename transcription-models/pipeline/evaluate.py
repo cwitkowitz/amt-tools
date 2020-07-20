@@ -22,21 +22,16 @@ eps = sys.float_info.epsilon
 
 # TODO - significant cleanup
 
-def framewise(track, estim_dir, hop_length):
-    track_id = track['track'][0]
+def framewise(prediction, reference, hop_length):
+    tabs_ref = np.transpose(reference['tabs'], (2, 0, 1))
+    tabs_ref = np.argmax(tabs_ref, axis=-1).T
 
-    # Get the path to the frame-wise pitch estimations
-    frm_txt_path = os.path.join(estim_dir, 'frames', f'{track_id}.txt')
-    # Load the frame-wise pitch estimations
-    t_est, f_est = load_ragged_time_series(frm_txt_path)
-
-    tabs = track['tabs'][0].numpy()
-    tabs = np.transpose(tabs, (2, 0, 1))
-    tabs = np.argmax(tabs, axis=-1).T
-
-    f_ref = pianoroll_to_pitchlist(tabs_to_pianoroll(tabs))
-    # TODO - why a slight difference?
+    f_ref = pianoroll_to_pitchlist(tabs_to_pianoroll(tabs_ref))
     t_ref = librosa.frames_to_time(range(len(f_ref)), SAMPLE_RATE, hop_length)
+
+    f_est = pianoroll_to_pitchlist(prediction['pianoroll'].T)
+    # TODO - why a slight difference?
+    t_est = librosa.frames_to_time(range(len(f_est)), SAMPLE_RATE, hop_length)
 
     # Compare the ground-truth to the predictions to get the frame-wise metrics
     frame_metrics = evaluate_frames(t_ref, f_ref, t_est, f_est)
@@ -49,16 +44,9 @@ def framewise(track, estim_dir, hop_length):
 
     return metrics
 
-def notewise(track, estim_dir, offset_ratio=None):
-    track_id = track['track'][0]
-
-    # Get the path to the note-wise estimations
-    nte_txt_path = os.path.join(estim_dir, 'notes', f'{track_id}.txt')
-    # Load the note-wise estimations
-    i_est, p_est = load_valued_intervals(nte_txt_path)
-
-    notes = track['notes'][0].numpy()
-    i_ref, p_ref = notes[:, :2], notes[:, -1]
+def notewise(prediction, reference, offset_ratio=None):
+    p_est, i_est = arr_to_note_groups(prediction['notes'])
+    p_ref, i_ref = arr_to_note_groups(reference['notes'])
 
     # Calculate frame-wise precision, recall, and f1 score with or without offset
     n_pr, n_re, n_f1, _ = evaluate_notes(i_ref, p_ref, i_est, p_est, offset_ratio=offset_ratio)
@@ -67,73 +55,96 @@ def notewise(track, estim_dir, offset_ratio=None):
 
     return metrics
 
+def average_metrics(d):
+    d_avg = deepcopy(d)
+    for key in d_avg.keys():
+        d_avg[key] = float(np.mean(d_avg[key]))
+    return d_avg
+
+def average_results(d):
+    d_avg = deepcopy(d)
+    for type in d_avg.keys():
+        if isinstance(d_avg[type], dict):
+            d_avg[type] = average_metrics(d_avg[type])
+        else:
+            d_avg[type] = float(np.mean(d_avg[type]))
+    return d_avg
+
 def add_metric_dicts(d1, d2):
     d3 = deepcopy(d1)
     for key in d3.keys():
         d3[key] += d2[key]
     return d3
 
+def add_result_dicts(d1, d2):
+    d3 = deepcopy(d1)
+    for type in d3.keys():
+        if isinstance(d3[type], dict):
+            d3[type] = add_metric_dicts(d3[type], d2[type])
+        else:
+            d3[type] += [d2[type]]
+    return d3
+
 def bundle_metrics(pr, re, f1):
     metrics = get_metrics_format()
-    metrics['Precision'] += [pr]
-    metrics['Recall'] += [re]
-    metrics['F1-Score'] += [f1]
+    metrics['precision'] += [pr]
+    metrics['recall'] += [re]
+    metrics['f1-score'] += [f1]
     return metrics
 
 def get_metrics_format():
-    metrics = {'Precision' : [],
-               'Recall' : [],
-               'F1-Score' : []}
+    metrics = {'precision' : [],
+               'recall' : [],
+               'f1-score' : []}
+
     return metrics
 
-def evaluate(dataset, hop_length, estim_dir, log_dir, verbose):
+def get_results_format():
     # Create a dictionary to hold the metrics of each track
-    results = {'Frame' : get_metrics_format(),
-               'Note-on' : get_metrics_format(),
-               'Note-off' : get_metrics_format()}
+    results = {'frame' : get_metrics_format(),
+               'note-on' : get_metrics_format(),
+               'note-off' : get_metrics_format(),
+               'loss' : []}
 
-    os.makedirs(log_dir, exist_ok=True)
+    return results
 
-    for idx, track in enumerate(dataset):
-        track = track_to_batch(track)
-        track_id = track['track'][0]
+def evaluate(prediction, reference, hop_length, log_dir=None, verbose=False):
+    results = get_results_format()
 
+    track_id = prediction['track']
+
+    assert track_id == reference['track']
+
+    results['loss'] = prediction['loss']
+
+    # Add the frame-wise metrics to the dictionary
+    results['frame'] = framewise(prediction, reference, hop_length)
+
+    # Add the note-wise metrics to the dictionary
+    results['note-on'] = notewise(prediction, reference, offset_ratio=None)
+    results['note-off'] = notewise(prediction, reference, offset_ratio=0.2)
+
+    # TODO - tablature metrics
+
+    if log_dir is not None:
+        os.makedirs(log_dir, exist_ok=True)
         # Construct a path for the track's transcription and separation results
         results_path = os.path.join(log_dir, f'{track_id}.txt')
         # Open the file with writing permissions
         results_file = open(results_path, 'w')
-
-        # Add heading to file
-        write_and_print(results_file, f'Evaluating track : {track_id}\n', verbose)
-
-        # Add the frame-wise metrics to the dictionary
-        frame_metrics = framewise(track, estim_dir, hop_length)
-        results['Frame'] = add_metric_dicts(results['Frame'], frame_metrics)
-
-        # Add the note-wise metrics to the dictionary
-        note_metrics1 = notewise(track, estim_dir, offset_ratio=None)
-        results['Note-on'] = add_metric_dicts(results['Note-on'], note_metrics1)
-        note_metrics2 = notewise(track, estim_dir, offset_ratio=0.2)
-        results['Note-off'] = add_metric_dicts(results['Note-off'], note_metrics2)
-
-        # TODO - tablature metrics
-
         for type in results.keys():
             write_and_print(results_file, f'-----{type}-----\n', verbose)
-            for metric in results[type].keys():
-                write_and_print(results_file, f' {metric} : {results[type][metric][idx]}\n', verbose)
+            if isinstance(results[type], dict):
+                for metric in results[type].keys():
+                    write_and_print(results_file, f' {metric} : {results[type][metric]}\n', verbose)
+            else:
+                write_and_print(results_file, f' {type} : {results[type]}\n', verbose)
             write_and_print(results_file, '', verbose, '\n')
-
         # Close the results file
         results_file.close()
 
-        if verbose:
-            # Add a newline to the console
-            print()
-
-    # Obtain the average value across tracks for each metric
-    for type in results.keys():
-        for metric in results[type].keys():
-            results[type][metric] = float(np.mean(results[type][metric]))
+    if verbose:
+        # Add a newline to the console
+        print()
 
     return results

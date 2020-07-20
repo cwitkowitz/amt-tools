@@ -17,14 +17,6 @@ import math
 import os
 
 def seed_everything(seed):
-    # TODO - remove the following but check it in so it's saved somewhere
-    # WARNING: the validation loop seems to unavoidably consume an RNG state:
-    #          this means that behavior/results are dependent on
-    #          1.) whether validation takes place at all, and
-    #          2.) how many validation checkpoints there are
-    #          see - https://github.com/pytorch/pytorch/pull/20749
-    #          TODO - I will fix this in the future if possible - can I evaluate on the Dataset object instead of the loader to avoid this?
-
     # WARNING: the number of workers in the training loader affects behavior:
     #          this is because each sample will inevitably end up being processed
     #          by a different worker if num_workers is changed, and each worker
@@ -158,6 +150,24 @@ def load_jams_guitar_notes(jams_path):
 
     return i_ref, p_ref
 
+def note_groups_to_arr(pitches, intervals):
+    notes = None
+
+    # TODO - list might not be the right default - it should be whatever the mir_eval note parsing function returns
+    if len(pitches) > 0:
+        # Batch-friendly note storage
+        pitches = np.array([pitches]).T
+        notes = np.concatenate((intervals, pitches), axis=-1)
+
+    return notes
+
+def arr_to_note_groups(note_arr):
+    if note_arr is None:
+        pitches, intervals = np.array([]), np.array([[], []]).T
+    else:
+        pitches, intervals = note_arr[:, -1], note_arr[:, :2]
+    return pitches, intervals
+
 def tabs_to_multi_pianoroll(tabs):
     num_frames = tabs.shape[-1]
 
@@ -245,10 +255,10 @@ def write_notes(path, pitches, intervals, places = 3):
     # Open a file at the path with writing permissions
     file = open(path, 'w')
 
-    for i in range(pitches.size): # For each note
+    for i in range(len(pitches)): # For each note
         # Create a line of the form 'start_time end_time pitch'
-        line = str(round(intervals[i, 0], places)) + ' ' + \
-               str(round(intervals[i, 1], places)) + ' ' + \
+        line = str(round(intervals[i][0], places)) + ' ' + \
+               str(round(intervals[i][1], places)) + ' ' + \
                str(round(pitches[i], places))
 
         # Remove newline character
@@ -256,7 +266,7 @@ def write_notes(path, pitches, intervals, places = 3):
 
         # If we are not at the last line, add a newline character
         # TODO - can't I just change this to ==, remove \n instead, then I won't need the above line?
-        if (i + 1) != pitches.size:
+        if (i + 1) != len(pitches):
             line += '\n'
 
         # Write the line to the file

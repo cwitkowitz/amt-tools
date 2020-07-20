@@ -66,44 +66,44 @@ def extract_notes(frames, hop_len, min_note_span):
 
     return pitches, intervals
 
-def transcribe(classifier, dataset, hop_length, min_note_span, log_dir):
+def transcribe(classifier, track, hop_length, min_note_span, log_dir=None):
     # Just in case
     classifier.eval()
 
     with torch.no_grad():
-        for track in tqdm(dataset):
-            track = track_to_batch(track)
-            track_id = track['track'][0]
+        track = track_to_batch(track)
+        tabs, track_loss = classifier.run_on_batch(track)
+        track_loss = torch.mean(track_loss).item()
 
-            tabs, loss = classifier.run_on_batch(track)
+        track_id = track['track'][0]
 
-            tabs = tabs.squeeze().cpu().detach().numpy().T
-            loss = loss.cpu().detach().numpy()
+        # TODO - abstract the tab functionality - not all models are for guitar
+        # TODO - remove unnecessary transpositions
+        tabs = tabs.squeeze().cpu().detach().numpy().T
 
-            string_pianoroll = tabs_to_multi_pianoroll(tabs)
+        pianoroll_by_string = tabs_to_multi_pianoroll(tabs)
+        pianoroll = tabs_to_pianoroll(tabs).T
 
-            string_notes = [extract_notes(string_pianoroll[i], hop_length, min_note_span) for i in range(NUM_STRINGS)]
-
-            pianoroll = tabs_to_pianoroll(tabs).T
-
-            all_pitches, all_ints = [], []
-
-            os.makedirs(os.path.join(log_dir, 'frames'), exist_ok=True)
-            os.makedirs(os.path.join(log_dir, 'notes'), exist_ok=True)
+        if log_dir is not None:
             os.makedirs(os.path.join(log_dir, 'tabs'), exist_ok=True)
-            # Create the activation directory if it does not already exist
-
             tabs_dir = os.path.join(log_dir, 'tabs', f'{track_id}')
             os.makedirs(os.path.join(tabs_dir), exist_ok=True)
 
-            for i, s in enumerate(TUNING):
-                tab_txt_path = os.path.join(tabs_dir, f'{s}.txt')
-                pitches, ints = string_notes[i]
-                all_pitches += list(pitches)
-                all_ints += list(ints)
+        all_pitches, all_ints = [], []
+        for i in range(NUM_STRINGS):
+            pitches, ints = extract_notes(pianoroll_by_string[i], hop_length, min_note_span)
+            all_pitches += list(pitches)
+            all_ints += list(ints)
+
+            if log_dir is not None:
+                tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
                 write_notes(tab_txt_path, pitches, ints)
 
-            all_pitches, all_ints = np.array(all_pitches), np.array(all_ints)
+        all_notes = note_groups_to_arr(all_pitches, all_ints)
+
+        if log_dir is not None:
+            os.makedirs(os.path.join(log_dir, 'frames'), exist_ok=True)
+            os.makedirs(os.path.join(log_dir, 'notes'), exist_ok=True)
 
             # Construct the paths for frame- and note-wise predictions
             frm_txt_path = os.path.join(log_dir, 'frames', f'{track_id}.txt')
@@ -112,3 +112,12 @@ def transcribe(classifier, dataset, hop_length, min_note_span, log_dir):
             # Save the predictions to file
             write_frames(frm_txt_path, hop_length, pianoroll)
             write_notes(nte_txt_path, all_pitches, all_ints)
+
+    predictions = {}
+
+    predictions['track'] = track_id
+    predictions['loss'] = track_loss
+    predictions['pianoroll'] = pianoroll
+    predictions['notes'] = all_notes
+
+    return predictions
