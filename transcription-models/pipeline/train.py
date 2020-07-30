@@ -1,15 +1,7 @@
-"""
-TODO
-"""
-
 # My imports
 from pipeline.transcribe import *
 from pipeline.evaluate import *
 
-from tools.constants import *
-from tools.datasets import *
-from tools.dataproc import *
-from tools.models import *
 from tools.utils import *
 
 # Regular imports

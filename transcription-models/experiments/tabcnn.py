@@ -3,10 +3,10 @@ from pipeline.transcribe import transcribe
 from pipeline.evaluate import *
 from pipeline.train import train
 
-from tools.datasets import *
+from datasets.common import *
 from tools.dataproc import *
-from tools.models import *
-from tools.utils import *
+
+from models.tabcnn import *
 
 # Regular imports
 from torch.utils.data import DataLoader
@@ -25,10 +25,10 @@ def config():
     seq_length = 100
 
     # Number of training iterations to conduct
-    iterations = 800
+    iterations = 2000
 
     # How many training iterations in between each save/validation point - 0 to disable
-    checkpoints = iterations // 10
+    checkpoints = iterations // 20
 
     # Number of samples to gather for a batch
     batch_size = 64
@@ -41,9 +41,6 @@ def config():
 
     # The id of the gpu to use, if available
     gpu_id = 0
-
-    # Flag to control whether sampled blocks of frames can split notes
-    split_notes = False
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
@@ -98,8 +95,8 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         print('Loading training partition...')
 
         # Create a data loader for this training partition of GuitarSet
-        gset_train = GuitarSet(None, train_splits, hop_length, data_proc, seq_length, split_notes, reset_data, seed)
-        train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=0, drop_last=True)
+        gset_train = GuitarSet(None, train_splits, hop_length, data_proc, seq_length, False, reset_data, seed)
+        train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
 
         # Initialize a new instance of the model
         tabcnn = TabCNN(dim_in, dim_out, model_complexity, gpu_id)

@@ -28,6 +28,7 @@ HIGHEST_NOTE = librosa.note_to_midi(TUNING[NUM_STRINGS - 1]) + NUM_FRETS
 # Number of notes in the guitar note range
 NOTE_RANGE = HIGHEST_NOTE - LOWEST_NOTE + 1
 
+# TODO - abstract some of these parameters - they can be different depending on experiment
 SAMPLE_RATE = 44100
 
 SEED = 0

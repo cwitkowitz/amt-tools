@@ -1,9 +1,10 @@
 # My imports
-from .constants import *
-from .dataproc import *
-from .utils import *
+from tools.constants import *
+from tools.dataproc import *
+from tools.utils import *
 
 # Regular imports
+from mir_eval.io import load_valued_intervals
 from torch.utils.data import Dataset
 from abc import abstractmethod
 from random import randint
@@ -21,10 +22,14 @@ import os
 class TranscriptionDataset(Dataset):
     def __init__(self, base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed):
 
+        self.base_dir = base_dir
+        if self.base_dir is None:
+            self.base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
+
         # Check if the dataset exists in memory
-        if not os.path.isdir(base_dir):
+        if not os.path.isdir(self.base_dir):
             # Download the dataset if it is missing
-            self.download(base_dir)
+            self.download(self.base_dir)
 
         self.splits = splits
         if self.splits is None:
@@ -39,6 +44,7 @@ class TranscriptionDataset(Dataset):
         self.frame_length = frame_length
 
         if self.frame_length is None:
+            # Transcribe whole tracks at a time
             self.seq_length = None
         else:
             self.seq_length = max(self.data_proc.get_sample_range(self.frame_length))
@@ -56,13 +62,11 @@ class TranscriptionDataset(Dataset):
         # Load the paths of the audio tracks
         self.tracks = []
 
-        # TODO - do I need this for-loop?
         for split in self.splits:
             self.tracks += self.get_tracks(split)
 
         self.data = {}
 
-        # TODO - do I need this for-loop?
         # Loading ground truth
         for track in tqdm(self.tracks):
             self.data[track] = self.load(track)
@@ -152,104 +156,4 @@ class TranscriptionDataset(Dataset):
     def download(save_dir):
         return NotImplementedError
 
-"""
-class MAPS(TranscriptionDataset):
-    def __init__(self, base_dir):
-        super().__init__()
-
-    @staticmethod
-    def available_splits():
-        return ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb',
-                'ENSTDkAm', 'ENSTDkCl', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
-
-class MAESTRO(TranscriptionDataset):
-    def __init__(self, base_dir):
-        super().__init__()
-
-    @staticmethod
-    def available_splits():
-        # TODO - alternative year splits?
-        return ['train', 'validation', 'test']
-
-    @staticmethod
-    def download(save_dir):
-        # TODO - "flac" option which download flac instead
-        pass
-"""
-
-
-class GuitarSet(TranscriptionDataset):
-    def __init__(self, base_dir=None, splits=None, hop_length=512,
-                 data_proc=None, frame_length=None, split_notes=False, reset_data=False, seed=0):
-
-        self.base_dir = base_dir
-        if self.base_dir is None:
-            self.base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
-
-        super().__init__(self.base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed)
-
-    def get_tracks(self, split):
-        jams_dir = os.path.join(self.base_dir, 'annotation')
-        jams_paths = os.listdir(jams_dir)
-        jams_paths.sort()
-
-        tracks = [os.path.splitext(path)[0] for path in jams_paths]
-
-        split_start = int(split) * 60
-
-        tracks = tracks[split_start : split_start + 60]
-
-        return tracks
-
-    def load(self, track):
-        data = super().load(track)
-
-        if data is None:
-            data = {}
-
-            wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic.wav')
-            audio, _ = load_audio(wav_path)
-            data['audio'] = audio
-
-            num_frames = self.data_proc.get_expected_frames(audio)
-
-            jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
-            tabs = load_jams_guitar_tabs(jams_path, self.hop_length, num_frames)
-            data['tabs'] = tabs
-
-            i_ref, p_ref = load_jams_guitar_notes(jams_path)
-            notes = note_groups_to_arr(p_ref, i_ref)
-            data['notes'] = notes
-
-            gt_path = self.get_gt_dir(track)
-            np.savez(gt_path, audio=audio, tabs=tabs, notes=notes)
-
-        data['track'] = track
-
-        return data
-
-    @staticmethod
-    def available_splits():
-        return ['00', '01', '02', '03', '04', '05']
-
-    @staticmethod
-    def dataset_name():
-        return 'GuitarSet'
-
-    @staticmethod
-    def download(save_dir):
-        # If the directory already exists, remove it
-        if os.path.isdir(save_dir):
-            shutil.rmtree(save_dir)
-
-        # Create the base directory
-        os.mkdir(save_dir)
-
-        print(f'Downloading {GuitarSet.dataset_name()}')
-
-        # Download GuitarSet
-        # TODO - mirdata might be overkill if I don't use its load function
-        # TODO - "flac" option which download flac instead
-        mirdata.guitarset.download(data_home=save_dir)
-
-    # TODO - MusicNet already implemented
+# TODO - MusicNet already implemented - add an easy ref and maybe some functions to make it compatible

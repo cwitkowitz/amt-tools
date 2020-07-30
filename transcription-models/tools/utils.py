@@ -57,6 +57,7 @@ def framify_tfr(tfr, win_length, hop_length, pad=None):
 
     # TODO - parameterize axis or just assume -1?
     if pad is not None:
+        # TODO - librosa pad center?
         pad_amts = [(0,)] * (len(tfr.shape) - 1) + [(pad,)]
         tfr = np.pad(tfr, tuple(pad_amts))
 

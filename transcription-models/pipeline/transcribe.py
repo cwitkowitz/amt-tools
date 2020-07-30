@@ -1,16 +1,7 @@
-"""
-Run my algorithm on each file of GuitarSet and save results
-"""
-
 # My imports
-from tools.constants import *
-from tools.datasets import *
-from tools.dataproc import *
-from tools.models import *
 from tools.utils import *
 
 # Regular imports
-from tqdm import tqdm
 
 import numpy as np
 import torch

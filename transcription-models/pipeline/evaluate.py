@@ -1,11 +1,4 @@
-"""
-Get average scores and various other metrics across entire dataset
-"""
-
 # My imports
-from tools.constants import *
-from tools.datasets import *
-from tools.dataproc import *
 from tools.utils import *
 
 # Regular imports
