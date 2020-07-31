@@ -1,13 +1,7 @@
 # My imports
 from datasets.common import TranscriptionDataset
 
-from tools.constants import *
-from tools.dataproc import *
-from tools.utils import *
-
 # Regular imports
-from mir_eval.io import load_valued_intervals
-
 import numpy as np
 import os
 

@@ -1,5 +1,7 @@
 # My imports
+from tools.conversion import *
 from tools.utils import *
+from tools.io import *
 
 # Regular imports
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes
@@ -15,16 +17,16 @@ eps = sys.float_info.epsilon
 
 # TODO - significant cleanup
 
-def framewise(prediction, reference, hop_length):
+def framewise(prediction, reference, hop_length, sample_rate):
     tabs_ref = np.transpose(reference['tabs'], (2, 0, 1))
     tabs_ref = np.argmax(tabs_ref, axis=-1).T
 
     f_ref = pianoroll_to_pitchlist(tabs_to_pianoroll(tabs_ref))
-    t_ref = librosa.frames_to_time(range(len(f_ref)), SAMPLE_RATE, hop_length)
+    t_ref = librosa.frames_to_time(range(len(f_ref)), sample_rate, hop_length)
 
-    f_est = pianoroll_to_pitchlist(prediction['pianoroll'].T)
+    f_est = pianoroll_to_pitchlist(prediction['pianoroll'])
     # TODO - why a slight difference?
-    t_est = librosa.frames_to_time(range(len(f_est)), SAMPLE_RATE, hop_length)
+    t_est = librosa.frames_to_time(range(len(f_est)), sample_rate, hop_length)
 
     # Compare the ground-truth to the predictions to get the frame-wise metrics
     frame_metrics = evaluate_frames(t_ref, f_ref, t_est, f_est)
@@ -101,7 +103,7 @@ def get_results_format():
 
     return results
 
-def evaluate(prediction, reference, hop_length, log_dir=None, verbose=False):
+def evaluate(prediction, reference, hop_length, sample_rate, log_dir=None, verbose=False):
     results = get_results_format()
 
     track_id = prediction['track']
@@ -111,7 +113,7 @@ def evaluate(prediction, reference, hop_length, log_dir=None, verbose=False):
     results['loss'] = prediction['loss']
 
     # Add the frame-wise metrics to the dictionary
-    results['frame'] = framewise(prediction, reference, hop_length)
+    results['frame'] = framewise(prediction, reference, hop_length, sample_rate)
 
     # Add the note-wise metrics to the dictionary
     results['note-on'] = notewise(prediction, reference, offset_ratio=None)

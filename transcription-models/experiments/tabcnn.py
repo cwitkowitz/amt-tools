@@ -3,10 +3,11 @@ from pipeline.transcribe import transcribe
 from pipeline.evaluate import *
 from pipeline.train import train
 
-from datasets.common import *
-from tools.dataproc import *
-
 from models.tabcnn import *
+
+from features.cqt import CQT
+
+from datasets.GuitarSet import *
 
 # Regular imports
 from torch.utils.data import DataLoader
@@ -28,7 +29,7 @@ def config():
     iterations = 2000
 
     # How many training iterations in between each save/validation point - 0 to disable
-    checkpoints = iterations // 20
+    checkpoints = iterations // 4
 
     # Number of samples to gather for a batch
     batch_size = 64
@@ -51,7 +52,7 @@ def config():
     verbose = False
 
     # The random seed for this experiment
-    seed = SEED
+    seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
     root_dir = '_'.join([TabCNN.model_name(), GuitarSet.dataset_name(), CQT.features_name()])
@@ -63,7 +64,7 @@ def config():
 
 @ex.automain
 def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size, learning_rate,
-                     min_note_span, gpu_id, split_notes, reset_data, verbose, seed, root_dir):
+                     min_note_span, gpu_id, reset_data, verbose, seed, root_dir):
     # Seed everything with the same seed
     seed_everything(seed)
 
@@ -76,10 +77,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
     model_complexity = 1
 
     # Create the cqt data processing module
-    data_proc = CQT(hop_length, None, dim_in, 24)
-
-    # Initialize a list to hold the results from each fold
-    fold_results = []
+    data_proc = CQT(sample_rate=44100, hop_length=hop_length, fmin=None, n_bins=dim_in, bins_per_octave=24)
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -109,17 +107,18 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         # Create a log directory for the training experiment
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
 
+        print('Training classifier...')
+
+        # Train the model
+        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=True)
+
+        estim_dir = os.path.join(root_dir, 'estimated')
+
         print('Loading testing partition...')
 
         # Create a data loader for this testing partition of GuitarSet
         test_splits = [hold_out]
         gset_test = GuitarSet(None, test_splits, hop_length, data_proc, None, reset_data)
-
-        print('Training classifier...')
-
-        # Train the model
-        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, gset_test)
-        estim_dir = os.path.join(root_dir, 'estimated')
 
         print('Transcribing and evaluating test partition...')
 
@@ -129,8 +128,8 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         tabcnn.eval()
         fold_results = get_results_format()
         for track in gset_test:
-            predictions = transcribe(tabcnn, track, hop_length, min_note_span, estim_dir)
-            track_results = evaluate(predictions, track, hop_length, results_dir, verbose)
+            predictions = transcribe(tabcnn, track, hop_length, 44100, min_note_span, estim_dir)
+            track_results = evaluate(predictions, track, hop_length, 44100, results_dir, verbose)
             fold_results = add_result_dicts(fold_results, track_results)
         fold_results = average_results(fold_results)
 

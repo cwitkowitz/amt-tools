@@ -25,36 +25,44 @@ class AcousticModel(TranscriptionModel):
 
         # Dropout percentages for each stage
         dp1 = 0.25
-        dp2 = 0.25
+        dp2 = dp1
         dp3 = 0.50
 
         # Number of neurons for each fully-connected stage
         nn1 = 256 * self.model_complexity
         nn2 = dim_out
 
-        # 1st convolution
-        self.cn1 = nn.Conv2d(1, nf1, ks1)
-        # 1st batch normalization
-        self.bn1 = nn.BatchNorm2d(nf1)
-        # 2nd convolution
-        self.cn2 = nn.Conv2d(nf1, nf2, ks2)
-        # 2nd batch normalization
-        self.bn2 = nn.BatchNorm2d(nf2)
+        self.layer1 = nn.Sequential(
+            # 1st convolution
+            nn.Conv2d(1, nf1, ks1),
+            # 1st batch normalization
+            nn.BatchNorm2d(nf1),
+            # Activation function
+            nn.ReLU())
 
-        # 1st reduction
-        self.mp1 = nn.MaxPool2d(rd1)
-        # 1st dropout
-        self.dp1 = nn.Dropout(dp1)
+        self.layer2 = nn.Sequential(
+            # 1st convolution
+            nn.Conv2d(nf1, nf2, ks2),
+            # 1st batch normalization
+            nn.BatchNorm2d(nf2),
+            # Activation function
+            nn.ReLU(),
+            # 1st reduction
+            nn.MaxPool2d(rd1),
+            # 1st dropout
+            nn.Dropout(dp1))
 
-        # 3rd convolution
-        self.cn3 = nn.Conv2d(nf2, nf3, ks3)
-        # 3rd batch normalization
-        self.bn3 = nn.BatchNorm2d(nf3)
-
-        # 2nd reduction
-        self.mp2 = nn.MaxPool2d(rd2)
-        # 2nd dropout
-        self.dp2 = nn.Dropout(dp2)
+        self.layer3 = nn.Sequential(
+            # 1st convolution
+            nn.Conv2d(nf2, nf3, ks3),
+            # 1st batch normalization
+            nn.BatchNorm2d(nf3),
+            # Activation function
+            nn.ReLU(),
+            # 1st reduction
+            nn.MaxPool2d(rd2),
+            # 1st dropout
+            nn.Dropout(dp2))
 
         feat_map_height = (dim_in - 6) // 4
         feat_map_width = (sample_width - 6)
@@ -83,7 +91,3 @@ class AcousticModel(TranscriptionModel):
         out = self.fc2(x)
 
         return out
-
-    @staticmethod
-    def model_name():
-        return 'OnsetsFramesAcousticModel'

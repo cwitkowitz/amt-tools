@@ -1,9 +1,8 @@
 # My imports
 from datasets.common import TranscriptionDataset
 
-from tools.constants import *
-from tools.dataproc import *
-from tools.utils import *
+from tools.conversion import *
+from tools.io import *
 
 # Regular imports
 import numpy as np
@@ -36,13 +35,13 @@ class GuitarSet(TranscriptionDataset):
             data = {}
 
             wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic.wav')
-            audio, _ = load_audio(wav_path)
+            audio, fs = load_audio(wav_path)
             data['audio'] = audio
 
             num_frames = self.data_proc.get_expected_frames(audio)
 
             jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
-            tabs = load_jams_guitar_tabs(jams_path, self.hop_length, num_frames)
+            tabs = load_jams_guitar_tabs(jams_path, self.hop_length, num_frames, fs)
             data['tabs'] = tabs
 
             i_ref, p_ref = load_jams_guitar_notes(jams_path)

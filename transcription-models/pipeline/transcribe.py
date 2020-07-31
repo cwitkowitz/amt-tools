@@ -1,13 +1,17 @@
 # My imports
+from tools.conversion import *
 from tools.utils import *
+from tools.io import *
+from datasets.common import *
 
 # Regular imports
-
 import numpy as np
 import torch
 import os
 
-def extract_notes(frames, hop_len, min_note_span):
+# TODO - helper function to transcribe a singe piece of audio - turn it into track then batch (parameterize data_proc)
+
+def extract_notes(frames, hop_len, sample_rate, min_note_span):
     # TODO - clean this ish up
     # Create empty lists for note pitches and their time intervals
     pitches, ints = [], []
@@ -26,7 +30,7 @@ def extract_notes(frames, hop_len, min_note_span):
         # Increment the offset counter until the pitch activation
         # turns negative or until the last frame is reached
         while frames[pitch, offset]:
-            if onset == offset and np.sum(onsets[:, max(0, onset - int(0.10 * SAMPLE_RATE // hop_len)) : onset]) > 0:
+            if onset == offset and np.sum(onsets[:, max(0, onset - int(0.10 * sample_rate // hop_len)) : onset]) > 0:
                 break
             offset += 1
             if offset == frames.shape[1]:
@@ -35,14 +39,14 @@ def extract_notes(frames, hop_len, min_note_span):
         # Make sure the note duration exceeds a minimum frame length
         if offset >= onset + min_note_span:
             # Determine the absolute frequency
-            freq = librosa.midi_to_hz(pitch + LOWEST_NOTE)
+            freq = librosa.midi_to_hz(pitch + infer_lowest_note(frames))
 
             # Add the frequency to the list
             pitches.append(freq)
 
             # TODO - can probs utilize librosa here - it does same thing but with array
             # Determine the time where the onset and offset occur
-            onset, offset = onset * hop_len / SAMPLE_RATE, offset * hop_len / SAMPLE_RATE
+            onset, offset = onset * hop_len / sample_rate, offset * hop_len / sample_rate
 
             # TODO - window length is ambiguous - remove? - also check librosa func
             # Add half of the window time for frame-centered predictions
@@ -57,7 +61,7 @@ def extract_notes(frames, hop_len, min_note_span):
 
     return pitches, intervals
 
-def transcribe(classifier, track, hop_length, min_note_span, log_dir=None):
+def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_dir=None):
     # Just in case
     classifier.eval()
 
@@ -73,7 +77,7 @@ def transcribe(classifier, track, hop_length, min_note_span, log_dir=None):
         tabs = tabs.squeeze().cpu().detach().numpy().T
 
         pianoroll_by_string = tabs_to_multi_pianoroll(tabs)
-        pianoroll = tabs_to_pianoroll(tabs).T
+        pianoroll = tabs_to_pianoroll(tabs)
 
         if log_dir is not None:
             os.makedirs(os.path.join(log_dir, 'tabs'), exist_ok=True)
@@ -82,7 +86,7 @@ def transcribe(classifier, track, hop_length, min_note_span, log_dir=None):
 
         all_pitches, all_ints = [], []
         for i in range(NUM_STRINGS):
-            pitches, ints = extract_notes(pianoroll_by_string[i], hop_length, min_note_span)
+            pitches, ints = extract_notes(pianoroll_by_string[i], hop_length, sample_rate, min_note_span)
             all_pitches += list(pitches)
             all_ints += list(ints)
 
@@ -101,7 +105,7 @@ def transcribe(classifier, track, hop_length, min_note_span, log_dir=None):
             nte_txt_path = os.path.join(log_dir, 'notes', f'{track_id}.txt')
 
             # Save the predictions to file
-            write_frames(frm_txt_path, hop_length, pianoroll)
+            write_frames(frm_txt_path, hop_length, sample_rate, pianoroll)
             write_notes(nte_txt_path, all_pitches, all_ints)
 
     predictions = {}

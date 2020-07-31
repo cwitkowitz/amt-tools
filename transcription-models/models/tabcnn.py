@@ -78,7 +78,3 @@ class TabCNN(TranscriptionModel):
         out = self.fc2(x)
 
         return out
-
-    @staticmethod
-    def model_name():
-        return 'TabCNN'

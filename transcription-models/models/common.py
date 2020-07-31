@@ -39,6 +39,7 @@ class TranscriptionModel(nn.Module):
         return NotImplementedError
 
     def run_on_batch(self, batch):
+        # TODO - remove dependence on GT - put it in separate function
         feats = batch['feats']
         tabs = batch['tabs']
 
@@ -72,7 +73,6 @@ class TranscriptionModel(nn.Module):
 
         return preds, loss
 
-    @staticmethod
-    @abstractmethod
-    def model_name():
-        return NotImplementedError
+    @classmethod
+    def model_name(cls):
+        return cls.__name__

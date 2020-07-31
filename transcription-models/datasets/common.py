@@ -1,7 +1,8 @@
 # My imports
 from tools.constants import *
-from tools.dataproc import *
 from tools.utils import *
+
+from features.cqt import CQT
 
 # Regular imports
 from mir_eval.io import load_valued_intervals
@@ -16,12 +17,13 @@ import mirdata
 import shutil
 import os
 
+# TODO - MusicNet already implemented - add an easy ref and maybe some functions to make it compatible
+# TODO - validate methods for each data entry - such as tabs, notes, frames, etc.
 # TODO - ComboDataset
 
 
 class TranscriptionDataset(Dataset):
     def __init__(self, base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed):
-
         self.base_dir = base_dir
         if self.base_dir is None:
             self.base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
@@ -52,6 +54,7 @@ class TranscriptionDataset(Dataset):
         self.reset_data = reset_data
 
         if os.path.exists(self.get_gt_dir()) and self.reset_data:
+            # TODO - make sure this doesn't reset all data under the generated directory
             shutil.rmtree(self.get_gt_dir())
         os.makedirs(self.get_gt_dir(), exist_ok=True)
 
@@ -82,7 +85,7 @@ class TranscriptionDataset(Dataset):
         feats_path = self.get_feats_dir(track)
 
         if os.path.exists(feats_path):
-            # TODO - different key for each module?
+            # TODO - feats_name = self.data_proc.features_name()?
             feats = np.load(feats_path)['feats']
         else:
             # TODO - invoke data_proc only once unless fb learn
@@ -156,4 +159,13 @@ class TranscriptionDataset(Dataset):
     def download(save_dir):
         return NotImplementedError
 
-# TODO - MusicNet already implemented - add an easy ref and maybe some functions to make it compatible
+def track_to_batch(track):
+    batch = deepcopy(track)
+
+    batch['track'] = [batch['track']]
+    batch['audio'] = torch.from_numpy(batch['audio']).unsqueeze(0)
+    batch['tabs'] = torch.from_numpy(batch['tabs']).unsqueeze(0)
+    batch['feats'] = torch.from_numpy(batch['feats']).unsqueeze(0)
+    batch['notes'] = torch.from_numpy(batch['notes']).unsqueeze(0)
+
+    return batch

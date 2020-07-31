@@ -3,10 +3,11 @@ from pipeline.transcribe import transcribe
 from pipeline.evaluate import *
 from pipeline.train import train
 
-from datasets.common import *
-from tools.dataproc import *
-
 from models.onsetsframes import *
+
+from features.melspec import MelSpec
+
+from datasets.MAPS import *
 
 # Regular imports
 from torch.utils.data import DataLoader
@@ -54,10 +55,10 @@ def config():
     verbose = False
 
     # The random seed for this experiment
-    seed = SEED
+    seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([AcousticModel.model_name(), GuitarSet.dataset_name(), CQT.features_name()])
+    root_dir = '_'.join([AcousticModel.model_name(), MAPS.dataset_name(), MelSpec.features_name()])
     root_dir = os.path.join(GENR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -79,7 +80,7 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     model_complexity = 1
 
     # Create the cqt data processing module
-    data_proc = MelSpec(n_mels=229, n_fft=2048, hop_length=512, htk=False, norm=None)
+    data_proc = MelSpec(sample_rate=16000, n_mels=229, n_fft=2048, hop_length=512, htk=False, norm=None)
 
     # Remove the hold out split to get the training partition
     train_splits = splits.copy()
@@ -98,25 +99,25 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     train_loader = DataLoader(maps_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
 
     # Initialize a new instance of the model
-    tabcnn = AcousticModel(dim_in, dim_out, model_complexity, gpu_id)
-    tabcnn.change_device()
-    tabcnn.train()
+    onsetsframes = AcousticModel(dim_in, dim_out, model_complexity, gpu_id)
+    onsetsframes.change_device()
+    onsetsframes.train()
 
     # Initialize a new optimizer for the model parameters
-    optimizer = torch.optim.Adadelta(tabcnn.parameters(), learning_rate)
+    optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
 
     # Create a log directory for the training experiment
-    model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
+    model_dir = os.path.join(root_dir, 'models')
 
     print('Loading testing partition...')
 
     # Create a data loader for the testing partition of MAPS
-    gset_test = GuitarSet(None, test_splits, hop_length, data_proc, None, reset_data)
+    maps_test = MAPS(None, test_splits, hop_length, data_proc, None, reset_data)
 
     print('Training classifier...')
 
     # Train the model
-    tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, gset_test)
+    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations, checkpoints, model_dir, maps_test)
     estim_dir = os.path.join(root_dir, 'estimated')
 
     print('Transcribing and evaluating test partition...')
@@ -124,10 +125,10 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     results_dir = os.path.join(root_dir, 'results')
 
     # Generate predictions for the test set
-    tabcnn.eval()
+    onsetsframes.eval()
     results = get_results_format()
-    for track in gset_test:
-        predictions = transcribe(tabcnn, track, hop_length, min_note_span, estim_dir)
+    for track in maps_test:
+        predictions = transcribe(onsetsframes, track, hop_length, min_note_span, estim_dir)
         track_results = evaluate(predictions, track, hop_length, results_dir, verbose)
         results = add_result_dicts(results, track_results)
     results = average_results(results)

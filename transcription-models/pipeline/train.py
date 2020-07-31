@@ -11,6 +11,10 @@ from tqdm import tqdm
 import torch
 import os
 
+def file_sort(file_name):
+    # Takes into account the decimal place by adding string length
+    return str(len(file_name)) + file_name
+
 def train(classifier, train_loader, optimizer, iterations,
           checkpoints=None, log_dir='.', val_set=None,
           scheduler=None, resume=False, single_batch=False):
@@ -22,8 +26,8 @@ def train(classifier, train_loader, optimizer, iterations,
     start_iter = 0
     if resume:
         log_files = os.listdir(log_dir)
-        classifier_files = sorted([path for path in log_files if 'classifier' in path])
-        optimizer_files = sorted([path for path in log_files if 'opt-state' in path])
+        classifier_files = sorted([path for path in log_files if 'classifier' in path], key=file_sort)
+        optimizer_files = sorted([path for path in log_files if 'opt-state' in path], key=file_sort)
 
         if len(classifier_files) > 0 and len(optimizer_files) > 0:
             classifier_path = os.path.join(log_dir, classifier_files[-1])
