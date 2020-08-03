@@ -1,5 +1,7 @@
 # My imports
 from datasets.common import TranscriptionDataset
+
+from tools.conversion import *
 from tools.io import *
 
 # Regular imports
@@ -10,9 +12,9 @@ import os
 
 
 class MAPS(TranscriptionDataset):
-    def __init__(self, base_dir=None, splits=None, hop_length=512,
+    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000,
                  data_proc=None, frame_length=None, split_notes=False, reset_data=False, seed=0):
-        super().__init__(base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed)
+        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, frame_length, split_notes, reset_data, seed)
 
     def remove_overlapping(self, splits):
         # Initialize list of tracks to remove
@@ -24,6 +26,10 @@ class MAPS(TranscriptionDataset):
         tracks = ['_'.join(t.split('_')[:-1]) for t in tracks]
 
         self.tracks = [t for t in self.tracks if '_'.join(t.split('_')[:-1]) not in tracks]
+
+        for key in list(self.data.keys()):
+            if key not in self.tracks:
+                self.data.pop(key)
 
     def get_tracks(self, split):
         split_dir = os.path.join(self.base_dir, split, 'MUS')
@@ -53,12 +59,19 @@ class MAPS(TranscriptionDataset):
             num_frames = self.data_proc.get_expected_frames(audio)
 
             txt_path = os.path.join(track_dir, track + '.txt')
-            notes = load_valued_intervals(txt_path, comment='O')
-            notes = np.append(np.expand_dims(notes[1], axis=-1), notes[0], axis=-1)
+            notes = load_valued_intervals(txt_path, comment='O|\n')
+            notes = np.append(notes[0], np.expand_dims(notes[1], axis=-1), axis=-1)
             data['notes'] = notes
 
+            pitches, intervals = arr_to_note_groups(notes)
+            frames = note_groups_to_pianoroll(pitches, intervals, self.hop_length, self.sample_rate, PIANO_RANGE, num_frames)
+            data['frames'] = frames
+
+            onsets = get_pianoroll_onsets(frames)
+            data['onsets'] = onsets
+
             gt_path = self.get_gt_dir(track)
-            np.savez(gt_path, audio=audio, frames=frames, notes=notes)
+            np.savez(gt_path, audio=audio, frames=frames, onsets=onsets, notes=notes)
 
         data['track'] = track
 

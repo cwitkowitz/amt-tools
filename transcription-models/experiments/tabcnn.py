@@ -23,16 +23,16 @@ def config():
     hop_length = 512
 
     # Number of consecutive frames within each example fed to the model
-    seq_length = 100
+    seq_length = 200
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 1000
 
     # How many training iterations in between each save/validation point - 0 to disable
     checkpoints = iterations // 4
 
     # Number of samples to gather for a batch
-    batch_size = 64
+    batch_size = 32
 
     # The initial learning rate
     learning_rate = 1.0
@@ -41,7 +41,7 @@ def config():
     min_note_span = 5
 
     # The id of the gpu to use, if available
-    gpu_id = 0
+    gpu_id = 1
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
@@ -56,7 +56,7 @@ def config():
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
     root_dir = '_'.join([TabCNN.model_name(), GuitarSet.dataset_name(), CQT.features_name()])
-    root_dir = os.path.join(GENR_DIR, root_dir)
+    root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -93,7 +93,8 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         print('Loading training partition...')
 
         # Create a data loader for this training partition of GuitarSet
-        gset_train = GuitarSet(None, train_splits, hop_length, data_proc, seq_length, False, reset_data, seed)
+        gset_train = GuitarSet(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=44100,
+                               data_proc=data_proc, frame_length=seq_length, split_notes=False, reset_data=reset_data, seed=seed)
         train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
 
         # Initialize a new instance of the model
@@ -110,7 +111,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         print('Training classifier...')
 
         # Train the model
-        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=True)
+        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=False)
 
         estim_dir = os.path.join(root_dir, 'estimated')
 
@@ -118,7 +119,8 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
 
         # Create a data loader for this testing partition of GuitarSet
         test_splits = [hold_out]
-        gset_test = GuitarSet(None, test_splits, hop_length, data_proc, None, reset_data)
+        gset_test = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=44100,
+                              data_proc=data_proc, frame_length=seq_length, split_notes=False, reset_data=reset_data)
 
         print('Transcribing and evaluating test partition...')
 
@@ -128,7 +130,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         tabcnn.eval()
         fold_results = get_results_format()
         for track in gset_test:
-            predictions = transcribe(tabcnn, track, hop_length, 44100, min_note_span, estim_dir)
+            predictions = transcribe(tabcnn, track, hop_length, 44100, min_note_span, estim_dir, tabs=True)
             track_results = evaluate(predictions, track, hop_length, 44100, results_dir, verbose)
             fold_results = add_result_dicts(fold_results, track_results)
         fold_results = average_results(fold_results)

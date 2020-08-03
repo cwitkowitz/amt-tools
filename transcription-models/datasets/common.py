@@ -23,7 +23,7 @@ import os
 
 
 class TranscriptionDataset(Dataset):
-    def __init__(self, base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed):
+    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, frame_length, split_notes, reset_data, seed):
         self.base_dir = base_dir
         if self.base_dir is None:
             self.base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
@@ -38,6 +38,7 @@ class TranscriptionDataset(Dataset):
             self.splits = self.available_splits()
 
         self.hop_length = hop_length
+        self.sample_rate = sample_rate
 
         self.data_proc = data_proc
         if self.data_proc is None:
@@ -114,9 +115,22 @@ class TranscriptionDataset(Dataset):
             sample_end = sample_start + self.seq_length
 
             data['audio'] = data['audio'][sample_start : sample_end]
-            data['tabs'] = data['tabs'][:, :, frame_start : frame_end]
             data['feats'] = feats[:, :, frame_start : frame_end]
+
+            if 'tabs' in data.keys():
+                data['tabs'] = data['tabs'][:, :, frame_start : frame_end]
+            if 'frames' in data.keys():
+                data['frames'] = data['frames'][:, frame_start : frame_end]
+            if 'onsets' in data.keys():
+                data['onsets'] = data['onsets'][:, frame_start : frame_end]
+
             data.pop('notes')
+
+        # TODO - make this a func - def conv_batch('')
+        if 'frames' in data.keys():
+            data['frames'] = data['frames'].astype('float32')
+        if 'onsets' in data.keys():
+            data['onsets'] = data['onsets'].astype('float32')
 
         return data
 
@@ -163,9 +177,10 @@ def track_to_batch(track):
     batch = deepcopy(track)
 
     batch['track'] = [batch['track']]
-    batch['audio'] = torch.from_numpy(batch['audio']).unsqueeze(0)
-    batch['tabs'] = torch.from_numpy(batch['tabs']).unsqueeze(0)
-    batch['feats'] = torch.from_numpy(batch['feats']).unsqueeze(0)
-    batch['notes'] = torch.from_numpy(batch['notes']).unsqueeze(0)
+
+    keys = list(batch.keys())
+    keys.remove('track')
+    for key in keys:
+        batch[key] = torch.from_numpy(batch[key]).unsqueeze(0)
 
     return batch

@@ -18,10 +18,13 @@ eps = sys.float_info.epsilon
 # TODO - significant cleanup
 
 def framewise(prediction, reference, hop_length, sample_rate):
-    tabs_ref = np.transpose(reference['tabs'], (2, 0, 1))
-    tabs_ref = np.argmax(tabs_ref, axis=-1).T
+    if 'tabs' in prediction:
+        tabs_ref = np.transpose(reference['tabs'], (2, 0, 1))
+        tabs_ref = np.argmax(tabs_ref, axis=-1).T
 
-    f_ref = pianoroll_to_pitchlist(tabs_to_pianoroll(tabs_ref))
+        f_ref = pianoroll_to_pitchlist(tabs_to_pianoroll(tabs_ref))
+    else:
+        f_ref = pianoroll_to_pitchlist(reference['frames'])
     t_ref = librosa.frames_to_time(range(len(f_ref)), sample_rate, hop_length)
 
     f_est = pianoroll_to_pitchlist(prediction['pianoroll'])

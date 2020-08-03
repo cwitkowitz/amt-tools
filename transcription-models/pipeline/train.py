@@ -69,9 +69,9 @@ def train(classifier, train_loader, optimizer, iterations,
                 with torch.no_grad():
                     val_results = get_results_format()
                     for track in val_set:
-                        # TODO - bring out hop length and min note span
-                        predictions = transcribe(classifier, track, hop_length=512, min_note_span=5)
-                        track_results = evaluate(predictions, track, hop_length=512)
+                        # TODO - bring out hop length and min note span and sample_rate
+                        predictions = transcribe(classifier, track, hop_length=512, sample_rate=16000, min_note_span=5)
+                        track_results = evaluate(predictions, track, hop_length=512, sample_rate=16000)
                         val_results = add_result_dicts(val_results, track_results)
 
                     val_results = average_results(val_results)

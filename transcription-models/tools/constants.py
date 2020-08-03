@@ -12,6 +12,7 @@ SCPT_DIR = os.path.dirname(os.path.join(AUXL_DIR))
 ROOT_DIR = os.path.dirname(os.path.join(SCPT_DIR))
 GENR_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'generated'))
 GEN_DATA_DIR = os.path.join(GENR_DIR, 'data')
+GEN_EXPR_DIR = os.path.join(GENR_DIR, 'experiments')
 
 ##################################################
 # Guitar properties                              #

@@ -23,7 +23,7 @@ def config():
     hop_length = 512
 
     # Number of consecutive frames within each example fed to the model
-    seq_length = 100
+    seq_length = 500
 
     # Number of training iterations to conduct
     iterations = 2000
@@ -32,10 +32,10 @@ def config():
     checkpoints = iterations // 20
 
     # Number of samples to gather for a batch
-    batch_size = 64
+    batch_size = 8
 
     # The initial learning rate
-    learning_rate = 1.0
+    learning_rate = 0.001
 
     # Minimum number of active frames required for a note
     min_note_span = 5
@@ -58,8 +58,8 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([AcousticModel.model_name(), MAPS.dataset_name(), MelSpec.features_name()])
-    root_dir = os.path.join(GENR_DIR, root_dir)
+    root_dir = '_'.join([OnsetsFrames.model_name(), MAPS.dataset_name(), MelSpec.features_name()])
+    root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -75,12 +75,12 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     splits = MAPS.available_splits()
 
     # Processing parameters
-    dim_in = 192
-    dim_out = NUM_STRINGS * (NUM_FRETS + 2)
-    model_complexity = 1
+    dim_in = 229
+    dim_out = PIANO_RANGE
+    model_complexity = 2
 
     # Create the cqt data processing module
-    data_proc = MelSpec(sample_rate=16000, n_mels=229, n_fft=2048, hop_length=512, htk=False, norm=None)
+    data_proc = MelSpec(sample_rate=16000, n_mels=dim_in, n_fft=2048, hop_length=512, htk=False, norm=None)
 
     # Remove the hold out split to get the training partition
     train_splits = splits.copy()
@@ -92,14 +92,14 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     print('Loading training partition...')
 
     # Create a data loader for this training partition of MAPS
-    maps_train = MAPS(base_dir=None, splits=train_splits, hop_length=hop_length, data_proc=data_proc,
-                      frame_length=seq_length, split_notes=split_notes, reset_data=reset_data, seed=seed)
+    maps_train = MAPS(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=16000,
+                      data_proc=data_proc, frame_length=seq_length, split_notes=split_notes, reset_data=reset_data, seed=seed)
     print('Removing overlapping tracks')
     maps_train.remove_overlapping(test_splits)
     train_loader = DataLoader(maps_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
 
     # Initialize a new instance of the model
-    onsetsframes = AcousticModel(dim_in, dim_out, model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 
@@ -112,7 +112,8 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     print('Loading testing partition...')
 
     # Create a data loader for the testing partition of MAPS
-    maps_test = MAPS(None, test_splits, hop_length, data_proc, None, reset_data)
+    maps_test = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=16000,
+                     data_proc=data_proc, frame_length=None, reset_data=reset_data)
 
     print('Training classifier...')
 
@@ -128,8 +129,8 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     onsetsframes.eval()
     results = get_results_format()
     for track in maps_test:
-        predictions = transcribe(onsetsframes, track, hop_length, min_note_span, estim_dir)
-        track_results = evaluate(predictions, track, hop_length, results_dir, verbose)
+        predictions = transcribe(onsetsframes, track, hop_length, 16000, min_note_span, estim_dir)
+        track_results = evaluate(predictions, track, hop_length, 16000, results_dir, verbose)
         results = add_result_dicts(results, track_results)
     results = average_results(results)
 

@@ -3,6 +3,7 @@
 from models.common import *
 
 # Regular imports
+import torch.nn.functional as F
 
 # TODO - different file naming scheme?
 
@@ -58,6 +59,31 @@ class TabCNN(TranscriptionModel):
         # 2nd fully-connected
         self.fc2 = nn.Linear(nn1, nn2)
 
+    def pre_proc(self, batch):
+        feats = batch['feats']
+        feats = framify_tfr(feats, 9, 1, 4)
+        feats = feats.transpose(-1, -2)
+        feats = feats.transpose(-2, -3)
+        feats = feats.squeeze(1)
+
+        batch_size = feats.size(0)
+        num_wins = feats.size(1)
+        num_bins = feats.size(2)
+        win_len = feats.size(3)
+
+        feats = feats.to(self.device)
+        feats = feats.view(batch_size * num_wins, 1, num_bins, win_len)
+        batch['feats'] = feats
+
+        # Check if ground-truth was provided
+        if 'tabs' in batch.keys():
+            tabs = batch['tabs']
+            tabs = tabs.transpose(-1, -2)
+            tabs = tabs.transpose(-2, -3)
+            batch['tabs'] = tabs.to(self.device)
+
+        return batch
+
     def forward(self, feats):
         # 1st convolution
         x = F.relu(self.cn1(feats))
@@ -78,3 +104,22 @@ class TabCNN(TranscriptionModel):
         out = self.fc2(x)
 
         return out
+
+    def post_proc(self, batch):
+        # TODO - if this will be the same for other transcription models, abstract it to a function and just call that
+        out = batch['out']
+        batch_size = batch['audio'].size(0)
+        out = out.view(batch_size, -1, NUM_STRINGS, NUM_FRETS+2)
+
+        preds = torch.argmax(torch.softmax(out, dim=-1), dim=-1)
+
+        loss = None
+        if 'tabs' in batch.keys():
+            tabs = batch['tabs']
+            tabs = tabs.view(-1, NUM_FRETS + 2)
+
+            out = out.view(-1, NUM_FRETS + 2)
+            loss = F.cross_entropy(out, torch.argmax(tabs, dim=-1), reduction='none')
+            loss = torch.sum(loss.view(-1, NUM_STRINGS), dim=-1)
+
+        return preds, loss

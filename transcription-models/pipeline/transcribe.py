@@ -12,6 +12,7 @@ import os
 # TODO - helper function to transcribe a singe piece of audio - turn it into track then batch (parameterize data_proc)
 
 def extract_notes(frames, hop_len, sample_rate, min_note_span):
+    # TODO - parameterize onsets optionally
     # TODO - clean this ish up
     # Create empty lists for note pitches and their time intervals
     pitches, ints = [], []
@@ -61,38 +62,43 @@ def extract_notes(frames, hop_len, sample_rate, min_note_span):
 
     return pitches, intervals
 
-def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_dir=None):
+def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_dir=None, tabs=False):
     # Just in case
     classifier.eval()
 
     with torch.no_grad():
         track = track_to_batch(track)
-        tabs, track_loss = classifier.run_on_batch(track)
+        preds, track_loss = classifier.run_on_batch(track)
         track_loss = torch.mean(track_loss).item()
 
         track_id = track['track'][0]
 
-        # TODO - abstract the tab functionality - not all models are for guitar
+        # TODO - abstract the tab functionality - not all models are for guitar - for now a tabs boolean should be fine
         # TODO - remove unnecessary transpositions
-        tabs = tabs.squeeze().cpu().detach().numpy().T
+        if tabs:
+            tabs = preds.squeeze().cpu().detach().numpy().T
 
-        pianoroll_by_string = tabs_to_multi_pianoroll(tabs)
-        pianoroll = tabs_to_pianoroll(tabs)
-
-        if log_dir is not None:
-            os.makedirs(os.path.join(log_dir, 'tabs'), exist_ok=True)
-            tabs_dir = os.path.join(log_dir, 'tabs', f'{track_id}')
-            os.makedirs(os.path.join(tabs_dir), exist_ok=True)
-
-        all_pitches, all_ints = [], []
-        for i in range(NUM_STRINGS):
-            pitches, ints = extract_notes(pianoroll_by_string[i], hop_length, sample_rate, min_note_span)
-            all_pitches += list(pitches)
-            all_ints += list(ints)
+            pianoroll_by_string = tabs_to_multi_pianoroll(tabs)
+            pianoroll = tabs_to_pianoroll(tabs)
 
             if log_dir is not None:
-                tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
-                write_notes(tab_txt_path, pitches, ints)
+                os.makedirs(os.path.join(log_dir, 'tabs'), exist_ok=True)
+                tabs_dir = os.path.join(log_dir, 'tabs', f'{track_id}')
+                os.makedirs(os.path.join(tabs_dir), exist_ok=True)
+
+            all_pitches, all_ints = [], []
+            for i in range(NUM_STRINGS):
+                pitches, ints = extract_notes(pianoroll_by_string[i], hop_length, sample_rate, min_note_span)
+                all_pitches += list(pitches)
+                all_ints += list(ints)
+
+                if log_dir is not None:
+                    tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
+                    write_notes(tab_txt_path, pitches, ints)
+        else:
+            onsets, frames = preds
+            pianoroll = frames.squeeze().cpu().detach().numpy()
+            all_pitches, all_ints = extract_notes(pianoroll, hop_length, sample_rate, min_note_span)
 
         all_notes = note_groups_to_arr(all_pitches, all_ints)
 

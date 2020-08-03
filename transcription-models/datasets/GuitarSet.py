@@ -11,9 +11,9 @@ import shutil
 import os
 
 class GuitarSet(TranscriptionDataset):
-    def __init__(self, base_dir=None, splits=None, hop_length=512,
+    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100,
                  data_proc=None, frame_length=None, split_notes=False, reset_data=False, seed=0):
-        super().__init__(base_dir, splits, hop_length, data_proc, frame_length, split_notes, reset_data, seed)
+        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, frame_length, split_notes, reset_data, seed)
 
     def get_tracks(self, split):
         jams_dir = os.path.join(self.base_dir, 'annotation')

@@ -6,7 +6,6 @@ from tools.utils import *
 from abc import abstractmethod
 from torch import nn
 
-import torch.nn.functional as F
 import torch
 
 
@@ -28,48 +27,24 @@ class TranscriptionModel(nn.Module):
         self.device = device
         self.to(self.device)
 
-    def pre_proc(self):
+    @abstractmethod
+    def pre_proc(self, batch):
         return NotImplementedError
 
     @abstractmethod
-    def forward(self):
+    def forward(self, feats):
         return NotImplementedError
 
-    def post_proc(self):
+    @abstractmethod
+    def post_proc(self, batch):
         return NotImplementedError
 
     def run_on_batch(self, batch):
-        # TODO - remove dependence on GT - put it in separate function
-        feats = batch['feats']
-        tabs = batch['tabs']
+        batch = self.pre_proc(batch)
 
-        tabs = tabs.transpose(-1, -2)
-        tabs = tabs.transpose(-2, -3)
+        batch['out'] = self(batch['feats'])
 
-        feats = framify_tfr(feats, 9, 1, 4)
-        feats = feats.transpose(-1, -2)
-        feats = feats.transpose(-2, -3)
-        feats = feats.squeeze(1)
-
-        feats = feats.to(self.device)
-        tabs = tabs.to(self.device)
-
-        batch_size = feats.size(0)
-        num_wins = feats.size(1)
-        num_bins = feats.size(2)
-        win_len = feats.size(3)
-
-        feats = feats.view(batch_size * num_wins, 1, num_bins, win_len)
-
-        out = self(feats).view(tabs.shape)
-
-        # TODO - abstract tabs vs. pianoroll output neurons into pre-proc / post-proc (if tabs: etc.) - maybe pre-proc can be generic to the abstract class then
-        preds = torch.argmax(torch.softmax(out, dim=-1), dim=-1)
-
-        out = out.view(-1, NUM_FRETS + 2)
-        tabs = tabs.view(-1, NUM_FRETS + 2)
-        loss = F.cross_entropy(out, torch.argmax(tabs, dim=-1), reduction='none')
-        loss = torch.sum(loss.view(-1, NUM_STRINGS), dim=-1)
+        preds, loss = self.post_proc(batch)
 
         return preds, loss
 
