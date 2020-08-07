@@ -5,8 +5,10 @@ from pipeline.evaluate import *
 from tools.utils import *
 
 # Regular imports
+from torch.nn.utils import clip_grad_norm_
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
+
 
 import torch
 import os
@@ -54,6 +56,9 @@ def train(classifier, train_loader, optimizer, iterations,
             batch_loss.backward()
             optimizer.step()
 
+            # TODO - this is only for OF
+            #clip_grad_norm_(classifier.parameters(), 3)
+
             if single_batch:
                 break
 
@@ -70,6 +75,7 @@ def train(classifier, train_loader, optimizer, iterations,
                     val_results = get_results_format()
                     for track in val_set:
                         # TODO - bring out hop length and min note span and sample_rate
+                        track = val_set.slicify_track(track)
                         predictions = transcribe(classifier, track, hop_length=512, sample_rate=16000, min_note_span=5)
                         track_results = evaluate(predictions, track, hop_length=512, sample_rate=16000)
                         val_results = add_result_dicts(val_results, track_results)

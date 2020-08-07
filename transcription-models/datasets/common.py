@@ -96,7 +96,7 @@ class TranscriptionDataset(Dataset):
         data['feats'] = feats
 
         if self.frame_length is not None:
-            # TODO - how much will it hurt to pad with zeros instead of actual previous/later frames?
+            # TODO - how much will it hurt to pad with zeros instead of actual previous/later frames? - TabCNN
 
             # TODO - note splitting here for sample start - check Google's code
             """
@@ -105,25 +105,7 @@ class TranscriptionDataset(Dataset):
             valid_start = False
             while not valid_start:
             """
-            sample_start = randint(0, len(data['audio']) - self.seq_length)
-
-            frame_start = sample_start // self.hop_length
-            frame_end = frame_start + self.frame_length
-
-            # TODO - quantize at even frames or start where sampled?
-            #sample_start = frame_start * self.hop_length
-            sample_end = sample_start + self.seq_length
-
-            data['audio'] = data['audio'][sample_start : sample_end]
-            data['feats'] = feats[:, :, frame_start : frame_end]
-
-            if 'tabs' in data.keys():
-                data['tabs'] = data['tabs'][:, :, frame_start : frame_end]
-            if 'frames' in data.keys():
-                data['frames'] = data['frames'][:, frame_start : frame_end]
-            if 'onsets' in data.keys():
-                data['onsets'] = data['onsets'][:, frame_start : frame_end]
-
+            data = self.slicify_track(data)
             data.pop('notes')
 
         # TODO - make this a func - def conv_batch('')
@@ -131,6 +113,55 @@ class TranscriptionDataset(Dataset):
             data['frames'] = data['frames'].astype('float32')
         if 'onsets' in data.keys():
             data['onsets'] = data['onsets'].astype('float32')
+
+        return data
+
+    def slicify_track(self, data, sample_start=None, seq_length=None):
+        track_id = data['track']
+
+        if seq_length is None:
+            if self.seq_length is not None:
+                seq_length = self.seq_length
+            else:
+                return data
+
+        if sample_start is None:
+            # This well mess up deterministic behavior if called in validation loop
+            sample_start = randint(0, len(data['audio']) - seq_length)
+
+        data['sample_start'] = sample_start
+
+        frame_start = sample_start // self.hop_length
+        frame_end = frame_start + self.frame_length
+
+        # TODO - quantize at even frames or start where sampled?
+        # sample_start = frame_start * self.hop_length
+        sample_end = sample_start + seq_length
+
+        data['audio'] = data['audio'][sample_start: sample_end]
+        data['feats'] = data['feats'][:, :, frame_start: frame_end]
+
+        if 'tabs' in data.keys():
+            data['tabs'] = data['tabs'][:, :, frame_start: frame_end]
+        if 'frames' in data.keys():
+            data['frames'] = data['frames'][:, frame_start: frame_end]
+        if 'onsets' in data.keys():
+            data['onsets'] = data['onsets'][:, frame_start: frame_end]
+
+        if 'notes' in data:
+            notes = data['notes']
+        else:
+            notes = self.data[track_id]['notes']
+
+        sec_start = sample_start / self.sample_rate
+        sec_stop = sample_end / self.sample_rate
+        notes = notes[notes[:, 0] > sec_start]
+        notes = notes[notes[:, 0] < sec_stop]
+
+        notes[:, 0] = notes[:, 0] - sec_start
+        notes[:, 1] = notes[:, 1] - sec_start
+
+        data['notes'] = notes
 
         return data
 
@@ -174,13 +205,15 @@ class TranscriptionDataset(Dataset):
         return NotImplementedError
 
 def track_to_batch(track):
+    # TODO - combine this with the to device function with device = None by default
     batch = deepcopy(track)
 
     batch['track'] = [batch['track']]
 
     keys = list(batch.keys())
-    keys.remove('track')
+    #keys.remove('track')
     for key in keys:
-        batch[key] = torch.from_numpy(batch[key]).unsqueeze(0)
+        if isinstance(batch[key], np.ndarray):
+            batch[key] = torch.from_numpy(batch[key]).unsqueeze(0)
 
     return batch

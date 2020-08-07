@@ -9,10 +9,7 @@ import jams
 
 
 def load_audio(wav_path, sample_rate=None):
-    audio, fs = librosa.load(wav_path, sr=None)
-
-    if sample_rate is not None and fs != sample_rate:
-        audio = librosa.resample(audio, fs, sample_rate)
+    audio, fs = librosa.load(wav_path, sr=sample_rate)
 
     #audio = librosa.util.normalize(audio)# <- infinity norm
     audio = rms_norm(audio)

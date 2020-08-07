@@ -35,7 +35,7 @@ def config():
     batch_size = 8
 
     # The initial learning rate
-    learning_rate = 0.001
+    learning_rate = 5e-4
 
     # Minimum number of active frames required for a note
     min_note_span = 5
@@ -111,17 +111,22 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
 
     print('Loading testing partition...')
 
-    # Create a data loader for the testing partition of MAPS
-    maps_test = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=16000,
-                     data_proc=data_proc, frame_length=None, reset_data=reset_data)
+    # Create a data loader for the validation step
+    # TODO - can't aggregate slices because of notes array mismatch
+    maps_val = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=16000,
+                    data_proc=data_proc, frame_length=seq_length, reset_data=reset_data)
 
     print('Training classifier...')
 
     # Train the model
-    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations, checkpoints, model_dir, maps_test)
+    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations, checkpoints, model_dir, maps_val)
     estim_dir = os.path.join(root_dir, 'estimated')
 
     print('Transcribing and evaluating test partition...')
+
+    # Create a data loader for the testing partition of MAPS
+    maps_test = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=16000,
+                     data_proc=data_proc, frame_length=None, reset_data=reset_data)
 
     results_dir = os.path.join(root_dir, 'results')
 

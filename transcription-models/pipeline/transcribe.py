@@ -97,6 +97,8 @@ def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_di
                     write_notes(tab_txt_path, pitches, ints)
         else:
             onsets, frames = preds
+            onsets = threshold_arr(onsets, 0.5)
+            frames = threshold_arr(frames, 0.5)
             pianoroll = frames.squeeze().cpu().detach().numpy()
             all_pitches, all_ints = extract_notes(pianoroll, hop_length, sample_rate, min_note_span)
 

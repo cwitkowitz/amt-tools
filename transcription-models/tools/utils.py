@@ -73,3 +73,9 @@ def infer_lowest_note(pianoroll):
     else:
         # Something went awry
         return None
+
+
+def threshold_arr(arr, thr):
+    arr[arr < thr] = 0
+    arr[arr != 0] = 1
+    return arr

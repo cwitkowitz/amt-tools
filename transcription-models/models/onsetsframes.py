@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 
 class OnsetsFrames(TranscriptionModel):
+    # TODO - try to adhere to details of paper as much as possible
     def __init__(self, dim_in, dim_out, model_complexity=2, device='cpu'):
         super().__init__(dim_in, dim_out, model_complexity, device)
 
@@ -44,9 +45,9 @@ class OnsetsFrames(TranscriptionModel):
 
         # TODO - abstract this to a function
         keys = list(batch.keys())
-        keys.remove('track')
         for key in keys:
-            batch[key] = batch[key].to(self.device)
+            if isinstance(batch[key], torch.Tensor):
+                batch[key] = batch[key].to(self.device)
         return batch
 
     def forward(self, feats):

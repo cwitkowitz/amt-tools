@@ -53,7 +53,7 @@ class MAPS(TranscriptionDataset):
             track_dir = os.path.join(self.base_dir, piano, 'MUS')
 
             wav_path = os.path.join(track_dir, track + '.wav')
-            audio, _ = load_audio(wav_path)
+            audio, _ = load_audio(wav_path, self.sample_rate)
             data['audio'] = audio
 
             num_frames = self.data_proc.get_expected_frames(audio)
