@@ -1,5 +1,6 @@
 # My imports
 from models.common import *
+from tools.utils import *
 
 # Regular imports
 from torch import nn
@@ -22,23 +23,21 @@ class OnsetsFrames(TranscriptionModel):
         self.onsets = nn.Sequential(
             AcousticModel(self.dim_in, dim_am, self.model_complexity),
             LanguageModel(dim_am, dim_lm1),
-            nn.Linear(dim_lm1, self.dim_out),
-            nn.Sigmoid()
+            MLLogistic(dim_lm1, self.dim_out)
         )
 
         self.frames = nn.Sequential(
             AcousticModel(self.dim_in, dim_am, self.model_complexity),
-            nn.Linear(dim_am, self.dim_out),
-            nn.Sigmoid()
+            MLLogistic(dim_am, self.dim_out)
         )
 
         self.adjoin = nn.Sequential(
             LanguageModel(dim_lm2, dim_lm2),
-            nn.Linear(dim_lm2, self.dim_out),
-            nn.Sigmoid()
+            MLLogistic(dim_lm2, self.dim_out)
         )
 
     def pre_proc(self, batch):
+        # Switch the frequency and time axes
         feats = batch['feats']
         feats = feats.transpose(-1, -2)
         batch['feats'] = feats
@@ -63,13 +62,21 @@ class OnsetsFrames(TranscriptionModel):
 
     def post_proc(self, batch):
         onsets, frames = batch['out']
-        preds = (onsets, frames)
 
         loss = None
+
+        # Check to see if ground-truth is available
         if 'onsets' in batch.keys() and 'frames' in batch.keys():
-            onsets_loss = F.binary_cross_entropy(onsets, batch['onsets'])
-            frames_loss = F.binary_cross_entropy(frames, batch['frames'])
+            onsets_loss = self.onsets[-1].get_loss(onsets, batch['onsets'])
+            frames_loss = self.frames[-1].get_loss(frames, batch['frames'])
             loss = onsets_loss + frames_loss
+
+        if not self.training:
+            # TODO - add to generic output layer?
+            onsets = threshold_arr(onsets, 0.5)
+            frames = threshold_arr(frames, 0.5)
+
+        preds = (onsets, frames)
 
         return preds, loss
 

@@ -18,6 +18,9 @@ plt.rcParams.update({'font.size': 16})
 
 ex = Experiment('Visualize_Results')
 
+# TODO - this requires a significant overhaul - it is really old
+
+
 # TODO - put style values in constants.py or in config - yeah actually in config function which passes args = {}
 # TODO - offsets are dependent on scale
 # TODO - padding before/after is more/less significant depending on the difference between bounds

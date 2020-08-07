@@ -26,10 +26,10 @@ def config():
     seq_length = 500
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 1000
 
-    # How many training iterations in between each save/validation point - 0 to disable
-    checkpoints = iterations // 20
+    # How many equally spaced save/validation checkpoints - 0 to disable
+    checkpoints = 4
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -119,7 +119,7 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     print('Training classifier...')
 
     # Train the model
-    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations, checkpoints, model_dir, maps_val)
+    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations, checkpoints, model_dir, maps_val, resume=True)
     estim_dir = os.path.join(root_dir, 'estimated')
 
     print('Transcribing and evaluating test partition...')

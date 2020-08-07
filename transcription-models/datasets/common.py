@@ -105,7 +105,7 @@ class TranscriptionDataset(Dataset):
             valid_start = False
             while not valid_start:
             """
-            data = self.slicify_track(data)
+            data = self.slice_track(data)
             data.pop('notes')
 
         # TODO - make this a func - def conv_batch('')
@@ -116,7 +116,7 @@ class TranscriptionDataset(Dataset):
 
         return data
 
-    def slicify_track(self, data, sample_start=None, seq_length=None):
+    def slice_track(self, data, sample_start=None, seq_length=None):
         track_id = data['track']
 
         if seq_length is None:
