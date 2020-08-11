@@ -23,7 +23,7 @@ def load_jams_guitar_tabs(jams_path, hop_length, num_frames, sample_rate):
     # TODO - duration fails at 00_Jazz3-150-C_comp bc of an even division
     # duration = jam.file_metadata['duration']
 
-    tabs = np.zeros((NUM_STRINGS, NUM_FRETS + 2, num_frames))
+    tabs = np.zeros((NUM_STRINGS, num_frames))
 
     frame_times = librosa.frames_to_time(range(num_frames), sample_rate, hop_length)
 
@@ -31,23 +31,24 @@ def load_jams_guitar_tabs(jams_path, hop_length, num_frames, sample_rate):
         string_notes = jam.annotations['note_midi'][s]
         frame_string_pitch = string_notes.to_samples(frame_times)
 
-        silent = [pitch == [] for pitch in frame_string_pitch]
+        silent = np.array([pitch == [] for pitch in frame_string_pitch])
 
-        tabs[s, -1, silent] = 1
+        frame_string_pitch = np.array(frame_string_pitch)
 
-        # TODO - is this for-loop absolutely necessary?
-        for i in range(len(frame_string_pitch)):
-            if silent[i]:
-                frame_string_pitch[i] = [0]
+        frame_string_pitch[silent] = 0
 
-        frame_string_pitch = np.array(frame_string_pitch).squeeze()
+        active_pitches = frame_string_pitch[np.logical_not(silent)].tolist()
+        frame_string_pitch[np.logical_not(silent)] = np.array(active_pitches).squeeze()
+        frame_string_pitch = frame_string_pitch.astype('float')
 
         open_string_midi_val = librosa.note_to_midi(TUNING[s])
+        frets = frame_string_pitch[np.logical_not(silent)] - open_string_midi_val
+        frets = np.round(frets)
 
-        frets = frame_string_pitch[frame_string_pitch != 0] - open_string_midi_val
-        frets = np.round(frets).astype('int')
+        tabs[s, silent] = -1
+        tabs[s, np.logical_not(silent)] = frets
 
-        tabs[s, frets, frame_string_pitch != 0] = 1
+    tabs = tabs.astype('int')
 
     return tabs
 
@@ -68,6 +69,8 @@ def load_jams_guitar_notes(jams_path):
     # Obtain an array of time intervals for all note occurrences
     i_ref = np.array(i_ref)
 
+    # TODO - validate intervals
+
     # Extract the ground-truth note pitch values into an array
     p_ref = librosa.midi_to_hz(np.array(p_ref))
 
@@ -84,14 +87,9 @@ def write_and_print(file, text, verbose = True, end=''):
             print(text, end=end)
 
 
-def write_frames(path, h_len, sample_rate, pianoroll, places = 3):
+def write_frames(path, pianoroll, times, places = 3):
     # Open a file at the path with writing permissions
     file = open(path, 'w')
-
-    # Calculate the times corresponding to each frame prediction
-    # TODO - window length is ambiguous - remove? - also check librosa func
-    #times = (0.5 * w_len + np.arange(pitches.shape[0]) * h_len) / SAMPLE_RATE
-    times = (np.arange(pianoroll.shape[1]) * h_len) / sample_rate
 
     for i in range(times.size): # For each frame
         # Determine the activations across this frame

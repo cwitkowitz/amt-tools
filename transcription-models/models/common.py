@@ -1,5 +1,5 @@
 # My imports
-from tools.constants import *
+# None of my imports used
 
 # Regular imports
 from abc import abstractmethod
@@ -144,7 +144,7 @@ class TranscriptionModel(nn.Module):
 
         Returns
         ----------
-        tag : string
+        tag : str
           TODO - make sure this is a string
           Name of the child class calling the function
         """
@@ -229,7 +229,7 @@ class MLSoftmax(OutputLayer):
     across the possibilities (the string's fretting).
     """
 
-    def __init__(self, dim_in, num_dofs=6, num_poss=21):
+    def __init__(self, dim_in, num_dofs=6, num_poss=22):
         """
         Initialize fields of the multi-label softmax layer.
 
@@ -254,16 +254,12 @@ class MLSoftmax(OutputLayer):
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
 
     def forward(self, feats):
-        batch_size = feats.size(0)
-
         tabs = self.output_layer(feats)
-
-        tabs = tabs.view(batch_size, -1, self.num_dofs, self.num_poss)
-
         return tabs
 
     def get_loss(self, output, reference):
-        return NotImplementedError
+        loss = F.cross_entropy(output, reference, reduction='none')
+        return loss
 
 
 class MLLogistic(OutputLayer):

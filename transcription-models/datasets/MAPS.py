@@ -46,9 +46,7 @@ class MAPS(TranscriptionDataset):
     def load(self, track):
         data = super().load(track)
 
-        if data is None:
-            data = {}
-
+        if 'audio' not in data.keys():
             piano = track.split('_')[-1]
             track_dir = os.path.join(self.base_dir, piano, 'MUS')
 
@@ -61,19 +59,18 @@ class MAPS(TranscriptionDataset):
             txt_path = os.path.join(track_dir, track + '.txt')
             notes = load_valued_intervals(txt_path, comment='O|\n')
             notes = np.append(notes[0], np.expand_dims(notes[1], axis=-1), axis=-1)
+            notes = librosa.midi_to_hz(notes)
             data['notes'] = notes
 
             pitches, intervals = arr_to_note_groups(notes)
             frames = note_groups_to_pianoroll(pitches, intervals, self.hop_length, self.sample_rate, PIANO_RANGE, num_frames)
             data['frames'] = frames
 
-            onsets = get_pianoroll_onsets(frames)
+            onsets = get_pianoroll_onsets(frames, dtype='float64')
             data['onsets'] = onsets
 
             gt_path = self.get_gt_dir(track)
             np.savez(gt_path, audio=audio, frames=frames, onsets=onsets, notes=notes)
-
-        data['track'] = track
 
         return data
 

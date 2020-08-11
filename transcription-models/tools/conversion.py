@@ -3,6 +3,8 @@ from tools.constants import *
 from tools.utils import *
 
 # Regular imports
+from copy import deepcopy
+
 import numpy as np
 import librosa
 
@@ -20,7 +22,7 @@ def note_groups_to_arr(pitches, intervals):
 
 
 def arr_to_note_groups(note_arr):
-    # TODO - make sure this is consistent across usage - i.e. GuitarSet/MAPS/etc.
+    # TODO - make sure this is consistent across usage - i.e. GuitarSet/MAPS/etc. - librosa.validate_intervals
     if note_arr is None:
         pitches, intervals = np.array([]), np.array([[], []]).T
     else:
@@ -65,20 +67,23 @@ def tabs_to_pianoroll(tabs):
     return pianoroll
 
 
-def get_tab_onsets(tabs):
+def get_multi_pianoroll_onsets(pianoroll):
     # TODO - just use pianoroll function
     pass
 
 
-def get_tab_offsets(tabs):
+def get_multi_pianoroll_offsets(pianoroll):
     # TODO - just use pianoroll function
     pass
 
 
-def get_pianoroll_onsets(pianoroll):
-    onsets = np.concatenate([pianoroll[:, :1], pianoroll[:, 1:] - pianoroll[:, :-1]], axis=1) == 1
-    # TODO - uint64 breaks collate_fn
-    onsets = onsets.astype('float64')
+def get_pianoroll_onsets(pianoroll, dtype='uint'):
+    first_frame = pianoroll[:, :1]
+    adjacent_diff = pianoroll[:, 1:] - pianoroll[:, :-1]
+    onsets = np.concatenate([first_frame, adjacent_diff], axis=1) == 1
+
+    # TODO - uint64 breaks collate_fn - maybe put this is one of the batching functions as well
+    onsets = onsets.astype(dtype)
     return onsets
 
 
@@ -89,6 +94,7 @@ def get_pianoroll_offsets(pianoroll):
 def get_note_offsets(note_arr):
     pass
 
+
 def pianoroll_to_pitchlist(pianoroll):
     active_pitches = []
 
@@ -97,3 +103,18 @@ def pianoroll_to_pitchlist(pianoroll):
         active_pitches += [librosa.midi_to_hz(np.where(pianoroll[:, i] != 0)[0] + infer_lowest_note(pianoroll))]
 
     return active_pitches
+
+# TODO - accept basic input such as feats or write function to validate input - check that type is dict and all fields are present
+def track_to_batch(track):
+    # TODO - combine this with the to device function with device = None by default
+    batch = deepcopy(track)
+
+    # TODO - if no name provided, give it a dummy name
+    batch['track'] = [batch['track']]
+
+    keys = list(batch.keys())
+    for key in keys:
+        if isinstance(batch[key], np.ndarray):
+            batch[key] = torch.from_numpy(batch[key]).unsqueeze(0)
+
+    return batch

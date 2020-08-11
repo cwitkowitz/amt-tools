@@ -31,9 +31,7 @@ class GuitarSet(TranscriptionDataset):
     def load(self, track):
         data = super().load(track)
 
-        if data is None:
-            data = {}
-
+        if 'audio' not in data.keys():
             wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic.wav')
             audio, fs = load_audio(wav_path)
             data['audio'] = audio
@@ -46,12 +44,11 @@ class GuitarSet(TranscriptionDataset):
 
             i_ref, p_ref = load_jams_guitar_notes(jams_path)
             notes = note_groups_to_arr(p_ref, i_ref)
+            notes = librosa.midi_to_hz(notes)
             data['notes'] = notes
 
             gt_path = self.get_gt_dir(track)
             np.savez(gt_path, audio=audio, tabs=tabs, notes=notes)
-
-        data['track'] = track
 
         return data
 

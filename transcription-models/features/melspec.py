@@ -21,7 +21,6 @@ class MelSpec(FeatureModule):
 
         return num_frames
 
-
     def get_sample_range(self, num_frames):
         max_samples = num_frames * self.hop_length - 1
         min_samples = max(1, max_samples - self.hop_length + 1)
@@ -40,3 +39,8 @@ class MelSpec(FeatureModule):
         mel_log_db = np.expand_dims(mel_log_db, axis=0)
 
         return mel_log_db
+
+    def get_times(self, audio):
+        num_frames = self.get_expected_frames(audio)
+        frame_idcs = np.arange(num_frames + 1)
+        return librosa.frames_to_time(frame_idcs, self.sample_rate, self.hop_length, self.n_fft)

@@ -19,6 +19,9 @@ ex = Experiment('Onsets & Frames MAPS Experiment')
 
 @ex.config
 def config():
+    # Number of samples per second of audio
+    sample_rate = 16000
+
     # Number of samples between frames
     hop_length = 512
 
@@ -29,16 +32,13 @@ def config():
     iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 4
+    checkpoints = 8
 
     # Number of samples to gather for a batch
     batch_size = 8
 
     # The initial learning rate
     learning_rate = 5e-4
-
-    # Minimum number of active frames required for a note
-    min_note_span = 5
 
     # The id of the gpu to use, if available
     gpu_id = 0
@@ -47,12 +47,8 @@ def config():
     split_notes = False
 
     # Flag to re-acquire ground-truth data and re-calculate-features
-    # This is useful if testing out different parameters
+    # This is useful if testing out different feature extraction parameters
     reset_data = False
-
-    # Flag for printing extraneous information
-    # TODO - add in verbose text
-    verbose = False
 
     # The random seed for this experiment
     seed = 0
@@ -66,8 +62,8 @@ def config():
     ex.observers.append(FileStorageObserver(root_dir))
 
 @ex.automain
-def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_size, learning_rate,
-                      min_note_span, gpu_id, split_notes, reset_data, verbose, seed, root_dir):
+def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoints, batch_size,
+                      learning_rate, gpu_id, split_notes, reset_data, seed, root_dir):
     # Seed everything with the same seed
     seed_everything(seed)
 
@@ -80,7 +76,7 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     model_complexity = 2
 
     # Create the cqt data processing module
-    data_proc = MelSpec(sample_rate=16000, n_mels=dim_in, n_fft=2048, hop_length=512, htk=False, norm=None)
+    data_proc = MelSpec(sample_rate=sample_rate, n_mels=dim_in, n_fft=2048, hop_length=hop_length, htk=False, norm=None)
 
     # Remove the hold out split to get the training partition
     train_splits = splits.copy()
@@ -92,7 +88,7 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     print('Loading training partition...')
 
     # Create a data loader for this training partition of MAPS
-    maps_train = MAPS(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=16000,
+    maps_train = MAPS(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=sample_rate,
                       data_proc=data_proc, frame_length=seq_length, split_notes=split_notes, reset_data=reset_data, seed=seed)
     print('Removing overlapping tracks')
     maps_train.remove_overlapping(test_splits)
@@ -113,19 +109,20 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
 
     # Create a data loader for the validation step
     # TODO - can't aggregate slices because of notes array mismatch
-    maps_val = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=16000,
+    maps_val = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
                     data_proc=data_proc, frame_length=seq_length, reset_data=reset_data)
 
     print('Training classifier...')
 
     # Train the model
-    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations, checkpoints, model_dir, maps_val, resume=True)
+    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations,
+                         checkpoints, model_dir, maps_val, resume=True)
     estim_dir = os.path.join(root_dir, 'estimated')
 
     print('Transcribing and evaluating test partition...')
 
     # Create a data loader for the testing partition of MAPS
-    maps_test = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=16000,
+    maps_test = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
                      data_proc=data_proc, frame_length=None, reset_data=reset_data)
 
     results_dir = os.path.join(root_dir, 'results')
@@ -134,8 +131,8 @@ def onsets_frames_run(hop_length, seq_length, iterations, checkpoints, batch_siz
     onsetsframes.eval()
     results = get_results_format()
     for track in maps_test:
-        predictions = transcribe(onsetsframes, track, hop_length, 16000, min_note_span, estim_dir)
-        track_results = evaluate(predictions, track, hop_length, 16000, results_dir, verbose)
+        predictions = transcribe(onsetsframes, track, estim_dir)
+        track_results = evaluate(predictions, track, results_dir, True)
         results = add_result_dicts(results, track_results)
     results = average_results(results)
 

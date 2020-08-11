@@ -1,4 +1,4 @@
-# transcription-models
+# Automatic Music Transcription Tools
 The purpose of this repository is to serve as a one-stop-shop for machine learning related approaches to music transcription.
 
 The models and datasets are written in PyTorch.

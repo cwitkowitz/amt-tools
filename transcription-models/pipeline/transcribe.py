@@ -1,7 +1,7 @@
 # My imports
 from tools.conversion import *
-from tools.utils import *
 from tools.io import *
+
 from datasets.common import *
 
 # Regular imports
@@ -9,71 +9,93 @@ import numpy as np
 import torch
 import os
 
-# TODO - helper function to transcribe a singe piece of audio - turn it into track then batch (parameterize data_proc)
 
-def extract_notes(frames, hop_len, sample_rate, min_note_span):
-    # TODO - parameterize onsets optionally
-    # TODO - clean this ish up
+def get_num_nzs(arr):
+    return len(arr.nonzero()[0])
+
+
+def filter_short_notes(pitches, intervals, t_trh=0.250):
+    note_arr = note_groups_to_arr(pitches, intervals)
+    durations = note_arr[:, 1] - note_arr[:, 0]
+    note_arr = note_arr[durations > t_trh]
+    pitches, intervals = arr_to_note_groups(note_arr)
+    return pitches, intervals
+
+
+def inhibit_activations(activations, times, t_window=0.050):
+    num_nz_prev = 0
+
+    while num_nz_prev != get_num_nzs(activations):
+        num_nz_prev = get_num_nzs(activations)
+        # TODO - could remove nonzeros which have already been processed
+        nzs = activations.nonzero()
+        for pitch, inhib_start in zip(nzs[0], nzs[1]):
+            in_bounds = np.where(times > times[inhib_start] + t_window)[0]
+            if len(in_bounds) > 0:
+                inhib_end = in_bounds[0]
+                # TODO - watch for out of bounds error
+                if sum(activations[pitch, inhib_start + 1 : inhib_end]) > 0:
+                    activations[pitch, inhib_start + 1: inhib_end] = 0
+                    break
+
+    return activations
+
+
+def predict_notes(frames, times, onsets=None, hard_inhibition=True, filter_length=True):
+    if onsets is None:
+        onsets = get_pianoroll_onsets(frames)
+
+    if hard_inhibition:
+        onsets = inhibit_activations(onsets, times, 0.10)
+
     # Create empty lists for note pitches and their time intervals
     pitches, ints = [], []
 
-    onsets = np.concatenate([frames[:, :1], frames[:, 1:] - frames[:, :-1]], axis=1) == 1
-
     # Find the nonzero indices
-    nonzeros = onsets.nonzero()
-    for i in range(len(nonzeros[0])):
-        # Get the frame and pitch index
-        pitch, frame = nonzeros[0][i], nonzeros[1][i]
-
+    nzs = onsets.nonzero()
+    for pitch, frame in zip(nzs[0], nzs[1]):
         # Mark onset and start offset counter
         onset, offset = frame, frame
 
         # Increment the offset counter until the pitch activation
         # turns negative or until the last frame is reached
-        while frames[pitch, offset]:
-            if onset == offset and np.sum(onsets[:, max(0, onset - int(0.10 * sample_rate // hop_len)) : onset]) > 0:
-                break
+        while frames[pitch, offset] and not (onsets[pitch, offset] and onset != offset):
             offset += 1
             if offset == frames.shape[1]:
                 break
 
-        # Make sure the note duration exceeds a minimum frame length
-        if offset >= onset + min_note_span:
-            # Determine the absolute frequency
-            freq = librosa.midi_to_hz(pitch + infer_lowest_note(frames))
+        # Add the frequency to the list
+        pitches.append(librosa.midi_to_hz(pitch + infer_lowest_note(frames)))
 
-            # Add the frequency to the list
-            pitches.append(freq)
-
-            # TODO - can probs utilize librosa here - it does same thing but with array
-            # Determine the time where the onset and offset occur
-            onset, offset = onset * hop_len / sample_rate, offset * hop_len / sample_rate
-
-            # TODO - window length is ambiguous - remove? - also check librosa func
-            # Add half of the window time for frame-centered predictions
-            #bias = (0.5 * win_len / SAMPLE_RATE)
-            #onset, offset = onset + bias, offset + bias
-
-            # Add the interval to the list
-            ints.append([onset, offset])
+        # Add the interval to the list
+        onset, offset = times[onset], times[offset]
+        ints.append([onset, offset])
 
     # Convert the lists to numpy arrays
     pitches, intervals = np.array(pitches), np.array(ints)
 
+    # Remove all notes which only last one frame
+    pitches, intervals = filter_short_notes(pitches, intervals, 0.0)
+
+    if filter_length:
+        pitches, intervals = filter_short_notes(pitches, intervals, 0.250)
+
     return pitches, intervals
 
-def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_dir=None, tabs=False):
+def transcribe(model, track, log_dir=None, tabs=False):
     # Just in case
-    classifier.eval()
+    model.eval()
 
     with torch.no_grad():
-        track = track_to_batch(track)
-        preds, track_loss = classifier.run_on_batch(track)
+        batch = track_to_batch(track)
+        preds, track_loss = model.run_on_batch(batch)
         track_loss = torch.mean(track_loss).item()
 
-        track_id = track['track'][0]
+        track_id = track['track']
 
-        # TODO - abstract the tab functionality - not all models are for guitar - for now a tabs boolean should be fine
+        times = track['times']
+
+        # TODO - abstract the tab functionality - not all models are for guitar - add this step to the models themselves
         # TODO - remove unnecessary transpositions
         if tabs:
             tabs = preds.squeeze().cpu().detach().numpy().T
@@ -88,7 +110,7 @@ def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_di
 
             all_pitches, all_ints = [], []
             for i in range(NUM_STRINGS):
-                pitches, ints = extract_notes(pianoroll_by_string[i], hop_length, sample_rate, min_note_span)
+                pitches, ints = predict_notes(pianoroll_by_string[i], times)
                 all_pitches += list(pitches)
                 all_ints += list(ints)
 
@@ -96,9 +118,11 @@ def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_di
                     tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
                     write_notes(tab_txt_path, pitches, ints)
         else:
+
             onsets, frames = preds
+            onsets = onsets.squeeze().cpu().detach().numpy()
             pianoroll = frames.squeeze().cpu().detach().numpy()
-            all_pitches, all_ints = extract_notes(pianoroll, hop_length, sample_rate, min_note_span)
+            all_pitches, all_ints = predict_notes(pianoroll, times, None)
 
         all_notes = note_groups_to_arr(all_pitches, all_ints)
 
@@ -111,13 +135,14 @@ def transcribe(classifier, track, hop_length, sample_rate, min_note_span, log_di
             nte_txt_path = os.path.join(log_dir, 'notes', f'{track_id}.txt')
 
             # Save the predictions to file
-            write_frames(frm_txt_path, hop_length, sample_rate, pianoroll)
+            write_frames(frm_txt_path, pianoroll, times[:-1])
             write_notes(nte_txt_path, all_pitches, all_ints)
 
     predictions = {}
 
     predictions['track'] = track_id
     predictions['loss'] = track_loss
+    predictions['times'] = times
     predictions['pianoroll'] = pianoroll
     predictions['notes'] = all_notes
 

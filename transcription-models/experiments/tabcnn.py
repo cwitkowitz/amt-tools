@@ -14,11 +14,15 @@ from torch.utils.data import DataLoader
 from sacred.observers import FileStorageObserver
 from sacred import Experiment
 
-# TODO - clean up text output
+# TODO - multi-threading
+# TODO - clean up text output - actually remove verbose except for evaluate
 ex = Experiment('6-Fold TabCNN')
 
 @ex.config
 def config():
+    # Number of samples per second of audio
+    sample_rate = 44100
+
     # Number of samples between frames
     hop_length = 512
 
@@ -29,7 +33,7 @@ def config():
     iterations = 1000
 
     # How many training iterations in between each save/validation point - 0 to disable
-    checkpoints = iterations // 4
+    checkpoints = 4
 
     # Number of samples to gather for a batch
     batch_size = 32
@@ -37,19 +41,12 @@ def config():
     # The initial learning rate
     learning_rate = 1.0
 
-    # Minimum number of active frames required for a note
-    min_note_span = 5
-
     # The id of the gpu to use, if available
     gpu_id = 1
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
     reset_data = False
-
-    # Flag for printing extraneous information
-    # TODO - add in verbose text
-    verbose = False
 
     # The random seed for this experiment
     seed = 0
@@ -63,8 +60,8 @@ def config():
     ex.observers.append(FileStorageObserver(root_dir))
 
 @ex.automain
-def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size, learning_rate,
-                     min_note_span, gpu_id, reset_data, verbose, seed, root_dir):
+def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoints,
+                     batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
     # Seed everything with the same seed
     seed_everything(seed)
 
@@ -77,7 +74,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
     model_complexity = 1
 
     # Create the cqt data processing module
-    data_proc = CQT(sample_rate=44100, hop_length=hop_length, fmin=None, n_bins=dim_in, bins_per_octave=24)
+    data_proc = CQT(sample_rate=sample_rate, hop_length=hop_length, fmin=None, n_bins=dim_in, bins_per_octave=24)
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -93,7 +90,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         print('Loading training partition...')
 
         # Create a data loader for this training partition of GuitarSet
-        gset_train = GuitarSet(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=44100,
+        gset_train = GuitarSet(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=sample_rate,
                                data_proc=data_proc, frame_length=seq_length, split_notes=False, reset_data=reset_data, seed=seed)
         train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
 
@@ -111,7 +108,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         print('Training classifier...')
 
         # Train the model
-        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=False)
+        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=True)
 
         estim_dir = os.path.join(root_dir, 'estimated')
 
@@ -119,7 +116,7 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
 
         # Create a data loader for this testing partition of GuitarSet
         test_splits = [hold_out]
-        gset_test = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=44100,
+        gset_test = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
                               data_proc=data_proc, frame_length=seq_length, split_notes=False, reset_data=reset_data)
 
         print('Transcribing and evaluating test partition...')
@@ -130,8 +127,8 @@ def tabcnn_cross_val(hop_length, seq_length, iterations, checkpoints, batch_size
         tabcnn.eval()
         fold_results = get_results_format()
         for track in gset_test:
-            predictions = transcribe(tabcnn, track, hop_length, 44100, min_note_span, estim_dir, tabs=True)
-            track_results = evaluate(predictions, track, hop_length, 44100, results_dir, verbose)
+            predictions = transcribe(tabcnn, track, estim_dir, tabs=True)
+            track_results = evaluate(predictions, track, results_dir, False)
             fold_results = add_result_dicts(fold_results, track_results)
         fold_results = average_results(fold_results)
 

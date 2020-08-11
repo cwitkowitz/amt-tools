@@ -1,6 +1,7 @@
 # My imports
-
 from models.common import *
+
+from tools.utils import *
 
 # Regular imports
 import torch.nn.functional as F
@@ -57,30 +58,27 @@ class TabCNN(TranscriptionModel):
         # 2nd dropout
         self.dp2 = nn.Dropout(dp2)
         # 2nd fully-connected
-        self.fc2 = nn.Linear(nn1, nn2)
+        self.out_layer = MLSoftmax(nn1, NUM_STRINGS, NUM_FRETS + 2)
 
     def pre_proc(self, batch):
+        # TODO - clean this up
         feats = batch['feats']
         feats = framify_tfr(feats, 9, 1, 4)
         feats = feats.transpose(-1, -2)
         feats = feats.transpose(-2, -3)
         feats = feats.squeeze(1)
 
-        batch_size = feats.size(0)
-        num_wins = feats.size(1)
-        num_bins = feats.size(2)
-        win_len = feats.size(3)
+        batch_size, num_wins, num_bins, win_len = feats.size()
 
         feats = feats.to(self.device)
         feats = feats.view(batch_size * num_wins, 1, num_bins, win_len)
         batch['feats'] = feats
 
-        # Check if ground-truth was provided
-        if 'tabs' in batch.keys():
-            tabs = batch['tabs']
-            tabs = tabs.transpose(-1, -2)
-            tabs = tabs.transpose(-2, -3)
-            batch['tabs'] = tabs.to(self.device)
+        # TODO - abstract this to a function
+        keys = list(batch.keys())
+        for key in keys:
+            if isinstance(batch[key], torch.Tensor):
+                batch[key] = batch[key].to(self.device)
 
         return batch
 
@@ -101,25 +99,44 @@ class TabCNN(TranscriptionModel):
         # 2nd dropout
         x = self.dp2(x)
         # 2nd fully-connected
-        out = self.fc2(x)
+        out = self.out_layer(x)
 
         return out
 
+    # TODO - if this will be the same for other transcription models, abstract it to a function and just call that
     def post_proc(self, batch):
-        # TODO - if this will be the same for other transcription models, abstract it to a function and just call that
+        batch_size = len(batch['track'])
+
         out = batch['out']
-        batch_size = batch['audio'].size(0)
-        out = out.view(batch_size, -1, NUM_STRINGS, NUM_FRETS+2)
+        out = out.view(batch_size, -1, NUM_STRINGS, NUM_FRETS + 2)
 
         preds = torch.argmax(torch.softmax(out, dim=-1), dim=-1)
+        preds[preds == NUM_FRETS + 1] = -1
+        preds = preds.transpose(1, 2)
 
         loss = None
-        if 'tabs' in batch.keys():
-            tabs = batch['tabs']
-            tabs = tabs.view(-1, NUM_FRETS + 2)
 
+        # Check to see if ground-truth is available
+        if 'tabs' in batch.keys():
             out = out.view(-1, NUM_FRETS + 2)
-            loss = F.cross_entropy(out, torch.argmax(tabs, dim=-1), reduction='none')
-            loss = torch.sum(loss.view(-1, NUM_STRINGS), dim=-1)
+
+            # TODO - tabs to softmax function? - yes this was confusing
+            tabs = batch['tabs'].transpose(1, 2)
+            tabs[tabs == -1] = NUM_FRETS + 1
+            """
+            tabs = torch.zeros(tabs_temp.shape + tuple([NUM_FRETS + 2]))
+            tabs = tabs.to(tabs_temp.device)
+
+            b, f, s = tabs_temp.size()
+            b, f, s = torch.meshgrid(torch.arange(b), torch.arange(f), torch.arange(s))
+            tabs[b, f, s, tabs_temp] = 1
+            tabs = tabs.view(-1, NUM_FRETS + 2).long()
+            """
+            loss = self.out_layer.get_loss(out, tabs.flatten())
+            loss = loss.view(batch_size, -1, NUM_STRINGS)
+            # Sum loss across strings
+            loss = torch.sum(loss, dim=-1)
+            # Average loss across frames
+            loss = torch.mean(loss, dim=-1)
 
         return preds, loss

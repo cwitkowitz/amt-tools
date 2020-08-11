@@ -81,3 +81,8 @@ class CQT(FeatureModule):
         cqt_log_db = np.expand_dims(cqt_log_db, axis=0)
 
         return cqt_log_db
+
+    def get_times(self, audio):
+        num_frames = self.get_expected_frames(audio)
+        frame_idcs = np.arange(num_frames + 1)
+        return librosa.frames_to_time(frame_idcs, self.sample_rate, self.hop_length)
