@@ -200,18 +200,16 @@ class LanguageModel(nn.Module):
         else:
             # Process the features in chunks
             batch_size = feats.size(0)
-            # TODO - sequence length is more appropriate
-            #        I should change frame -> seq and seq -> sample everywhere
-            frame_length = feats.size(1)
+            seq_length = feats.size(1)
 
             assert self.dim_in == feats.size(2)
 
             h = torch.zeros(2, batch_size, self.dim_hd).to(feats.device)
             c = torch.zeros(2, batch_size, self.dim_hd).to(feats.device)
-            output = torch.zeros(batch_size, frame_length, 2 * self.dim_hd).to(feats.device)
+            output = torch.zeros(batch_size, seq_length, 2 * self.dim_hd).to(feats.device)
 
             # Forward
-            slices = range(0, frame_length, self.inf_len)
+            slices = range(0, seq_length, self.inf_len)
             for start in slices:
                 end = start + self.inf_len
                 output[:, start : end, :], (h, c) = self.rnn(feats[:, start : end, :], (h, c))

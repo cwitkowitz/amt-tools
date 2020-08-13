@@ -108,9 +108,9 @@ def pianoroll_to_pitchlist(pianoroll):
 
     return active_pitches
 
-# TODO - accept basic input such as feats or write function to validate input - check that type is dict and all fields are present
+
+# TODO - a function which accepts only feats (for deployment) would be nice
 def track_to_batch(track):
-    # TODO - combine this with the to device function with device = None by default
     batch = deepcopy(track)
 
     # TODO - if no name provided, give it a dummy name
@@ -122,3 +122,14 @@ def track_to_batch(track):
             batch[key] = torch.from_numpy(batch[key]).unsqueeze(0)
 
     return batch
+
+
+def track_to_dtype(track, dtype='float32'):
+    track = deepcopy(track)
+
+    keys = list(track.keys())
+    for key in keys:
+        if isinstance(track[key], np.ndarray):
+            track[key] = track[key].astype(dtype)
+
+    return track

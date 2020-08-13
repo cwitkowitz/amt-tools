@@ -76,9 +76,6 @@ def train(model, train_loader, optimizer, iterations,
             batch_loss.backward()
             optimizer.step()
 
-            # TODO - this is only for OF - how to abstract? - put run_special_steps() in TranscriptionModel? ->exactly
-            #clip_grad_norm_(model.parameters(), 3)
-
             if single_batch:
                 # Move onto the next iteration after the first batch
                 break

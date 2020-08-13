@@ -4,8 +4,9 @@
 # Regular imports
 from abc import abstractmethod
 
-# TODO - feature compounding
-# TODO - whole/local cqt or filterbank learning module
+# TODO - feature stacking - FeatureCombo class
+# TODO - put framify here - another param (frame_span?)
+# TODO - add filterbank learning module
 
 
 class FeatureModule:
