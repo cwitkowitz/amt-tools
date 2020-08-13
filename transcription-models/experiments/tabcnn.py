@@ -33,7 +33,7 @@ def config():
     iterations = 1000
 
     # How many training iterations in between each save/validation point - 0 to disable
-    checkpoints = 4
+    checkpoints = 20
 
     # Number of samples to gather for a batch
     batch_size = 32
@@ -105,19 +105,19 @@ def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoint
         # Create a log directory for the training experiment
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
 
-        print('Training classifier...')
-
-        # Train the model
-        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=True)
-
-        estim_dir = os.path.join(root_dir, 'estimated')
-
         print('Loading testing partition...')
 
         # Create a data loader for this testing partition of GuitarSet
         test_splits = [hold_out]
         gset_test = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
                               data_proc=data_proc, frame_length=seq_length, split_notes=False, reset_data=reset_data)
+
+        print('Training classifier...')
+
+        # Train the model
+        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=True, val_set=gset_test)
+
+        estim_dir = os.path.join(root_dir, 'estimated')
 
         print('Transcribing and evaluating test partition...')
 
@@ -127,7 +127,7 @@ def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoint
         tabcnn.eval()
         fold_results = get_results_format()
         for track in gset_test:
-            predictions = transcribe(tabcnn, track, estim_dir, tabs=True)
+            predictions = transcribe(tabcnn, track, estim_dir)
             track_results = evaluate(predictions, track, results_dir, False)
             fold_results = add_result_dicts(fold_results, track_results)
         fold_results = average_results(fold_results)

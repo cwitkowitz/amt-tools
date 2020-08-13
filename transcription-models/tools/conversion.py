@@ -24,13 +24,16 @@ def note_groups_to_arr(pitches, intervals):
 def arr_to_note_groups(note_arr):
     # TODO - make sure this is consistent across usage - i.e. GuitarSet/MAPS/etc. - librosa.validate_intervals
     if note_arr is None:
+        # TODO - this is a pad branch
         pitches, intervals = np.array([]), np.array([[], []]).T
     else:
         pitches, intervals = note_arr[:, -1], note_arr[:, :2]
     return pitches, intervals
 
 
+# TODO - are hl and sr actually required? - no times as input
 def note_groups_to_pianoroll(pitches, intervals, hop_length, sample_rate, note_range, num_frames):
+    # Expects MIDI format
     pianoroll = np.zeros((note_range, num_frames))
     intervals = np.round(intervals * sample_rate / hop_length).astype('uint')
     intervals[:, 1] = intervals[:, 1] + 1
@@ -49,8 +52,9 @@ def tabs_to_multi_pianoroll(tabs):
 
     pianoroll = np.zeros((NUM_STRINGS, GUITAR_RANGE, num_frames))
 
+    # TODO - vectorize this
     for i in range(NUM_STRINGS):
-        non_silent = tabs[i] != NUM_FRETS + 1
+        non_silent = tabs[i] != -1
 
         pitches = librosa.note_to_midi(TUNING[i]) + tabs[i, non_silent] - GUITAR_LOWEST
 

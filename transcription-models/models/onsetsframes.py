@@ -76,9 +76,13 @@ class OnsetsFrames(TranscriptionModel):
             onsets = threshold_arr(onsets, 0.5)
             frames = threshold_arr(frames, 0.5)
 
-        preds = (onsets, frames)
+        preds = {
+            'onsets' : onsets,
+            'pianoroll' : frames,
+            'loss' : loss
+        }
 
-        return preds, loss
+        return preds
 
 
 class OnsetsFrames2(OnsetsFrames):

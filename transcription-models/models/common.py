@@ -120,10 +120,8 @@ class TranscriptionModel(nn.Module):
 
         Returns
         ----------
-        preds : Tensor
-          TODO - take a closer look at this to get a good description
-        loss : Tensor or None
-          Measure of model performance on the batch - None if no ground-truth was provided
+        preds : dict
+          Dictionary containing loss and relevant predictions for a group of tracks
         """
 
         # Pre-process batch
@@ -133,9 +131,9 @@ class TranscriptionModel(nn.Module):
         batch['out'] = self(batch['feats'])
 
         # Post-process batch,
-        preds, loss = self.post_proc(batch)
+        preds = self.post_proc(batch)
 
-        return preds, loss
+        return preds
 
     @classmethod
     def model_name(cls):
@@ -197,7 +195,7 @@ class OutputLayer(nn.Module):
     @abstractmethod
     def get_loss(self, output, reference):
         """
-        Perform the main processing steps for the output layer.
+        Perform the loss calculation at the output layer.
 
         Parameters
         ----------
@@ -254,10 +252,42 @@ class MLSoftmax(OutputLayer):
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
 
     def forward(self, feats):
+        """
+        Perform the main processing steps for the output layer.
+
+        Parameters
+        ----------
+        feats : Tensor (B x F x T)
+          input features for a batch of tracks,
+          TODO - check that this is accurate for what I have so far
+          B - batch size,
+          F - dimensionality of input features,
+          T - number of time steps
+        """
+
         tabs = self.output_layer(feats)
         return tabs
 
     def get_loss(self, output, reference):
+        """
+        Compute the cross entropy softmax loss for each string independently.
+
+        Parameters
+        ----------
+        output : Tensor (B x F x T)
+          output vectors for a batch of tracks,
+          TODO - check that this is accurate for what I have so far
+          B - batch size,
+          F - dimensionality of output features,
+          T - number of time steps
+        reference : Tensor (B x F x T)
+          ground-truth for a batch of tracks,
+          TODO - check that this is accurate for what I have so far
+          B - batch size,
+          F - dimensionality of output features,
+          T - number of time steps
+        """
+
         loss = F.cross_entropy(output, reference, reduction='none')
         return loss
 
@@ -297,9 +327,41 @@ class MLLogistic(OutputLayer):
         )
 
     def forward(self, feats):
+        """
+        Perform the main processing steps for the output layer.
+
+        Parameters
+        ----------
+        feats : Tensor (B x F x T)
+          input features for a batch of tracks,
+          TODO - check that this is accurate for what I have so far
+          B - batch size,
+          F - dimensionality of input features,
+          T - number of time steps
+        """
+
         keys = self.output_layer(feats)
         return keys
 
     def get_loss(self, output, reference):
+        """
+        Compute the binary cross entropy loss for each key independently.
+
+        Parameters
+        ----------
+        output : Tensor (B x F x T)
+          output vectors for a batch of tracks,
+          TODO - check that this is accurate for what I have so far
+          B - batch size,
+          F - dimensionality of output features,
+          T - number of time steps
+        reference : Tensor (B x F x T)
+          ground-truth for a batch of tracks,
+          TODO - check that this is accurate for what I have so far
+          B - batch size,
+          F - dimensionality of output features,
+          T - number of time steps
+        """
+
         loss = F.binary_cross_entropy(output, reference)
         return loss

@@ -70,8 +70,8 @@ def train(model, train_loader, optimizer, iterations,
         train_loss = []
         for batch in train_loader:
             optimizer.zero_grad()
-            _, batch_loss = model.run_on_batch(batch)
-            batch_loss = torch.mean(batch_loss)
+            preds = model.run_on_batch(batch)
+            batch_loss = torch.mean(preds['loss'])
             train_loss.append(batch_loss.item())
             batch_loss.backward()
             optimizer.step()

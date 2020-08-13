@@ -72,6 +72,7 @@ class TranscriptionDataset(Dataset):
         # Loading ground truth
         for track in tqdm(self.tracks):
             self.data[track] = self.load(track)
+            # TODO - validate here
 
     def __len__(self):
         return len(self.tracks)

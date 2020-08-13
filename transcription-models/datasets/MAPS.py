@@ -59,12 +59,13 @@ class MAPS(TranscriptionDataset):
             txt_path = os.path.join(track_dir, track + '.txt')
             notes = load_valued_intervals(txt_path, comment='O|\n')
             notes = np.append(notes[0], np.expand_dims(notes[1], axis=-1), axis=-1)
-            notes = librosa.midi_to_hz(notes)
-            data['notes'] = notes
 
             pitches, intervals = arr_to_note_groups(notes)
             frames = note_groups_to_pianoroll(pitches, intervals, self.hop_length, self.sample_rate, PIANO_RANGE, num_frames)
             data['frames'] = frames
+
+            notes[:, -1] = librosa.midi_to_hz(notes[:, -1])
+            data['notes'] = notes
 
             onsets = get_pianoroll_onsets(frames, dtype='float64')
             data['onsets'] = onsets

@@ -82,23 +82,29 @@ def predict_notes(frames, times, onsets=None, hard_inhibition=True, filter_lengt
 
     return pitches, intervals
 
-def transcribe(model, track, log_dir=None, tabs=False):
+def transcribe(model, track, log_dir=None):
     # Just in case
     model.eval()
 
     with torch.no_grad():
         batch = track_to_batch(track)
-        preds, track_loss = model.run_on_batch(batch)
-        track_loss = torch.mean(track_loss).item()
+        preds = model.run_on_batch(batch)
+        track_loss = torch.mean(preds['loss']).item()
 
         track_id = track['track']
 
         times = track['times']
 
-        # TODO - abstract the tab functionality - not all models are for guitar - add this step to the models themselves
-        # TODO - remove unnecessary transpositions
-        if tabs:
-            tabs = preds.squeeze().cpu().detach().numpy().T
+        pianoroll = None
+        if 'pianoroll' in preds.keys():
+            pianoroll = preds['pianoroll'].squeeze().cpu().detach().numpy()
+
+        onsets = None
+        if 'onsets' in preds.keys():
+            onsets = preds['onsets'].squeeze().cpu().detach().numpy()
+
+        if 'tabs' in preds.keys():
+            tabs = preds['tabs'].squeeze().cpu().detach().numpy()
 
             pianoroll_by_string = tabs_to_multi_pianoroll(tabs)
             pianoroll = tabs_to_pianoroll(tabs)
@@ -118,11 +124,7 @@ def transcribe(model, track, log_dir=None, tabs=False):
                     tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
                     write_notes(tab_txt_path, pitches, ints)
         else:
-
-            onsets, frames = preds
-            onsets = onsets.squeeze().cpu().detach().numpy()
-            pianoroll = frames.squeeze().cpu().detach().numpy()
-            all_pitches, all_ints = predict_notes(pianoroll, times, None)
+            all_pitches, all_ints = predict_notes(pianoroll, times, onsets)
 
         all_notes = note_groups_to_arr(all_pitches, all_ints)
 
@@ -138,12 +140,10 @@ def transcribe(model, track, log_dir=None, tabs=False):
             write_frames(frm_txt_path, pianoroll, times[:-1])
             write_notes(nte_txt_path, all_pitches, all_ints)
 
-    predictions = {}
 
-    predictions['track'] = track_id
-    predictions['loss'] = track_loss
-    predictions['times'] = times
-    predictions['pianoroll'] = pianoroll
-    predictions['notes'] = all_notes
+    preds['track'] = track_id
+    preds['loss'] = track_loss
+    preds['times'] = times
+    preds['notes'] = all_notes
 
-    return predictions
+    return preds

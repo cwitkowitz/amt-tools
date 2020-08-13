@@ -42,13 +42,16 @@ class GuitarSet(TranscriptionDataset):
             tabs = load_jams_guitar_tabs(jams_path, self.hop_length, num_frames, fs)
             data['tabs'] = tabs
 
+            pianoroll = tabs_to_pianoroll(tabs)
+            data['pianoroll'] = pianoroll
+
             i_ref, p_ref = load_jams_guitar_notes(jams_path)
             notes = note_groups_to_arr(p_ref, i_ref)
             notes = librosa.midi_to_hz(notes)
             data['notes'] = notes
 
             gt_path = self.get_gt_dir(track)
-            np.savez(gt_path, audio=audio, tabs=tabs, notes=notes)
+            np.savez(gt_path, audio=audio, tabs=tabs, pianoroll=pianoroll, notes=notes)
 
         return data
 

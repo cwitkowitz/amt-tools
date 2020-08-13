@@ -139,4 +139,9 @@ class TabCNN(TranscriptionModel):
             # Average loss across frames
             loss = torch.mean(loss, dim=-1)
 
-        return preds, loss
+        preds = {
+            'tabs' : preds,
+            'loss' : loss
+        }
+
+        return preds

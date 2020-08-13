@@ -4,7 +4,8 @@
 # Regular imports
 from abc import abstractmethod
 
-# TODO - build data proc module on top which is general - i.e. whole/local cqt or filterbank learning module
+# TODO - feature compounding
+# TODO - whole/local cqt or filterbank learning module
 
 
 class FeatureModule:
