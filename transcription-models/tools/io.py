@@ -17,19 +17,18 @@ def load_audio(wav_path, sample_rate=None):
     return audio, fs
 
 
-def load_jams_guitar_tabs(jams_path, hop_length, num_frames, sample_rate):
+def load_jams_guitar_tabs(jams_path, times):
     jam = jams.load(jams_path)
 
     # TODO - duration fails at 00_Jazz3-150-C_comp bc of an even division
     # duration = jam.file_metadata['duration']
 
+    num_frames = times.size
     tabs = np.zeros((NUM_STRINGS, num_frames))
-
-    frame_times = librosa.frames_to_time(range(num_frames), sample_rate, hop_length)
 
     for s in range(NUM_STRINGS):
         string_notes = jam.annotations['note_midi'][s]
-        frame_string_pitch = string_notes.to_samples(frame_times)
+        frame_string_pitch = string_notes.to_samples(times)
 
         silent = np.array([pitch == [] for pitch in frame_string_pitch])
 

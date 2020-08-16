@@ -29,10 +29,10 @@ def config():
     seq_length = 500
 
     # Number of training iterations to conduct
-    iterations = 5000
+    iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 10
+    checkpoints = 20
 
     # Number of samples to gather for a batch
     batch_size = 8

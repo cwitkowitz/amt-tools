@@ -36,10 +36,10 @@ class GuitarSet(TranscriptionDataset):
             audio, fs = load_audio(wav_path)
             data['audio'] = audio
 
-            num_frames = self.data_proc.get_expected_frames(audio)
+            times = self.data_proc.get_times(data['audio'])
 
             jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
-            tabs = load_jams_guitar_tabs(jams_path, self.hop_length, num_frames, fs)
+            tabs = load_jams_guitar_tabs(jams_path, times)
             data['tabs'] = tabs
 
             pianoroll = tabs_to_pianoroll(tabs)

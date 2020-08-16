@@ -74,6 +74,11 @@ def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_leng
     # Convert the lists to numpy arrays
     pitches, intervals = np.array(pitches), np.array(ints)
 
+    # Sort by onset just for the purpose of being neat - won't affect results
+    note_arr = note_groups_to_arr(pitches, intervals)
+    note_arr = note_arr[np.argsort(note_arr[:, 0])]
+    pitches, intervals = arr_to_note_groups(note_arr)
+
     # Remove all notes which only last one frame
     one_frame_time = times[1] - times[0]
     pitches, intervals = filter_short_notes(pitches, intervals, one_frame_time)

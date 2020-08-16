@@ -27,16 +27,16 @@ def config():
     hop_length = 512
 
     # Number of consecutive frames within each example fed to the model
-    seq_length = 500
+    seq_length = 200
 
     # Number of training iterations to conduct
     iterations = 1000
 
     # How many training iterations in between each save/validation point - 0 to disable
-    checkpoints = 10
+    checkpoints = 20
 
     # Number of samples to gather for a batch
-    batch_size = 8
+    batch_size = 30
 
     # The initial learning rate
     learning_rate = 1.0

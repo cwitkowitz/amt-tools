@@ -30,18 +30,17 @@ def arr_to_note_groups(note_arr):
     return pitches, intervals
 
 
-# TODO - are hl and sr actually required? - no times as input
-def note_groups_to_pianoroll(pitches, intervals, hop_length, sample_rate, note_range, num_frames):
-    # Expects MIDI format
+def midi_groups_to_pianoroll(pitches, intervals, times, note_range):
+    num_frames = times.size
     pianoroll = np.zeros((note_range, num_frames))
-    intervals = np.round(intervals * sample_rate / hop_length).astype('uint')
-    intervals[:, 1] = intervals[:, 1] + 1
 
     pitches = np.round(pitches - infer_lowest_note(pianoroll)).astype('uint')
 
     # TODO - might be able to vectorize this
     for i in range(pitches.size):
-        pianoroll[pitches[i], intervals[i, 0] : intervals[i, 1]] = 1
+        onset = np.where(times <= intervals[i, 0])[0][-1]
+        offset = np.where(times < intervals[i, 1])[0][-1]
+        pianoroll[pitches[i], onset : offset + 1] = 1
 
     return pianoroll
 
@@ -93,13 +92,10 @@ def get_multi_pianoroll_offsets(pianoroll):
     pass
 
 
-def get_pianoroll_onsets(pianoroll, dtype='uint'):
+def get_pianoroll_onsets(pianoroll):
     first_frame = pianoroll[:, :1]
     adjacent_diff = pianoroll[:, 1:] - pianoroll[:, :-1]
     onsets = np.concatenate([first_frame, adjacent_diff], axis=1) == 1
-
-    # TODO - uint64 breaks collate_fn - maybe put this is one of the batching functions as well
-    onsets = onsets.astype(dtype)
     return onsets
 
 
@@ -114,6 +110,7 @@ def get_note_offsets(note_arr):
 def pianoroll_to_pitchlist(pianoroll):
     active_pitches = []
 
+    # TODO - vectorize?
     for i in range(pianoroll.shape[-1]): # For each frame
         # Determine the activations across this frame
         active_pitches += [librosa.midi_to_hz(np.where(pianoroll[:, i] != 0)[0] + infer_lowest_note(pianoroll))]

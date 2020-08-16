@@ -187,6 +187,7 @@ class TranscriptionDataset(Dataset):
         else:
             # If not, calculate the features and save them
             feats = self.data_proc.process_audio(data['audio'])
+            # TODO - is there any point to saving times?
             times = self.data_proc.get_times(data['audio'])
             np.savez(feats_path, feats=feats, times=times)
 
