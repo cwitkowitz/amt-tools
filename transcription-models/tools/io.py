@@ -23,12 +23,12 @@ def load_jams_guitar_tabs(jams_path, times):
     # TODO - duration fails at 00_Jazz3-150-C_comp bc of an even division
     # duration = jam.file_metadata['duration']
 
-    num_frames = times.size
+    num_frames = times.size - 1
     tabs = np.zeros((NUM_STRINGS, num_frames))
 
     for s in range(NUM_STRINGS):
         string_notes = jam.annotations['note_midi'][s]
-        frame_string_pitch = string_notes.to_samples(times)
+        frame_string_pitch = string_notes.to_samples(times[:-1])
 
         silent = np.array([pitch == [] for pitch in frame_string_pitch])
 

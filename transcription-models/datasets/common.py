@@ -260,8 +260,8 @@ class TranscriptionDataset(Dataset):
             notes[:, 1] = np.minimum(notes[:, 1], sec_stop)
 
             # Offset the note intervals by the slice start time
-            notes[:, 0] = notes[:, 0] - sec_start
-            notes[:, 1] = notes[:, 1] - sec_start
+            #notes[:, 0] = notes[:, 0] - sec_start
+            #notes[:, 1] = notes[:, 1] - sec_start
             data['notes'] = notes
 
         # Convert all numpy arrays in the data dictionary to float32

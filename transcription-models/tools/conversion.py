@@ -31,16 +31,19 @@ def arr_to_note_groups(note_arr):
 
 
 def midi_groups_to_pianoroll(pitches, intervals, times, note_range):
-    num_frames = times.size
+    num_frames = times.size - 1
+    num_notes = pitches.size
     pianoroll = np.zeros((note_range, num_frames))
 
     pitches = np.round(pitches - infer_lowest_note(pianoroll)).astype('uint')
+    times = np.tile(np.expand_dims(times, axis=0), (num_notes, 1))
+
+    onsets = np.argmin((times <= intervals[:, :1]), axis=1) - 1
+    offsets = np.argmin((times < intervals[:, 1:]), axis=1) - 1
 
     # TODO - might be able to vectorize this
     for i in range(pitches.size):
-        onset = np.where(times <= intervals[i, 0])[0][-1]
-        offset = np.where(times < intervals[i, 1])[0][-1]
-        pianoroll[pitches[i], onset : offset + 1] = 1
+        pianoroll[pitches[i], onsets[i] : offsets[i] + 1] = 1
 
     return pianoroll
 
