@@ -29,10 +29,10 @@ def config():
     seq_length = 500
 
     # Number of training iterations to conduct
-    iterations = 1000
+    iterations = 5000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 8
+    checkpoints = 10
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -130,7 +130,8 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
     # Generate predictions for the test set
     onsetsframes.eval()
     results = get_results_format()
-    for track in maps_test:
+    for track_id in maps_test.tracks:
+        track = maps_test.get_track_data(track_id)
         predictions = transcribe(onsetsframes, track, estim_dir)
         track_results = evaluate(predictions, track, results_dir, True)
         results = add_result_dicts(results, track_results)

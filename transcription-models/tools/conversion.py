@@ -10,13 +10,12 @@ import librosa
 
 
 def note_groups_to_arr(pitches, intervals):
-    notes = None
-
-    # TODO - list might not be the right default - it should be whatever the mir_eval note parsing function returns
     if len(pitches) > 0:
         # Batch-friendly note storage
         pitches = np.array([pitches]).T
         notes = np.concatenate((intervals, pitches), axis=-1)
+    else:
+        notes = np.array([[], [], []]).T
 
     return notes
 
@@ -24,7 +23,7 @@ def note_groups_to_arr(pitches, intervals):
 def arr_to_note_groups(note_arr):
     # TODO - make sure this is consistent across usage - i.e. GuitarSet/MAPS/etc. - librosa.validate_intervals
     if note_arr is None:
-        # TODO - this is a pad branch
+        # TODO - this is a risky branch
         pitches, intervals = np.array([]), np.array([[], []]).T
     else:
         pitches, intervals = note_arr[:, -1], note_arr[:, :2]
@@ -46,6 +45,19 @@ def note_groups_to_pianoroll(pitches, intervals, hop_length, sample_rate, note_r
 
     return pianoroll
 
+
+# TODO - tabs to softmax function? - yes this was confusing
+"""
+tabs = batch['tabs'].transpose(1, 2)
+tabs[tabs == -1] = NUM_FRETS + 1
+tabs = torch.zeros(tabs_temp.shape + tuple([NUM_FRETS + 2]))
+tabs = tabs.to(tabs_temp.device)
+
+b, f, s = tabs_temp.size()
+b, f, s = torch.meshgrid(torch.arange(b), torch.arange(f), torch.arange(s))
+tabs[b, f, s, tabs_temp] = 1
+tabs = tabs.view(-1, NUM_FRETS + 2).long()
+"""
 
 def tabs_to_multi_pianoroll(tabs):
     num_frames = tabs.shape[-1]
@@ -131,5 +143,23 @@ def track_to_dtype(track, dtype='float32'):
     for key in keys:
         if isinstance(track[key], np.ndarray):
             track[key] = track[key].astype(dtype)
+
+    return track
+
+def track_to_device(track, device):
+    keys = list(track.keys())
+
+    for key in keys:
+        if isinstance(track[key], torch.Tensor):
+            track[key] = track[key].to(device)
+
+    return track
+
+def track_to_cpu(track):
+    keys = list(track.keys())
+
+    for key in keys:
+        if isinstance(track[key], torch.Tensor):
+            track[key] = track[key].squeeze().cpu().detach().numpy()
 
     return track

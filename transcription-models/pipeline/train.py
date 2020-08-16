@@ -107,8 +107,8 @@ def train(model, train_loader, optimizer, iterations,
                 model.eval()
                 with torch.no_grad():
                     val_results = get_results_format()
-                    for track in val_set:
-                        track = val_set.slice_track(track)
+                    for track_id in val_set.tracks:
+                        track = val_set.get_track_data(track_id)
                         predictions = transcribe(model, track)
                         track_results = evaluate(predictions, track)
                         val_results = add_result_dicts(val_results, track_results)

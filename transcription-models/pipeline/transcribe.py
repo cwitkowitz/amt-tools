@@ -41,12 +41,12 @@ def inhibit_activations(activations, times, t_window=0.050):
     return activations
 
 
-def predict_notes(frames, times, onsets=None, hard_inhibition=True, filter_length=True):
+def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_length=False):
     if onsets is None:
         onsets = get_pianoroll_onsets(frames)
 
     if hard_inhibition:
-        onsets = inhibit_activations(onsets, times, 0.10)
+        onsets = inhibit_activations(onsets, times, 0.05)
 
     # Create empty lists for note pitches and their time intervals
     pitches, ints = [], []
@@ -75,10 +75,11 @@ def predict_notes(frames, times, onsets=None, hard_inhibition=True, filter_lengt
     pitches, intervals = np.array(pitches), np.array(ints)
 
     # Remove all notes which only last one frame
-    pitches, intervals = filter_short_notes(pitches, intervals, 0.0)
+    one_frame_time = times[1] - times[0]
+    pitches, intervals = filter_short_notes(pitches, intervals, one_frame_time)
 
     if filter_length:
-        pitches, intervals = filter_short_notes(pitches, intervals, 0.250)
+        pitches, intervals = filter_short_notes(pitches, intervals, 0.050)
 
     return pitches, intervals
 
@@ -89,25 +90,40 @@ def transcribe(model, track, log_dir=None):
     with torch.no_grad():
         batch = track_to_batch(track)
         preds = model.run_on_batch(batch)
-        track_loss = torch.mean(preds['loss']).item()
+
+        if 'loss' in preds.keys():
+            track_loss = torch.mean(preds['loss']).item()
+            preds['loss'] = track_loss
+
+        # TODO - make sure this can come before averaging loss
+        preds = track_to_cpu(preds)
 
         track_id = track['track']
+        preds['track'] = track_id
 
         times = track['times']
+        preds['times'] = times
 
         pianoroll = None
         if 'pianoroll' in preds.keys():
-            pianoroll = preds['pianoroll'].squeeze().cpu().detach().numpy()
+            pianoroll = preds['pianoroll']
 
         onsets = None
-        if 'onsets' in preds.keys():
-            onsets = preds['onsets'].squeeze().cpu().detach().numpy()
+        #if 'onsets' in preds.keys():
+        #    onsets = preds['onsets']
 
         if 'tabs' in preds.keys():
-            tabs = preds['tabs'].squeeze().cpu().detach().numpy()
+            tabs = preds['tabs']
 
-            pianoroll_by_string = tabs_to_multi_pianoroll(tabs)
+            multi_pianoroll = tabs_to_multi_pianoroll(tabs)
             pianoroll = tabs_to_pianoroll(tabs)
+            preds['pianoroll'] = pianoroll
+
+            if onsets is None:
+                multi_onsets = [None] * NUM_STRINGS
+            else:
+                # TODO - verify there are 3 dimensions
+                multi_onsets = onsets
 
             if log_dir is not None:
                 os.makedirs(os.path.join(log_dir, 'tabs'), exist_ok=True)
@@ -116,7 +132,8 @@ def transcribe(model, track, log_dir=None):
 
             all_pitches, all_ints = [], []
             for i in range(NUM_STRINGS):
-                pitches, ints = predict_notes(pianoroll_by_string[i], times)
+                pitches, ints = predict_notes(multi_pianoroll[i], times, multi_onsets[i])
+
                 all_pitches += list(pitches)
                 all_ints += list(ints)
 
@@ -127,23 +144,20 @@ def transcribe(model, track, log_dir=None):
             all_pitches, all_ints = predict_notes(pianoroll, times, onsets)
 
         all_notes = note_groups_to_arr(all_pitches, all_ints)
+        preds['notes'] = all_notes
+
+        # TODO - option to redo pianoroll from note predictions
 
         if log_dir is not None:
-            os.makedirs(os.path.join(log_dir, 'frames'), exist_ok=True)
+            os.makedirs(os.path.join(log_dir, 'pianoroll'), exist_ok=True)
             os.makedirs(os.path.join(log_dir, 'notes'), exist_ok=True)
 
             # Construct the paths for frame- and note-wise predictions
-            frm_txt_path = os.path.join(log_dir, 'frames', f'{track_id}.txt')
+            frm_txt_path = os.path.join(log_dir, 'pianoroll', f'{track_id}.txt')
             nte_txt_path = os.path.join(log_dir, 'notes', f'{track_id}.txt')
 
             # Save the predictions to file
             write_frames(frm_txt_path, pianoroll, times[:-1])
             write_notes(nte_txt_path, all_pitches, all_ints)
-
-
-    preds['track'] = track_id
-    preds['loss'] = track_loss
-    preds['times'] = times
-    preds['notes'] = all_notes
 
     return preds

@@ -1,6 +1,7 @@
 # My imports
 from models.common import *
 
+from tools.conversion import *
 from tools.utils import *
 
 # Regular imports
@@ -74,11 +75,7 @@ class TabCNN(TranscriptionModel):
         feats = feats.view(batch_size * num_wins, 1, num_bins, win_len)
         batch['feats'] = feats
 
-        # TODO - abstract this to a function
-        keys = list(batch.keys())
-        for key in keys:
-            if isinstance(batch[key], torch.Tensor):
-                batch[key] = batch[key].to(self.device)
+        batch = track_to_device(batch, self.device)
 
         return batch
 
@@ -120,19 +117,10 @@ class TabCNN(TranscriptionModel):
         if 'tabs' in batch.keys():
             out = out.view(-1, NUM_FRETS + 2)
 
-            # TODO - tabs to softmax function? - yes this was confusing
             tabs = batch['tabs'].transpose(1, 2)
             tabs[tabs == -1] = NUM_FRETS + 1
-            """
-            tabs = torch.zeros(tabs_temp.shape + tuple([NUM_FRETS + 2]))
-            tabs = tabs.to(tabs_temp.device)
-
-            b, f, s = tabs_temp.size()
-            b, f, s = torch.meshgrid(torch.arange(b), torch.arange(f), torch.arange(s))
-            tabs[b, f, s, tabs_temp] = 1
-            tabs = tabs.view(-1, NUM_FRETS + 2).long()
-            """
-            loss = self.out_layer.get_loss(out, tabs.flatten())
+            tabs = tabs.flatten().long()
+            loss = self.out_layer.get_loss(out, tabs)
             loss = loss.view(batch_size, -1, NUM_STRINGS)
             # Sum loss across strings
             loss = torch.sum(loss, dim=-1)

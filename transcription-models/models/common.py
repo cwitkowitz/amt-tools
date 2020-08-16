@@ -154,7 +154,7 @@ class TranscriptionModel(nn.Module):
 
         return tag
 
-
+# TODO - convert reference and prediction to expected data types within get_loss function
 class OutputLayer(nn.Module):
     """
     Implements a generic output layer for transcription models.
@@ -366,5 +366,5 @@ class MLLogistic(OutputLayer):
           T - number of time steps
         """
 
-        loss = F.binary_cross_entropy(output, reference)
+        loss = F.binary_cross_entropy(output.float(), reference.float())
         return loss

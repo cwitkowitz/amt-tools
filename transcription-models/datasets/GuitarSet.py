@@ -12,8 +12,8 @@ import os
 
 class GuitarSet(TranscriptionDataset):
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100,
-                 data_proc=None, frame_length=None, split_notes=False, reset_data=False, seed=0):
-        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, frame_length, split_notes, reset_data, seed)
+                 data_proc=None, num_frames=None, split_notes=False, reset_data=False, seed=0):
+        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, num_frames, split_notes, reset_data, seed)
 
     def get_tracks(self, split):
         jams_dir = os.path.join(self.base_dir, 'annotation')
@@ -47,7 +47,6 @@ class GuitarSet(TranscriptionDataset):
 
             i_ref, p_ref = load_jams_guitar_notes(jams_path)
             notes = note_groups_to_arr(p_ref, i_ref)
-            notes = librosa.midi_to_hz(notes)
             data['notes'] = notes
 
             gt_path = self.get_gt_dir(track)

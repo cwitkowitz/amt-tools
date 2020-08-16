@@ -12,6 +12,8 @@ from copy import deepcopy
 from tqdm import tqdm
 
 import numpy as np
+import mir_eval
+import librosa
 import shutil
 import os
 
@@ -108,7 +110,7 @@ class TranscriptionDataset(Dataset):
         # Load the ground-truth for each track into RAM
         for track in tqdm(self.tracks):
             self.data[track] = self.load(track)
-            # TODO - validate all data here using a generic function
+            assert self.validate_track(self.data[track])
 
     def __len__(self):
         """
@@ -139,13 +141,41 @@ class TranscriptionDataset(Dataset):
         """
 
         # Get the name of the track
-        track = self.tracks[index]
+        track_id = self.tracks[index]
+        # Slice the track's features and ground-truth
+        data = self.get_track_data(track_id)
+        # Remove the notes, as they cannot be batched
+        data.pop('notes')
+
+        return data
+
+    # TODO - I probably need to decouple this sh
+    def get_track_data(self, track_id, sample_start=None, seq_length=None, snap_to_frame=True):
+        """
+        Get the features and ground truth for a track within a time interval.
+
+        Parameters
+        ----------
+        track_id : string
+          Name of track data to fetch
+        sample_start : int
+          Sample with which to begin the slice
+        seq_length : int
+          Number of samples to take for the slice
+        snap_to_frame : bool
+          Whether to begin exactly on frame boundaries or loose samples
+
+        Returns
+        ----------
+        data : dict
+          Dictionary with each entry sliced for the random or provided interval
+        """
 
         # Copy the track's ground-truth data into a local dictionary
-        data = deepcopy(self.data[track])
+        data = deepcopy(self.data[track_id])
 
         # Determine the path to the track's features
-        feats_path = self.get_feats_dir(track)
+        feats_path = self.get_feats_dir(track_id)
 
         # Check if the features already exist
         # TODO - may need to modify when filterbank learning is possible
@@ -163,39 +193,6 @@ class TranscriptionDataset(Dataset):
         # Add the features to the data dictionary
         data['feats'] = feats
         data['times'] = times
-
-        # Check to see if a slice is to be taken
-        if self.frame_length is not None:
-            # Slice the track's features and ground-truth
-            data = self.slice_track(data)
-            # Remove the notes, as they cannot be batched
-            data.pop('notes')
-
-        # Convert all numpy arrays in the data dictionary to float32
-        data = track_to_dtype(data, dtype='float32')
-
-        return data
-
-    def slice_track(self, data, sample_start=None, seq_length=None, snap_to_frame=True):
-        """
-        Get the features and ground truth for a track within a time interval.
-
-        Parameters
-        ----------
-        data : dict
-          Dictionary containing the features and ground-truth for a track
-        sample_start : int
-          Sample with which to begin the slice
-        seq_length : int
-          Number of samples to take for the slice
-        snap_to_frame : bool
-          Whether to begin exactly on frame boundaries or loose samples
-
-        Returns
-        ----------
-        data : dict
-          Dictionary with each entry sliced for the random or provided interval
-        """
 
         # TODO - note splitting occurs in here - check Google's code for procedure
 
@@ -232,8 +229,8 @@ class TranscriptionDataset(Dataset):
         # Slice the ground-truth
         if 'tabs' in data.keys():
             data['tabs'] = data['tabs'][:, frame_start: frame_end]
-        if 'frames' in data.keys():
-            data['frames'] = data['frames'][:, frame_start: frame_end]
+        if 'pianoroll' in data.keys():
+            data['pianoroll'] = data['pianoroll'][:, frame_start: frame_end]
         if 'onsets' in data.keys():
             data['onsets'] = data['onsets'][:, frame_start: frame_end]
 
@@ -266,7 +263,44 @@ class TranscriptionDataset(Dataset):
             notes[:, 1] = notes[:, 1] - sec_start
             data['notes'] = notes
 
+        # Convert all numpy arrays in the data dictionary to float32
+        data = track_to_dtype(data, dtype='float32')
+
         return data
+
+    def validate_track(self, data):
+        """
+        Get the features and ground truth for a track within a time interval.
+
+        Parameters
+        ----------
+        data : dict
+          Dictionary containing the features and ground-truth for a track
+
+        Returns
+        ----------
+        valid : bool
+          Whether or not the track data is valid
+        """
+
+        valid = True
+
+        # TODO - validate each field in some way
+
+        if 'notes' in data.keys():
+            # Convert the dictionary representation into standard representation
+            pitches, intervals = arr_to_note_groups(data['notes'])
+
+            # Validate the intervals
+            valid = valid and librosa.util.valid_intervals(intervals)
+
+            # Validate the pitches - should be in Hz
+            try:
+                mir_eval.util.validate_frequencies(pitches, 5000, 20)
+            except ValueError:
+                valid = False
+
+        return valid
 
     @abstractmethod
     def get_tracks(self, split):

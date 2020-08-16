@@ -1,5 +1,7 @@
 # My imports
 from models.common import *
+
+from tools.conversion import *
 from tools.utils import *
 
 # Regular imports
@@ -26,7 +28,7 @@ class OnsetsFrames(TranscriptionModel):
             MLLogistic(dim_lm1, self.dim_out)
         )
 
-        self.frames = nn.Sequential(
+        self.pianoroll = nn.Sequential(
             AcousticModel(self.dim_in, dim_am, self.model_complexity),
             MLLogistic(dim_am, self.dim_out)
         )
@@ -42,43 +44,39 @@ class OnsetsFrames(TranscriptionModel):
         feats = feats.transpose(-1, -2)
         batch['feats'] = feats
 
-        # TODO - abstract this to a function
-        keys = list(batch.keys())
-        for key in keys:
-            if isinstance(batch[key], torch.Tensor):
-                batch[key] = batch[key].to(self.device)
+        batch = track_to_device(batch, self.device)
         return batch
 
     def forward(self, feats):
-        frames = self.frames(feats)
+        pianoroll = self.pianoroll(feats)
         onsets = self.onsets(feats)
 
-        joint = torch.cat((onsets, frames), -1)
-        frames = self.adjoin(joint)
+        joint = torch.cat((onsets, pianoroll), -1)
+        pianoroll = self.adjoin(joint)
 
         onsets = onsets.transpose(1, 2)
-        frames = frames.transpose(1, 2)
-        return onsets, frames
+        pianoroll = pianoroll.transpose(1, 2)
+        return onsets, pianoroll
 
     def post_proc(self, batch):
-        onsets, frames = batch['out']
+        onsets, pianoroll = batch['out']
 
         loss = None
 
         # Check to see if ground-truth is available
-        if 'onsets' in batch.keys() and 'frames' in batch.keys():
+        if 'onsets' in batch.keys() and 'pianoroll' in batch.keys():
             onsets_loss = self.onsets[-1].get_loss(onsets, batch['onsets'])
-            frames_loss = self.frames[-1].get_loss(frames, batch['frames'])
-            loss = onsets_loss + frames_loss
+            pianoroll_loss = self.pianoroll[-1].get_loss(pianoroll, batch['pianoroll'])
+            loss = onsets_loss + pianoroll_loss
 
         if not self.training:
             # TODO - add to generic output layer?
             onsets = threshold_arr(onsets, 0.5)
-            frames = threshold_arr(frames, 0.5)
+            pianoroll = threshold_arr(pianoroll, 0.5)
 
         preds = {
             'onsets' : onsets,
-            'pianoroll' : frames,
+            'pianoroll' : pianoroll,
             'loss' : loss
         }
 
