@@ -19,6 +19,7 @@ import os
 
 # TODO - MusicNet already implemented - add an easy ref and maybe some functions to make it compatible
 # TODO - validate methods for each data entry - such as tabs, notes, frames, etc.
+# TODO - implement functions for extending based on sustain pedal - any other bells or whistles
 # TODO - ComboDataset
 
 
@@ -51,6 +52,8 @@ class TranscriptionDataset(Dataset):
           Flag to avoiding cutting samples in between notes
         reset_data : bool
           Flag to re-generate extracted features and ground truth data if it already exists
+        store_data : bool
+          Load data from memory each time TODO
         seed : int
           TODO - this is currently unused - I should use it instead of assuming a seed has been set
           The seed for random number generation
@@ -100,6 +103,8 @@ class TranscriptionDataset(Dataset):
             shutil.rmtree(self.get_feats_dir())
         # Make sure a directory exists for saving and loading features
         os.makedirs(self.get_feats_dir(), exist_ok=True)
+
+        #self.store_data = store_data
 
         self.tracks = []
         # Aggregate all the track names from the selected splits
@@ -179,6 +184,7 @@ class TranscriptionDataset(Dataset):
 
         # Check if the features already exist
         # TODO - may need to modify when filterbank learning is possible
+        # TODO - optionally load every time with boolean which also skips creation of self.data above
         if os.path.exists(feats_path):
             # If so, load the features
             feats_dict = np.load(feats_path)
@@ -189,6 +195,7 @@ class TranscriptionDataset(Dataset):
             feats = self.data_proc.process_audio(data['audio'])
             # TODO - is there any point to saving times?
             times = self.data_proc.get_times(data['audio'])
+            os.makedirs(os.path.dirname(feats_path), exist_ok=True)
             np.savez(feats_path, feats=feats, times=times)
 
         # Add the features to the data dictionary
@@ -419,6 +426,7 @@ class TranscriptionDataset(Dataset):
         """
         Get an appropriate name for the dataset.
         """
+        # TODO - shouldn't this be cls.name just like the common class for models and features?
 
         return NotImplementedError
 

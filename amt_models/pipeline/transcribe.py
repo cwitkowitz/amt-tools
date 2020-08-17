@@ -114,13 +114,13 @@ def transcribe(model, track, log_dir=None):
             pianoroll = preds['pianoroll']
 
         onsets = None
-        #if 'onsets' in preds.keys():
-        #    onsets = preds['onsets']
+        if 'onsets' in preds.keys():
+            onsets = preds['onsets']
 
         if 'tabs' in preds.keys():
             tabs = preds['tabs']
 
-            multi_pianoroll = tabs_to_multi_pianoroll(tabs)
+            multi_pianoroll = pianoroll
             pianoroll = tabs_to_pianoroll(tabs)
             preds['pianoroll'] = pianoroll
 
@@ -131,9 +131,7 @@ def transcribe(model, track, log_dir=None):
                 multi_onsets = onsets
 
             if log_dir is not None:
-                os.makedirs(os.path.join(log_dir, 'tabs'), exist_ok=True)
                 tabs_dir = os.path.join(log_dir, 'tabs', f'{track_id}')
-                os.makedirs(os.path.join(tabs_dir), exist_ok=True)
 
             all_pitches, all_ints = [], []
             for i in range(NUM_STRINGS):
@@ -154,9 +152,6 @@ def transcribe(model, track, log_dir=None):
         # TODO - option to redo pianoroll from note predictions
 
         if log_dir is not None:
-            os.makedirs(os.path.join(log_dir, 'pianoroll'), exist_ok=True)
-            os.makedirs(os.path.join(log_dir, 'notes'), exist_ok=True)
-
             # Construct the paths for frame- and note-wise predictions
             frm_txt_path = os.path.join(log_dir, 'pianoroll', f'{track_id}.txt')
             nte_txt_path = os.path.join(log_dir, 'notes', f'{track_id}.txt')

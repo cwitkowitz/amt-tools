@@ -118,9 +118,9 @@ def evaluate(prediction, reference, log_dir=None, verbose=False):
     # TODO - tablature metrics
 
     if log_dir is not None:
-        os.makedirs(log_dir, exist_ok=True)
         # Construct a path for the track's transcription and separation results
         results_path = os.path.join(log_dir, f'{track_id}.txt')
+        os.makedirs(os.path.dirname(results_path), exist_ok=True)
         # Open the file with writing permissions
         results_file = open(results_path, 'w')
         for type in results.keys():

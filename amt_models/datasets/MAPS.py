@@ -47,6 +47,7 @@ class MAPS(TranscriptionDataset):
         data = super().load(track)
 
         if 'audio' not in data.keys():
+            # TODO - implement sustain
             piano = track.split('_')[-1]
             track_dir = os.path.join(self.base_dir, piano, 'MUS')
 

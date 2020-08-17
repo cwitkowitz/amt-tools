@@ -86,7 +86,8 @@ def write_and_print(file, text, verbose = True, end=''):
             print(text, end=end)
 
 
-def write_frames(path, pianoroll, times, places = 3):
+def write_frames(path, pianoroll, times, places=3):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     # Open a file at the path with writing permissions
     file = open(path, 'w')
 
@@ -112,7 +113,8 @@ def write_frames(path, pianoroll, times, places = 3):
     file.close()
 
 
-def write_notes(path, pitches, intervals, places = 3):
+def write_notes(path, pitches, intervals, places=3):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     # Open a file at the path with writing permissions
     file = open(path, 'w')
 
