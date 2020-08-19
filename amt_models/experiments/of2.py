@@ -29,10 +29,10 @@ def config():
     seq_length = 500
 
     # Number of training iterations to conduct
-    iterations = 100
+    iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 0
+    checkpoints = 20
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -83,7 +83,8 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
 
     # Create a data loader for this training partition of MAPS
     mstro_train = MAESTRO_V1(base_dir=None, splits=train_split, hop_length=hop_length, sample_rate=sample_rate,
-                      data_proc=data_proc, frame_length=seq_length, split_notes=split_notes, reset_data=reset_data, seed=seed)
+                             data_proc=data_proc, frame_length=seq_length, split_notes=split_notes,
+                             reset_data=reset_data, store_data=False, save_data=True)
 
     # TODO - is this still necessary? there are multiple versions/splits for the dataset
     #print('Removing overlapping tracks')
@@ -103,11 +104,12 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
 
     print('Loading testing partition...')
 
+
     # Create a data loader for the validation step
     # TODO - can't aggregate slices because of notes array mismatch
-    #mstro_val = MAESTRO_V1(base_dir=None, splits=val_split, hop_length=hop_length, sample_rate=sample_rate,
-    #                data_proc=data_proc, frame_length=seq_length, reset_data=reset_data)
-    mstro_val = None
+    mstro_val = MAESTRO_V1(base_dir=None, splits=val_split, hop_length=hop_length, sample_rate=sample_rate,
+                           data_proc=data_proc, frame_length=seq_length, split_notes=split_notes,
+                           reset_data=reset_data, store_data=False, save_data=True)
 
     print('Training classifier...')
 
@@ -120,7 +122,8 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
 
     # Create a data loader for the testing partition of MAPS
     mstro_test = MAESTRO_V1(base_dir=None, splits=test_split, hop_length=hop_length, sample_rate=sample_rate,
-                     data_proc=data_proc, frame_length=None, reset_data=reset_data)
+                            data_proc=data_proc, frame_length=None, reset_data=reset_data, store_data=False,
+                            save_data=True)
 
     results_dir = os.path.join(root_dir, 'results')
 

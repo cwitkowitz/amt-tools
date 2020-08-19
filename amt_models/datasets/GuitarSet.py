@@ -11,9 +11,10 @@ import shutil
 import os
 
 class GuitarSet(TranscriptionDataset):
-    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100,
-                 data_proc=None, num_frames=None, split_notes=False, reset_data=False, seed=0):
-        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, num_frames, split_notes, reset_data, seed)
+    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100, data_proc=None,
+                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_data=True, seed=0):
+        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc,
+                         num_frames, split_notes, reset_data, store_data, save_data, seed)
 
     def get_tracks(self, split):
         jams_dir = os.path.join(self.base_dir, 'annotation')
@@ -52,8 +53,10 @@ class GuitarSet(TranscriptionDataset):
             onsets = get_pianoroll_onsets(pianoroll)
             data['onsets'] = onsets
 
-            gt_path = self.get_gt_dir(track)
-            np.savez(gt_path, audio=audio, tabs=tabs, onsets=onsets, pianoroll=pianoroll, notes=notes)
+            # TODO - bring this out to common?
+            if self.save_data:
+                gt_path = self.get_gt_dir(track)
+                np.savez(gt_path, audio=audio, tabs=tabs, onsets=onsets, pianoroll=pianoroll, notes=notes)
 
         return data
 

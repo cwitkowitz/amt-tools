@@ -28,7 +28,8 @@ class TranscriptionDataset(Dataset):
     Implements a generic music transcription dataset.
     """
 
-    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, num_frames, split_notes, reset_data, seed):
+    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc,
+                 num_frames, split_notes, reset_data, store_data, save_data, seed):
         """
         Initialize parameters common to all datasets as fields and instantiate
         as a PyTorch Dataset.
@@ -53,7 +54,9 @@ class TranscriptionDataset(Dataset):
         reset_data : bool
           Flag to re-generate extracted features and ground truth data if it already exists
         store_data : bool
-          Load data from memory each time TODO
+          Flag to load data from memory or calculate each time instead of storing within RAM
+        save_data : bool
+          Flag to save data to memory after calculating once
         seed : int
           TODO - this is currently unused - I should use it instead of assuming a seed has been set
           The seed for random number generation
@@ -104,18 +107,20 @@ class TranscriptionDataset(Dataset):
         # Make sure a directory exists for saving and loading features
         os.makedirs(self.get_feats_dir(), exist_ok=True)
 
-        #self.store_data = store_data
+        self.store_data = store_data
+        self.save_data = save_data
 
         self.tracks = []
         # Aggregate all the track names from the selected splits
         for split in self.splits:
             self.tracks += self.get_tracks(split)
 
-        self.data = {}
         # Load the ground-truth for each track into RAM
-        for track in tqdm(self.tracks):
-            self.data[track] = self.load(track)
-            assert self.validate_track(self.data[track])
+        if self.store_data:
+            self.data = {}
+            for track in tqdm(self.tracks):
+                self.data[track] = self.load(track)
+                assert self.validate_track(self.data[track])
 
     def __len__(self):
         """
@@ -154,7 +159,48 @@ class TranscriptionDataset(Dataset):
 
         return data
 
-    # TODO - I probably need to decouple this sh
+    def get_track_feats(self, data):
+        if isinstance(data, dict):
+            # Copy the track's data into a local dictionary
+            data = deepcopy(data)
+        else:
+            data = {'track' : data}
+
+        track = data['track']
+
+        # Determine the path to the track's features
+        feats_path = self.get_feats_dir(track)
+
+        # Check if the features already exist
+        # TODO - may need to modify when filterbank learning is possible
+        if os.path.exists(feats_path):
+            # If so, load the features
+            feats_dict = np.load(feats_path)
+            feats = feats_dict['feats']
+            times = feats_dict['times']
+        else:
+            # If not, calculate the features
+            feats = self.data_proc.process_audio(data['audio'])
+            # TODO - is there any point to saving times? - it's probably a quick calculation
+            times = self.data_proc.get_times(data['audio'])
+
+            if self.save_data:
+                # Save the features to memory
+                os.makedirs(os.path.dirname(feats_path), exist_ok=True)
+                np.savez(feats_path, feats=feats, times=times)
+
+        # Add the features to the data dictionary
+        data['feats'] = feats
+        data['times'] = times
+
+        if self.store_data:
+            # Add the features to the data dictionary in RAM
+            self.data[track]['feats'] = feats
+            self.data[track]['times'] = times
+
+        return data
+
+    # TODO - I probably need to decouple this sh - load_features(), get_sample_start(), slice_data(), slice_notes() - last one in utils
     def get_track_data(self, track_id, sample_start=None, seq_length=None, snap_to_frame=True):
         """
         Get the features and ground truth for a track within a time interval.
@@ -176,31 +222,14 @@ class TranscriptionDataset(Dataset):
           Dictionary with each entry sliced for the random or provided interval
         """
 
-        # Copy the track's ground-truth data into a local dictionary
-        data = deepcopy(self.data[track_id])
-
-        # Determine the path to the track's features
-        feats_path = self.get_feats_dir(track_id)
-
-        # Check if the features already exist
-        # TODO - may need to modify when filterbank learning is possible
-        # TODO - optionally load every time with boolean which also skips creation of self.data above
-        if os.path.exists(feats_path):
-            # If so, load the features
-            feats_dict = np.load(feats_path)
-            feats = feats_dict['feats']
-            times = feats_dict['times']
+        if self.store_data:
+            # Copy the track's ground-truth data into a local dictionary
+            data = deepcopy(self.data[track_id])
         else:
-            # If not, calculate the features and save them
-            feats = self.data_proc.process_audio(data['audio'])
-            # TODO - is there any point to saving times?
-            times = self.data_proc.get_times(data['audio'])
-            os.makedirs(os.path.dirname(feats_path), exist_ok=True)
-            np.savez(feats_path, feats=feats, times=times)
+            data = self.load(track_id)
 
-        # Add the features to the data dictionary
-        data['feats'] = feats
-        data['times'] = times
+        if 'feats' not in data.keys():
+            data = self.get_track_feats(data)
 
         # TODO - note splitting occurs in here - check Google's code for procedure
 
@@ -230,17 +259,17 @@ class TranscriptionDataset(Dataset):
         sample_end = sample_start + seq_length
 
         # Slice the features
-        data['audio'] = data['audio'][sample_start : sample_end]
-        data['feats'] = data['feats'][:, :, frame_start: frame_end]
-        data['times'] = data['times'][frame_start : frame_end + 1]
+        data['audio'] = data['audio'][..., sample_start : sample_end]
+        data['feats'] = data['feats'][..., frame_start : frame_end]
+        data['times'] = data['times'][..., frame_start : frame_end + 1]
 
         # Slice the ground-truth
         if 'tabs' in data.keys():
-            data['tabs'] = data['tabs'][:, frame_start: frame_end]
+            data['tabs'] = data['tabs'][..., frame_start: frame_end]
         if 'pianoroll' in data.keys():
-            data['pianoroll'] = data['pianoroll'][:, frame_start: frame_end]
+            data['pianoroll'] = data['pianoroll'][..., frame_start: frame_end]
         if 'onsets' in data.keys():
-            data['onsets'] = data['onsets'][:, frame_start: frame_end]
+            data['onsets'] = data['onsets'][..., frame_start: frame_end]
 
         # Determine if there is note ground-truth and get it
         if 'notes' in data.keys():
@@ -254,7 +283,6 @@ class TranscriptionDataset(Dataset):
 
         # Slice the ground-truth notes
         if notes is not None:
-            # TODO - potentially make this a function - get_notes_in_range()
             # Determine the time in seconds of the boundary samples
             sec_start = sample_start / self.sample_rate
             sec_stop = sample_end / self.sample_rate
@@ -273,6 +301,8 @@ class TranscriptionDataset(Dataset):
 
         # Convert all numpy arrays in the data dictionary to float32
         data = track_to_dtype(data, dtype='float32')
+
+        assert self.validate_track(data)
 
         return data
 

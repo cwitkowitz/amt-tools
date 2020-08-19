@@ -91,7 +91,8 @@ def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoint
 
         # Create a data loader for this training partition of GuitarSet
         gset_train = GuitarSet(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=sample_rate,
-                               data_proc=data_proc, num_frames=seq_length, split_notes=False, reset_data=reset_data, seed=seed)
+                               data_proc=data_proc, num_frames=seq_length, split_notes=False,
+                               reset_data=reset_data, store_data=True, save_data=True)
         train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
 
         # Initialize a new instance of the model
@@ -110,7 +111,8 @@ def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoint
         # Create a data loader for this testing partition of GuitarSet
         test_splits = [hold_out]
         gset_val = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
-                              data_proc=data_proc, num_frames=seq_length, split_notes=False, reset_data=reset_data)
+                             data_proc=data_proc, num_frames=seq_length, split_notes=False,
+                             reset_data=reset_data, store_data=True, save_data=True)
 
         print('Training classifier...')
 
@@ -123,7 +125,8 @@ def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoint
 
         test_splits = [hold_out]
         gset_test = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
-                              data_proc=data_proc, num_frames=None, split_notes=False, reset_data=reset_data)
+                              data_proc=data_proc, num_frames=None, split_notes=False, reset_data=reset_data,
+                              store_data=False, save_data=True)
 
         print('Transcribing and evaluating test partition...')
 
