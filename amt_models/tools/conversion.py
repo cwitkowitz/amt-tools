@@ -85,9 +85,14 @@ def tabs_to_pianoroll(tabs):
     return pianoroll
 
 
-def get_multi_pianoroll_onsets(pianoroll):
-    # TODO - just use pianoroll function
-    pass
+def get_multi_pianoroll_onsets(multi_pianoroll):
+    multi_onsets = np.zeros(multi_pianoroll.shape)
+
+    # TODO - vectorize this
+    for i in range(NUM_STRINGS):
+        multi_onsets[i] = get_pianoroll_onsets(multi_pianoroll[i])
+
+    return multi_onsets
 
 
 def get_multi_pianoroll_offsets(pianoroll):

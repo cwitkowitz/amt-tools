@@ -20,6 +20,9 @@ def seed_everything(seed):
     random.seed(seed)
 
 
+# TODO - should I be using a yield function instead of for batch in loader?
+
+
 def rms_norm(audio):
     rms = np.sqrt(np.mean(audio ** 2))
 

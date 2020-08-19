@@ -164,6 +164,7 @@ class TranscriptionDataset(Dataset):
             # Copy the track's data into a local dictionary
             data = deepcopy(data)
         else:
+            # We assume a track name was given
             data = {'track' : data}
 
         track = data['track']
@@ -172,7 +173,7 @@ class TranscriptionDataset(Dataset):
         feats_path = self.get_feats_dir(track)
 
         # Check if the features already exist
-        # TODO - may need to modify when filterbank learning is possible
+        # TODO - may need to modify when filterbank learning is possible - actually, save_data should take care of it
         if os.path.exists(feats_path):
             # If so, load the features
             feats_dict = np.load(feats_path)

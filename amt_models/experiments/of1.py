@@ -29,7 +29,7 @@ def config():
     seq_length = 500
 
     # Number of training iterations to conduct
-    iterations = 1000
+    iterations = 5000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 20
@@ -89,7 +89,7 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
 
     # Create a data loader for this training partition of MAPS
     maps_train = MAPS(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=sample_rate,
-                      data_proc=data_proc, frame_length=seq_length, split_notes=split_notes, reset_data=reset_data, seed=seed)
+                      data_proc=data_proc, frame_length=seq_length, split_notes=split_notes, reset_data=reset_data)
     print('Removing overlapping tracks')
     maps_train.remove_overlapping(test_splits)
     train_loader = DataLoader(maps_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
@@ -108,7 +108,6 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
     print('Loading testing partition...')
 
     # Create a data loader for the validation step
-    # TODO - can't aggregate slices because of notes array mismatch
     maps_val = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
                     data_proc=data_proc, frame_length=seq_length, reset_data=reset_data)
 
@@ -123,7 +122,7 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
 
     # Create a data loader for the testing partition of MAPS
     maps_test = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
-                     data_proc=data_proc, frame_length=None, reset_data=reset_data)
+                     data_proc=data_proc, frame_length=None, reset_data=reset_data, store_data=False)
 
     results_dir = os.path.join(root_dir, 'results')
 

@@ -19,25 +19,6 @@ class MAESTRO_V1(TranscriptionDataset):
         super().__init__(base_dir, splits, hop_length, sample_rate, data_proc,
                          frame_length, split_notes, reset_data, store_data, save_data, seed)
 
-    def remove_overlapping(self, splits):
-        # Initialize list of tracks to remove
-        tracks = []
-        titles = []
-
-        csv_data = pd.read_csv(os.path.join(self.base_dir, 'maestro-v1.0.0.csv'))
-        canonicals = list(csv_data['canonical_title'])
-
-        for split in splits:
-            tracks += self.get_tracks(split)
-
-        # TODO - adapt this part
-        #tracks = ['_'.join(t.split('_')[:-1]) for t in tracks]
-        #self.tracks = [t for t in self.tracks if '_'.join(t.split('_')[:-1]) not in tracks]
-
-        for key in list(self.data.keys()):
-            if key not in self.tracks:
-                self.data.pop(key)
-
     def get_tracks(self, split):
         csv_data = pd.read_csv(os.path.join(self.base_dir, 'maestro-v1.0.0.csv'))
 

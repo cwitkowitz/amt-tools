@@ -120,7 +120,8 @@ def transcribe(model, track, log_dir=None):
         if 'tabs' in preds.keys():
             tabs = preds['tabs']
 
-            multi_pianoroll = pianoroll
+            # TODO - this won't be valid for all configs - I might have tabs, pianoroll and onsets
+            multi_pianoroll = tabs_to_multi_pianoroll(tabs)
             pianoroll = tabs_to_pianoroll(tabs)
             preds['pianoroll'] = pianoroll
 

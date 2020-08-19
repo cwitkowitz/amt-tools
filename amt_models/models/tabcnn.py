@@ -119,7 +119,6 @@ class TabCNN(TranscriptionModel):
 
             tabs = batch['tabs'].transpose(1, 2)
             tabs[tabs == -1] = NUM_FRETS + 1
-            tabs = tabs.flatten().long()
             loss = self.out_layer.get_loss(out, tabs)
             loss = loss.view(batch_size, -1, NUM_STRINGS)
             # Sum loss across strings

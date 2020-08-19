@@ -29,7 +29,7 @@ def config():
     seq_length = 500
 
     # Number of training iterations to conduct
-    iterations = 1000
+    iterations = 5000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 20
@@ -84,12 +84,9 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
     # Create a data loader for this training partition of MAPS
     mstro_train = MAESTRO_V1(base_dir=None, splits=train_split, hop_length=hop_length, sample_rate=sample_rate,
                              data_proc=data_proc, frame_length=seq_length, split_notes=split_notes,
-                             reset_data=reset_data, store_data=False, save_data=True)
+                             reset_data=reset_data, store_data=False)
 
-    # TODO - is this still necessary? there are multiple versions/splits for the dataset
-    #print('Removing overlapping tracks')
-    #mstro_train.remove_overlapping(test_split)
-    train_loader = DataLoader(mstro_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
+    train_loader = DataLoader(mstro_train, batch_size, shuffle=True, num_workers=8, drop_last=True)
 
     # Initialize a new instance of the model
     onsetsframes = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
@@ -104,12 +101,10 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
 
     print('Loading testing partition...')
 
-
     # Create a data loader for the validation step
-    # TODO - can't aggregate slices because of notes array mismatch
     mstro_val = MAESTRO_V1(base_dir=None, splits=val_split, hop_length=hop_length, sample_rate=sample_rate,
                            data_proc=data_proc, frame_length=seq_length, split_notes=split_notes,
-                           reset_data=reset_data, store_data=False, save_data=True)
+                           reset_data=reset_data, store_data=False)
 
     print('Training classifier...')
 
@@ -122,8 +117,7 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
 
     # Create a data loader for the testing partition of MAPS
     mstro_test = MAESTRO_V1(base_dir=None, splits=test_split, hop_length=hop_length, sample_rate=sample_rate,
-                            data_proc=data_proc, frame_length=None, reset_data=reset_data, store_data=False,
-                            save_data=True)
+                            data_proc=data_proc, frame_length=None, reset_data=reset_data, store_data=False)
 
     results_dir = os.path.join(root_dir, 'results')
 

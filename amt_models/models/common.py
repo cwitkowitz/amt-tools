@@ -291,7 +291,8 @@ class MLSoftmax(OutputLayer):
           T - number of time steps
         """
 
-        loss = F.cross_entropy(output, reference, reduction='none')
+        reference = reference.flatten().long()
+        loss = F.cross_entropy(output.float(), reference, reduction='none')
         return loss
 
 

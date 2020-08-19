@@ -47,9 +47,12 @@ class GuitarSet(TranscriptionDataset):
             notes = note_groups_to_arr(p_ref, i_ref)
             data['notes'] = notes
 
-            pianoroll = tabs_to_multi_pianoroll(tabs)
+            # TODO - this causes an error in evaluate since it expected two dims not three
+            #pianoroll = tabs_to_multi_pianoroll(tabs)
+            pianoroll = tabs_to_pianoroll(tabs)
             data['pianoroll'] = pianoroll
 
+            #onsets = get_multi_pianoroll_onsets(pianoroll)
             onsets = get_pianoroll_onsets(pianoroll)
             data['onsets'] = onsets
 
