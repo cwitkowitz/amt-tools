@@ -63,7 +63,11 @@ class MAESTRO_V1(TranscriptionDataset):
             if self.save_data:
                 gt_path = self.get_gt_dir(track)
                 os.makedirs(os.path.dirname(gt_path), exist_ok=True)
-                np.savez(gt_path, audio=audio, pianoroll=pianoroll, onsets=onsets, notes=notes)
+                np.savez(gt_path,
+                         audio=audio,
+                         pianoroll=pianoroll,
+                         onsets=onsets,
+                         notes=notes)
 
         return data
 

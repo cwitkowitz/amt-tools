@@ -88,6 +88,7 @@ def tabs_to_pianoroll(tabs):
 def get_multi_pianoroll_onsets(multi_pianoroll):
     multi_onsets = np.zeros(multi_pianoroll.shape)
 
+    # TODO - verify onset in first frame
     # TODO - vectorize this
     for i in range(NUM_STRINGS):
         multi_onsets[i] = get_pianoroll_onsets(multi_pianoroll[i])
@@ -98,6 +99,24 @@ def get_multi_pianoroll_onsets(multi_pianoroll):
 def get_multi_pianoroll_offsets(pianoroll):
     # TODO - just use pianoroll function
     pass
+
+
+def multi_pianoroll_to_tabs(multi_pianoroll):
+    num_frames = multi_pianoroll.shape[-1]
+
+    # TODO - generalize num_strings to num_dofs?
+    tabs = np.zeros((NUM_STRINGS, num_frames))
+
+    no_note_row = np.ones((1, num_frames))
+
+    for i in range(NUM_STRINGS):
+        start_idx = TUNING_MIDI[i, 0] - GUITAR_LOWEST
+        pianoroll = multi_pianoroll[i, start_idx : start_idx + NUM_FRETS + 1]
+        pianoroll = np.append(pianoroll, no_note_row, axis=0)
+        tabs[i] = np.expand_dims(np.argmax(pianoroll, axis=0), axis=0)
+
+    tabs[tabs == NUM_FRETS + 1] = -1
+    return tabs
 
 
 def get_pianoroll_onsets(pianoroll):

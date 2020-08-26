@@ -34,7 +34,7 @@ class GuitarSet(TranscriptionDataset):
 
         if 'audio' not in data.keys():
             wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic.wav')
-            audio, fs = load_audio(wav_path)
+            audio, fs = load_audio(wav_path, self.sample_rate)
             data['audio'] = audio
 
             times = self.data_proc.get_times(data['audio'])
@@ -48,18 +48,29 @@ class GuitarSet(TranscriptionDataset):
             data['notes'] = notes
 
             # TODO - this causes an error in evaluate since it expected two dims not three
-            #pianoroll = tabs_to_multi_pianoroll(tabs)
+            # TODO - most of this information is redundant, since it can be derived from tabs
+            multi_pianoroll = tabs_to_multi_pianoroll(tabs)
+            #data['multi_pianoroll'] = multi_pianoroll
             pianoroll = tabs_to_pianoroll(tabs)
             data['pianoroll'] = pianoroll
 
-            #onsets = get_multi_pianoroll_onsets(pianoroll)
-            onsets = get_pianoroll_onsets(pianoroll)
+            multi_onsets = get_multi_pianoroll_onsets(multi_pianoroll)
+            #data['multi_onsets'] = multi_onsets
+            #onsets = get_pianoroll_onsets(pianoroll)
+            # TODO - can probably just calculate this later, i.e. in post_proc
+            onsets = multi_pianoroll_to_tabs(multi_onsets)
             data['onsets'] = onsets
 
-            # TODO - bring this out to common?
             if self.save_data:
                 gt_path = self.get_gt_dir(track)
-                np.savez(gt_path, audio=audio, tabs=tabs, onsets=onsets, pianoroll=pianoroll, notes=notes)
+                np.savez(gt_path,
+                         audio=audio,
+                         tabs=tabs,
+                         #multi_pianoroll=multi_pianoroll,
+                         pianoroll=pianoroll,
+                         #multi_onsets=multi_onsets,
+                         onsets=onsets,
+                         notes=notes)
 
         return data
 

@@ -82,3 +82,20 @@ def threshold_arr(arr, thr):
     arr[arr < thr] = 0
     arr[arr != 0] = 1
     return arr
+
+
+def is_multi(activations):
+    if len(activations.shape) == 3:
+        return True
+
+
+# TODO - use this standardized version everywhere
+def get_batch_size(batch):
+    if isinstance(batch, dict):
+        bs = len(batch['track'])
+    elif isinstance(batch, np.ndarray) or isinstance(batch, torch.Tensor):
+        bs = batch.shape[0]
+    else:
+        bs = None
+
+    return bs

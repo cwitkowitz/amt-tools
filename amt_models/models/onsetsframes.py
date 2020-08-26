@@ -7,8 +7,6 @@ from tools.utils import *
 # Regular imports
 from torch import nn
 
-import torch.nn.functional as F
-
 
 class OnsetsFrames(TranscriptionModel):
     # TODO - try to adhere to details of paper as much as possible
@@ -16,69 +14,77 @@ class OnsetsFrames(TranscriptionModel):
         super().__init__(dim_in, dim_out, model_complexity, device)
 
         # Number of output neurons for the acoustic models
-        dim_am = 256 * self.model_complexity
+        self.dim_am = 256 * self.model_complexity
 
         # Number of output neurons for the language models
-        dim_lm1 = 128 * self.model_complexity
-        dim_lm2 = 2 * self.dim_out
+        self.dim_lm1 = 128 * self.model_complexity
+        self.dim_lm2 = 2 * self.dim_out
 
         self.onsets = nn.Sequential(
-            AcousticModel(self.dim_in, dim_am, self.model_complexity),
-            LanguageModel(dim_am, dim_lm1),
-            MLLogistic(dim_lm1, self.dim_out)
+            AcousticModel(self.dim_in, self.dim_am, self.model_complexity),
+            LanguageModel(self.dim_am, self.dim_lm1),
+            LogisticBank(self.dim_lm1, self.dim_out, 'onsets')
         )
 
         self.pianoroll = nn.Sequential(
-            AcousticModel(self.dim_in, dim_am, self.model_complexity),
-            MLLogistic(dim_am, self.dim_out)
+            AcousticModel(self.dim_in, self.dim_am, self.model_complexity),
+            LogisticBank(self.dim_am, self.dim_out)
         )
 
         self.adjoin = nn.Sequential(
-            LanguageModel(dim_lm2, dim_lm2),
-            MLLogistic(dim_lm2, self.dim_out)
+            LanguageModel(self.dim_lm2, self.dim_lm2),
+            LogisticBank(self.dim_lm2, self.dim_out, 'pianoroll')
         )
 
     def pre_proc(self, batch):
         # Switch the frequency and time axes
-        feats = batch['feats']
-        feats = feats.transpose(-1, -2)
-        batch['feats'] = feats
+        batch['feats'] = batch['feats'].transpose(-1, -2)
+        # Add the batch to the model's device
+        super().pre_proc(batch)
 
-        batch = track_to_device(batch, self.device)
         return batch
 
     def forward(self, feats):
-        pianoroll = self.pianoroll(feats)
-        onsets = self.onsets(feats)
+        generic_label = self.pianoroll[-1].tag
+        pianoroll = self.pianoroll(feats)[generic_label]
+
+        onsets_label = self.onsets[-1].tag
+        preds = self.onsets(feats)
+        onsets = preds[onsets_label]
 
         joint = torch.cat((onsets, pianoroll), -1)
-        pianoroll = self.adjoin(joint)
+        preds.update(self.adjoin(joint))
 
-        onsets = onsets.transpose(1, 2)
-        pianoroll = pianoroll.transpose(1, 2)
-        return onsets, pianoroll
+        return preds
 
     def post_proc(self, batch):
-        onsets, pianoroll = batch['out']
+        preds = batch['preds']
+
+        onsets_layer = self.onsets[-1]
+        pianoroll_layer = self.adjoin[-1]
+
+        onsets_label = onsets_layer.tag
+        pianoroll_label = pianoroll_layer.tag
+
+        onsets = preds[onsets_label]
+        pianoroll = preds[pianoroll_label]
 
         loss = None
 
         # Check to see if ground-truth is available
-        if 'onsets' in batch.keys() and 'pianoroll' in batch.keys():
-            onsets_loss = self.onsets[-1].get_loss(onsets, batch['onsets'])
-            pianoroll_loss = self.pianoroll[-1].get_loss(pianoroll, batch['pianoroll'])
+        if onsets_label in batch.keys() and pianoroll_label in batch.keys():
+            reference_onsets = batch[onsets_label]
+            reference_pianoroll = batch[pianoroll_label]
+            onsets_loss = onsets_layer.get_loss(onsets, reference_onsets)
+            pianoroll_loss = pianoroll_layer.get_loss(pianoroll, reference_pianoroll)
             loss = onsets_loss + pianoroll_loss
 
-        if not self.training:
-            # TODO - add to generic output layer?
-            onsets = threshold_arr(onsets, 0.5)
-            pianoroll = threshold_arr(pianoroll, 0.5)
+        preds.update({
+            'loss': loss
+        })
 
-        preds = {
-            'onsets' : onsets,
-            'pianoroll' : pianoroll,
-            'loss' : loss
-        }
+        preds[onsets_label] = onsets_layer.finalize_output(onsets)
+        preds[pianoroll_label] = pianoroll_layer.finalize_output(pianoroll)
 
         return preds
 
@@ -135,7 +141,8 @@ class AcousticModel(nn.Module):
             # 1st batch normalization
             nn.BatchNorm2d(nf1),
             # Activation function
-            nn.ReLU())
+            nn.ReLU()
+        )
 
         self.layer2 = nn.Sequential(
             # 2nd convolution
@@ -147,7 +154,8 @@ class AcousticModel(nn.Module):
             # 1st reduction
             nn.MaxPool2d(rd1),
             # 1st dropout
-            nn.Dropout(dp1))
+            nn.Dropout(dp1)
+        )
 
         self.layer3 = nn.Sequential(
             # 3rd convolution
@@ -159,7 +167,8 @@ class AcousticModel(nn.Module):
             # 2nd reduction
             nn.MaxPool2d(rd2),
             # 2nd dropout
-            nn.Dropout(dp2))
+            nn.Dropout(dp2)
+        )
 
         feat_map_height = dim_in // 4
         self.feat_map_size = nf3 * feat_map_height

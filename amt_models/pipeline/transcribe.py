@@ -1,5 +1,6 @@
 # My imports
 from tools.conversion import *
+from tools.utils import *
 from tools.io import *
 
 from datasets.common import *
@@ -88,6 +89,38 @@ def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_leng
 
     return pitches, intervals
 
+
+def transcribe_tabs(tabs_pianoroll, times, tabs_dir=None, tabs_onsets=None):
+    preds = {}
+
+    multi_pianoroll = tabs_to_multi_pianoroll(tabs_pianoroll)
+    #preds['multi_pianoroll'] = multi_pianoroll
+
+    pianoroll = tabs_to_pianoroll(tabs_pianoroll)
+    preds['pianoroll'] = pianoroll
+
+    if tabs_onsets is None:
+        multi_onsets = [None] * NUM_STRINGS
+    else:
+        multi_onsets = tabs_to_multi_pianoroll(tabs_onsets)
+
+    all_pitches, all_ints = [], []
+    for i in range(NUM_STRINGS):
+        pitches, ints = predict_notes(multi_pianoroll[i], times, multi_onsets[i])
+
+        all_pitches += list(pitches)
+        all_ints += list(ints)
+
+        if tabs_dir is not None:
+            tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
+            write_notes(tab_txt_path, pitches, ints)
+
+    all_notes = note_groups_to_arr(all_pitches, all_ints)
+    preds['notes'] = all_notes
+
+    return preds
+
+
 def transcribe(model, track, log_dir=None):
     # Just in case
     model.eval()
@@ -95,12 +128,6 @@ def transcribe(model, track, log_dir=None):
     with torch.no_grad():
         batch = track_to_batch(track)
         preds = model.run_on_batch(batch)
-
-        if 'loss' in preds.keys():
-            track_loss = torch.mean(preds['loss']).item()
-            preds['loss'] = track_loss
-
-        # TODO - make sure this can come before averaging loss
         preds = track_to_cpu(preds)
 
         track_id = track['track']
@@ -109,6 +136,7 @@ def transcribe(model, track, log_dir=None):
         times = track['times']
         preds['times'] = times
 
+        # TODO - this might require a significant rework
         pianoroll = None
         if 'pianoroll' in preds.keys():
             pianoroll = preds['pianoroll']
@@ -120,35 +148,19 @@ def transcribe(model, track, log_dir=None):
         if 'tabs' in preds.keys():
             tabs = preds['tabs']
 
-            # TODO - this won't be valid for all configs - I might have tabs, pianoroll and onsets
-            multi_pianoroll = tabs_to_multi_pianoroll(tabs)
-            pianoroll = tabs_to_pianoroll(tabs)
-            preds['pianoroll'] = pianoroll
-
-            if onsets is None:
-                multi_onsets = [None] * NUM_STRINGS
-            else:
-                # TODO - verify there are 3 dimensions
-                multi_onsets = onsets
-
             if log_dir is not None:
                 tabs_dir = os.path.join(log_dir, 'tabs', f'{track_id}')
+            else:
+                tabs_dir = None
 
-            all_pitches, all_ints = [], []
-            for i in range(NUM_STRINGS):
-                pitches, ints = predict_notes(multi_pianoroll[i], times, multi_onsets[i])
-
-                all_pitches += list(pitches)
-                all_ints += list(ints)
-
-                if log_dir is not None:
-                    tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
-                    write_notes(tab_txt_path, pitches, ints)
+            preds.update(transcribe_tabs(tabs, times, tabs_dir, onsets))
         else:
             all_pitches, all_ints = predict_notes(pianoroll, times, onsets)
+            all_notes = note_groups_to_arr(all_pitches, all_ints)
+            preds['notes'] = all_notes
 
-        all_notes = note_groups_to_arr(all_pitches, all_ints)
-        preds['notes'] = all_notes
+        all_pitches, all_ints = arr_to_note_groups(preds['notes'])
+        pianoroll = preds['pianoroll']
 
         # TODO - option to redo pianoroll from note predictions
 

@@ -71,7 +71,7 @@ def train(model, train_loader, optimizer, iterations,
         for batch in train_loader:
             optimizer.zero_grad()
             preds = model.run_on_batch(batch)
-            batch_loss = torch.mean(preds['loss'])
+            batch_loss = preds['loss']
             train_loss.append(batch_loss.item())
             batch_loss.backward()
             optimizer.step()
@@ -115,6 +115,7 @@ def train(model, train_loader, optimizer, iterations,
 
                     val_results = average_results(val_results)
 
+                    # TODO - this and evaluate generalized to a function - add ability to select only f1 scores
                     for type in val_results.keys():
                         if isinstance(val_results[type], dict):
                             for metric in val_results[type].keys():

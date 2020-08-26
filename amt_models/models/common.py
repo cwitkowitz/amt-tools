@@ -1,5 +1,5 @@
 # My imports
-# None of my imports used
+from tools.conversion import *
 
 # Regular imports
 from abc import abstractmethod
@@ -71,9 +71,16 @@ class TranscriptionModel(nn.Module):
         batch : dict
           Dictionary containing all relevant fields for a group of tracks - if a single
           track is to be transcribed, it must be organized as a batch of size 1
+
+        Returns
+        ----------
+        batch : dict
+          Dictionary with all PyTorch Tensors added to the appropriate device
         """
 
-        return NotImplementedError
+        batch = track_to_device(batch, self.device)
+
+        return batch
 
     @abstractmethod
     def forward(self, feats):
@@ -128,7 +135,7 @@ class TranscriptionModel(nn.Module):
         batch = self.pre_proc(batch)
 
         # Obtain the model output for the batch of features
-        batch['out'] = self(batch['feats'])
+        batch['preds'] = self(batch['feats'])
 
         # Post-process batch,
         preds = self.post_proc(batch)
@@ -160,7 +167,7 @@ class OutputLayer(nn.Module):
     Implements a generic output layer for transcription models.
     """
 
-    def __init__(self, dim_in, dim_out):
+    def __init__(self, dim_in, dim_out, tag):
         """
         Initialize parameters common to all output layers as model fields
         and instantiate layers as a PyTorch processing Module.
@@ -171,12 +178,15 @@ class OutputLayer(nn.Module):
           Dimensionality of input features
         dim_out : int
           Dimensionality of output vectors
+        tag : str
+          TODO
         """
 
         super().__init__()
 
         self.dim_in = dim_in
         self.dim_out = dim_out
+        self.tag = tag
 
     @abstractmethod
     def forward(self, feats):
@@ -218,8 +228,13 @@ class OutputLayer(nn.Module):
 
         return NotImplementedError
 
+    @abstractmethod
+    def finalize_output(self, raw_output):
+        final_output = raw_output.clone().detach()
+        return final_output
 
-class MLSoftmax(OutputLayer):
+
+class SoftmaxGroups(OutputLayer):
     """
     Implements a multi-label softmax output layer designed to produce tablature,
     by treating each degree of freedom of a polyphonic instrument as a separate
@@ -230,7 +245,7 @@ class MLSoftmax(OutputLayer):
     across the possibilities (the string's fretting).
     """
 
-    def __init__(self, dim_in, num_dofs=6, num_poss=22):
+    def __init__(self, dim_in, num_dofs=6, num_poss=22, tag='tabs'):
         """
         Initialize fields of the multi-label softmax layer.
 
@@ -243,6 +258,8 @@ class MLSoftmax(OutputLayer):
         num_poss : int
           Number of possibilities for each degree of freedom, e.g. number of
           frets + 2 (for open string and no activity possibilities)
+        tag : str
+          TODO
         """
 
         self.num_dofs = num_dofs
@@ -250,7 +267,7 @@ class MLSoftmax(OutputLayer):
 
         dim_out = self.num_dofs * self.num_poss
 
-        super().__init__(dim_in, dim_out)
+        super().__init__(dim_in, dim_out, tag)
 
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
 
@@ -260,16 +277,30 @@ class MLSoftmax(OutputLayer):
 
         Parameters
         ----------
-        feats : Tensor (B x F x T)
+        feats : Tensor (B x T x F)
           input features for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
           B - batch size,
-          F - dimensionality of input features,
-          T - number of time steps
+          T - number of time steps (frames),
+          F - dimensionality of input features
+
+        Returns
+        ----------
+        preds : dict w/ Tensor (B x T x DOFs x POSSs)
+          dictionary containing tablature output,
+          B - batch size,
+          T - number of time steps (frames),
+          TODO - actually this is dim_out now
+          DOFs - degrees of freedom,
+          POSSs - number of possibilities
         """
 
         tabs = self.output_layer(feats)
-        return tabs
+
+        preds = {
+            self.tag : tabs
+        }
+
+        return preds
 
     def get_loss(self, output, reference):
         """
@@ -277,26 +308,54 @@ class MLSoftmax(OutputLayer):
 
         Parameters
         ----------
-        output : Tensor (B x F x T)
-          output vectors for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
+        output : Tensor (B x T x DOFs x POSSs)
+          tablature output
           B - batch size,
-          F - dimensionality of output features,
-          T - number of time steps
-        reference : Tensor (B x F x T)
+          T - number of time steps (frames),
+          DOFs - degrees of freedom,
+          POSSs - number of possibilities
+        reference : Tensor (B x DOFs x T)
           ground-truth for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
           B - batch size,
-          F - dimensionality of output features,
-          T - number of time steps
+          DOFs - degrees of freedom,
+          T - number of time steps (frames)
         """
 
+        # Obtain the true batch size
+        bs = get_batch_size(output)
+        # Fold the degrees of freedom axis into the pseudo-batch axis
+        output = output.view(-1, self.num_poss)
+
+        # Transform ground-truth tabs into 1D softmax labels
+        reference = reference.transpose(1, 2)
+        reference[reference == -1] = self.num_poss - 1
         reference = reference.flatten().long()
+
+        # Calculate the loss for the entire pseudo-batch
         loss = F.cross_entropy(output.float(), reference, reduction='none')
+        loss = loss.view(bs, -1, self.num_dofs)
+        # Sum loss across degrees of freedom
+        loss = torch.sum(loss, dim=-1)
+        # Average loss across frames
+        loss = torch.mean(loss, dim=-1)
+        # Average the loss across the batch
+        loss = torch.mean(loss)
+
         return loss
 
+    def finalize_output(self, raw_output):
+        final_output = super().finalize_output(raw_output)
+        # Obtain the true batch size
+        bs = get_batch_size(final_output)
+        final_output = final_output.view(bs, -1, self.num_dofs, self.num_poss)
+        final_output = torch.argmax(torch.softmax(final_output, dim=-1), dim=-1)
+        final_output[final_output == self.num_poss - 1] = -1
+        final_output = final_output.transpose(1, 2)
 
-class MLLogistic(OutputLayer):
+        return final_output
+
+
+class LogisticBank(OutputLayer):
     """
     Implements a multi-label logistic output layer designed to produce key activity,
     or more generally, quantized pitch activity.
@@ -306,7 +365,7 @@ class MLLogistic(OutputLayer):
     or not the key is active.
     """
 
-    def __init__(self, dim_in, num_keys):
+    def __init__(self, dim_in, num_keys, tag='keys'):
         """
         Initialize fields of the multi-label logistic layer.
 
@@ -316,13 +375,15 @@ class MLLogistic(OutputLayer):
           Dimensionality of input features
         num_keys : int
           Total number of independent keys or quantized pitches
+        tag : str
+          TODO
         """
 
         self.num_keys = num_keys
 
         dim_out = self.num_keys
 
-        super().__init__(dim_in, dim_out)
+        super().__init__(dim_in, dim_out, tag)
 
         self.output_layer = nn.Sequential(
             nn.Linear(self.dim_in, self.dim_out),
@@ -345,7 +406,12 @@ class MLLogistic(OutputLayer):
         """
 
         keys = self.output_layer(feats)
-        return keys
+
+        preds = {
+            self.tag : keys
+        }
+
+        return preds
 
     def get_loss(self, output, reference):
         """
@@ -367,5 +433,21 @@ class MLLogistic(OutputLayer):
           T - number of time steps
         """
 
-        loss = F.binary_cross_entropy(output.float(), reference.float())
+        output = output.transpose(1, 2)
+        loss = F.binary_cross_entropy(output.float(), reference.float(), reduction='none')
+        # Sum loss across frames
+        loss = torch.sum(loss, dim=-1)
+        # Sum loss across keys
+        loss = torch.sum(loss, dim=-1)
+        # Average the loss across the batch
+        loss = torch.mean(loss)
         return loss
+
+    def finalize_output(self, raw_output):
+        final_output = super().finalize_output(raw_output)
+        final_output = final_output.transpose(1, 2)
+        final_output = threshold_arr(final_output, 0.5)
+
+        return final_output
+
+# TODO - MLLogisticGroups

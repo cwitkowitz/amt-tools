@@ -71,10 +71,13 @@ class MAPS(TranscriptionDataset):
             onsets = get_pianoroll_onsets(pianoroll)
             data['onsets'] = onsets
 
-            # TODO - bring this out to common?
             if self.save_data:
                 gt_path = self.get_gt_dir(track)
-                np.savez(gt_path, audio=audio, pianoroll=pianoroll, onsets=onsets, notes=notes)
+                np.savez(gt_path,
+                         audio=audio,
+                         pianoroll=pianoroll,
+                         onsets=onsets,
+                         notes=notes)
 
         return data
 
