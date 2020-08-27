@@ -72,9 +72,17 @@ class OnsetsFrames(TranscriptionModel):
         loss = None
 
         # Check to see if ground-truth is available
-        if onsets_label in batch.keys() and pianoroll_label in batch.keys():
-            reference_onsets = batch[onsets_label]
+        if pianoroll_label in batch.keys():
             reference_pianoroll = batch[pianoroll_label]
+
+            if onsets_label in batch.keys():
+                reference_onsets = batch[onsets_label]
+            else:
+                reference_onsets = get_pianoroll_onsets(reference_pianoroll)
+
+            # TODO - more specific functions for is_multi, is_tabs, is_single
+            # TODO - then, to_multi, to_tabs, to_single inside of loss calculation
+
             onsets_loss = onsets_layer.get_loss(onsets, reference_onsets)
             pianoroll_loss = pianoroll_layer.get_loss(pianoroll, reference_pianoroll)
             loss = onsets_loss + pianoroll_loss

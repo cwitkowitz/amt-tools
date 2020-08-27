@@ -15,9 +15,9 @@ import os
 
 class MAESTRO_V1(TranscriptionDataset):
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None,
-                 frame_length=None, split_notes=False, reset_data=False, store_data=False, save_data=True, seed=0):
+                 num_frames=None, split_notes=False, reset_data=False, store_data=False, save_data=True, seed=0):
         super().__init__(base_dir, splits, hop_length, sample_rate, data_proc,
-                         frame_length, split_notes, reset_data, store_data, save_data, seed)
+                         num_frames, split_notes, reset_data, store_data, save_data, seed)
 
     def get_tracks(self, split):
         csv_data = pd.read_csv(os.path.join(self.base_dir, 'maestro-v1.0.0.csv'))
@@ -62,6 +62,7 @@ class MAESTRO_V1(TranscriptionDataset):
             # TODO - bring this out to common?
             if self.save_data:
                 gt_path = self.get_gt_dir(track)
+                # TODO - get rid of the base dir or do for all to stay consistent
                 os.makedirs(os.path.dirname(gt_path), exist_ok=True)
                 np.savez(gt_path,
                          audio=audio,

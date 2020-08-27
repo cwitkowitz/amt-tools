@@ -37,7 +37,7 @@ def file_sort(file_name):
 
 def train(model, train_loader, optimizer, iterations,
           checkpoints=0, log_dir='.', val_set=None,
-          scheduler=None, resume=False, single_batch=False):
+          scheduler=None, resume=True, single_batch=False):
     # TODO - multi-gpu
     # TODO - scheduler
 

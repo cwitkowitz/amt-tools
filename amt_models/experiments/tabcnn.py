@@ -1,22 +1,21 @@
 # My imports
-from pipeline.transcribe import transcribe
+from pipeline.transcribe import *
 from pipeline.evaluate import *
-from pipeline.train import train
-
-from models.tabcnn import *
-
-from features.cqt import CQT
+from pipeline.train import *
 
 from datasets.GuitarSet import *
 
+from features.cqt import *
+
+from models.tabcnn import *
+
 # Regular imports
-from torch.utils.data import DataLoader
 from sacred.observers import FileStorageObserver
+from torch.utils.data import DataLoader
 from sacred import Experiment
 
 # TODO - multi-threading
-# TODO - clean up text output - actually remove verbose except for evaluate
-ex = Experiment('6-Fold TabCNN')
+ex = Experiment('TabCNN w/ CQT on GuitarSet 6-fold Cross Validation')
 
 @ex.config
 def config():
@@ -27,12 +26,12 @@ def config():
     hop_length = 512
 
     # Number of consecutive frames within each example fed to the model
-    seq_length = 200
+    num_frames = 200
 
     # Number of training iterations to conduct
     iterations = 1000
 
-    # How many training iterations in between each save/validation point - 0 to disable
+    # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 20
 
     # Number of samples to gather for a batch
@@ -60,7 +59,7 @@ def config():
     ex.observers.append(FileStorageObserver(root_dir))
 
 @ex.automain
-def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoints,
+def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoints,
                      batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
     # Seed everything with the same seed
     seed_everything(seed)
@@ -74,25 +73,50 @@ def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoint
     model_complexity = 1
 
     # Create the cqt data processing module
-    data_proc = CQT(sample_rate=sample_rate, hop_length=hop_length, fmin=None, n_bins=dim_in, bins_per_octave=24)
+    data_proc = CQT(sample_rate=sample_rate,
+                    hop_length=hop_length,
+                    n_bins=dim_in,
+                    bins_per_octave=24)
 
     # Perform each fold of cross-validation
     for k in range(6):
         # Determine the name of the split being removed
         hold_out = '0' + str(k)
 
+        print('--------------------')
         print(f'Fold {hold_out}:')
+        print('Loading training partition...')
 
         # Remove the hold out split to get the training partition
         train_splits = splits.copy()
         train_splits.remove(hold_out)
 
-        print('Loading training partition...')
+        # Create a dataset corresponding to the training partition
+        gset_train = GuitarSet(splits=train_splits,
+                               hop_length=hop_length,
+                               sample_rate=sample_rate,
+                               data_proc=data_proc,
+                               num_frames=num_frames,
+                               reset_data=reset_data)
 
-        # Create a data loader for this training partition of GuitarSet
-        gset_train = GuitarSet(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=sample_rate,
-                               data_proc=data_proc, num_frames=seq_length, split_notes=False, reset_data=reset_data)
-        train_loader = DataLoader(gset_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
+        # Create a PyTorch data loader for the dataset
+        train_loader = DataLoader(dataset=gset_train,
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=16,
+                                  drop_last=True)
+
+        print('Loading testing partition...')
+
+        # Create a dataset corresponding to the training partition
+        test_splits = [hold_out]
+        gset_test = GuitarSet(splits=test_splits,
+                              hop_length=hop_length,
+                              sample_rate=sample_rate,
+                              data_proc=data_proc,
+                              store_data=False)
+
+        print('Initializing model...')
 
         # Initialize a new instance of the model
         tabcnn = TabCNN(dim_in, dim_out, model_complexity, gpu_id)
@@ -102,42 +126,43 @@ def tabcnn_cross_val(sample_rate, hop_length, seq_length, iterations, checkpoint
         # Initialize a new optimizer for the model parameters
         optimizer = torch.optim.Adadelta(tabcnn.parameters(), learning_rate)
 
+        print('Training model...')
+
         # Create a log directory for the training experiment
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
 
-        print('Loading validation partition...')
-
-        # Create a data loader for this testing partition of GuitarSet
-        test_splits = [hold_out]
-        gset_val = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
-                             data_proc=data_proc, num_frames=seq_length, split_notes=False, reset_data=reset_data)
-
-        print('Training classifier...')
-
         # Train the model
-        tabcnn = train(tabcnn, train_loader, optimizer, iterations, checkpoints, model_dir, resume=True, val_set=gset_val)
-
-        estim_dir = os.path.join(root_dir, 'estimated')
-
-        print('Loading testing partition...')
-
-        test_splits = [hold_out]
-        gset_test = GuitarSet(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
-                              data_proc=data_proc, num_frames=None, split_notes=False, reset_data=reset_data,
-                              store_data=False)
+        tabcnn = train(model=tabcnn,
+                       train_loader=train_loader,
+                       optimizer=optimizer,
+                       iterations=iterations,
+                       checkpoints=checkpoints,
+                       log_dir=model_dir)
 
         print('Transcribing and evaluating test partition...')
 
+        estim_dir = os.path.join(root_dir, 'estimated')
         results_dir = os.path.join(root_dir, 'results')
 
-        # Generate predictions for the test set
+        # Put the model in evaluation mode
         tabcnn.eval()
+
+        # Create a dictionary to hold the evaluation results
         fold_results = get_results_format()
+
+        # Loop through the testing track ids
         for track_id in gset_test.tracks:
+            # Obtain the track data
             track = gset_test.get_track_data(track_id)
+            # Transcribe the track
             predictions = transcribe(tabcnn, track, estim_dir)
-            track_results = evaluate(predictions, track, results_dir, False)
+            # Evaluate the predictions
+            track_results = evaluate(predictions, track, results_dir)
+            # Add the results to the dictionary
             fold_results = add_result_dicts(fold_results, track_results)
+
+        # Average the results from all tracks
         fold_results = average_results(fold_results)
 
+        # Log the average results for the fold in metrics.json
         ex.log_scalar('fold_results', fold_results, k)

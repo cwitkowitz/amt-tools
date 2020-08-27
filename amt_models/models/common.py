@@ -450,4 +450,5 @@ class LogisticBank(OutputLayer):
 
         return final_output
 
-# TODO - MLLogisticGroups
+
+# TODO - LogisticGroups - might be able to just use LogisticBank instead

@@ -5,21 +5,22 @@ from pipeline.train import *
 
 from models.onsetsframes import *
 
-from features.melspec import *
-
+from datasets.GuitarSet import *
 from datasets.MAESTRO import *
+
+from features.melspec import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
-ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAPS')
+ex = Experiment('Baseline Domain Generalization Piano -> Guitar')
 
 @ex.config
 def config():
     # Number of samples per second of audio
-    sample_rate = 16000
+    sample_rate = 22050
 
     # Number of samples between frames
     hop_length = 512
@@ -28,7 +29,7 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 5000
+    iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 20
@@ -40,7 +41,7 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 0
+    gpu_id = 1
 
     # Flag to control whether sampled blocks of frames should avoid splitting notes
     split_notes = False
@@ -53,7 +54,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), MAESTRO_V1.dataset_name(), MelSpec.features_name()])
+    root_dir = 'Baseline_DG'
     root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -68,8 +69,9 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Construct the MAESTRO splits
     train_split = ['train']
-    val_split = ['validation']
-    test_split = ['test']
+
+    # Validate and evaluate on the full GuitarSet data TODO - for now
+    val_split = GuitarSet.available_splits()
 
     # Processing parameters
     dim_in = 229
@@ -103,33 +105,24 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     print('Loading validation partition...')
 
-    # Create a dataset corresponding to the validation partition
-    mstro_val = MAESTRO_V1(splits=val_split,
-                           hop_length=hop_length,
-                           sample_rate=sample_rate,
-                           data_proc=data_proc,
-                           num_frames=num_frames,
-                           split_notes=split_notes,
-                           store_data=False)
-
-    print('Loading testing partition...')
-
-    # Create a dataset corresponding to the testing partition
-    mstro_test = MAESTRO_V1(splits=test_split,
-                            hop_length=hop_length,
-                            sample_rate=sample_rate,
-                            data_proc=data_proc,
-                            store_data=False)
+    # TODO - the size mismatch is breaking this run - fix with dataset param?
+    # Create a dataset corresponding to the training partition
+    gset_val = GuitarSet(splits=val_split,
+                         hop_length=hop_length,
+                         sample_rate=sample_rate,
+                         data_proc=data_proc,
+                         split_notes=split_notes,
+                         reset_data=reset_data)
 
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
-    onsetsframes.change_device()
-    onsetsframes.train()
+    of2 = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
+    of2.change_device()
+    of2.train()
 
     # Initialize a new optimizer for the model parameters
-    optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
+    optimizer = torch.optim.Adam(of2.parameters(), learning_rate)
 
     print('Training classifier...')
 
@@ -137,13 +130,13 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     model_dir = os.path.join(root_dir, 'models')
 
     # Train the model
-    onsetsframes = train(model=onsetsframes,
-                         train_loader=train_loader,
-                         optimizer=optimizer,
-                         iterations=iterations,
-                         checkpoints=checkpoints,
-                         log_dir=model_dir,
-                         val_set=mstro_val)
+    of2 = train(model=of2,
+                train_loader=train_loader,
+                optimizer=optimizer,
+                iterations=iterations,
+                checkpoints=checkpoints,
+                log_dir=model_dir,
+                val_set=gset_val)
 
     print('Transcribing and evaluating test partition...')
 
@@ -151,17 +144,17 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     results_dir = os.path.join(root_dir, 'results')
 
     # Put the model in evaluation mode
-    onsetsframes.eval()
+    of2.eval()
 
     # Create a dictionary to hold the evaluation results
     results = get_results_format()
 
     # Loop through the testing track ids
-    for track_id in mstro_test.tracks:
+    for track_id in gset_val.tracks:
         # Obtain the track data
-        track = mstro_test.get_track_data(track_id)
+        track = gset_val.get_track_data(track_id)
         # Transcribe the track
-        predictions = transcribe(onsetsframes, track, estim_dir)
+        predictions = transcribe(of2, track, estim_dir)
         # Evaluate the predictions
         track_results = evaluate(predictions, track, results_dir, True)
         # Add the results to the dictionary

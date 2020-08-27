@@ -69,7 +69,7 @@ class GuitarSet(TranscriptionDataset):
                          #multi_pianoroll=multi_pianoroll,
                          pianoroll=pianoroll,
                          #multi_onsets=multi_onsets,
-                         onsets=onsets,
+                         #onsets=onsets,
                          notes=notes)
 
         return data

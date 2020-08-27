@@ -1,21 +1,20 @@
 # My imports
-from pipeline.transcribe import transcribe
+from pipeline.transcribe import *
 from pipeline.evaluate import *
-from pipeline.train import train
+from pipeline.train import *
 
 from models.onsetsframes import *
 
-from features.melspec import MelSpec
+from features.melspec import *
 
 from datasets.MAPS import *
 
 # Regular imports
-from torch.utils.data import DataLoader
 from sacred.observers import FileStorageObserver
+from torch.utils.data import DataLoader
 from sacred import Experiment
 
-# TODO - clean up text output
-ex = Experiment('Onsets & Frames MAPS Experiment')
+ex = Experiment('Onsets & Frames 1 w/ Mel Spectrogram on MAPS')
 
 @ex.config
 def config():
@@ -26,7 +25,7 @@ def config():
     hop_length = 512
 
     # Number of consecutive frames within each example fed to the model
-    seq_length = 500
+    num_frames = 500
 
     # Number of training iterations to conduct
     iterations = 5000
@@ -43,7 +42,7 @@ def config():
     # The id of the gpu to use, if available
     gpu_id = 0
 
-    # Flag to control whether sampled blocks of frames can split notes
+    # Flag to control whether sampled blocks of frames should avoid splitting notes
     split_notes = False
 
     # Flag to re-acquire ground-truth data and re-calculate-features
@@ -62,37 +61,63 @@ def config():
     ex.observers.append(FileStorageObserver(root_dir))
 
 @ex.automain
-def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoints, batch_size,
-                      learning_rate, gpu_id, split_notes, reset_data, seed, root_dir):
+def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoints,
+                      batch_size, learning_rate, gpu_id, split_notes, reset_data, seed, root_dir):
     # Seed everything with the same seed
     seed_everything(seed)
 
-    # Get a list of the GuitarSet splits
+    # Get a list of the MAPS splits
     splits = MAPS.available_splits()
+
+    # Initialize the testing splits as the real piano data
+    test_splits = ['ENSTDkAm', 'ENSTDkCl']
+    # Remove the real piano splits to get the training partition
+    train_splits = splits.copy()
+    for split in test_splits:
+        train_splits.remove(split)
 
     # Processing parameters
     dim_in = 229
     dim_out = PIANO_RANGE
     model_complexity = 2
 
-    # Create the cqt data processing module
-    data_proc = MelSpec(sample_rate=sample_rate, n_mels=dim_in, n_fft=2048, hop_length=hop_length, htk=False, norm=None)
-
-    # Remove the hold out split to get the training partition
-    train_splits = splits.copy()
-
-    test_splits = ['ENSTDkAm', 'ENSTDkCl']
-    for split in test_splits:
-        train_splits.remove(split)
+    # Create the mel spectrogram data processing module
+    data_proc = MelSpec(sample_rate=sample_rate,
+                        n_mels=dim_in,
+                        hop_length=hop_length)
 
     print('Loading training partition...')
 
-    # Create a data loader for this training partition of MAPS
-    maps_train = MAPS(base_dir=None, splits=train_splits, hop_length=hop_length, sample_rate=sample_rate,
-                      data_proc=data_proc, frame_length=seq_length, split_notes=split_notes, reset_data=reset_data)
-    print('Removing overlapping tracks')
+    # Create a dataset corresponding to the training partition
+    maps_train = MAPS(splits=train_splits,
+                      hop_length=hop_length,
+                      sample_rate=sample_rate,
+                      data_proc=data_proc,
+                      num_frames=num_frames,
+                      split_notes=split_notes,
+                      reset_data=reset_data)
+
+    # Remove tracks in both partitions from the training partitions
+    print('Removing overlapping tracks from training partition')
     maps_train.remove_overlapping(test_splits)
-    train_loader = DataLoader(maps_train, batch_size, shuffle=True, num_workers=16, drop_last=True)
+
+    # Create a PyTorch data loader for the dataset
+    train_loader = DataLoader(dataset=maps_train,
+                              batch_size=batch_size,
+                              shuffle=True,
+                              num_workers=16,
+                              drop_last=True)
+
+    print('Loading testing partition...')
+
+    # Create a dataset corresponding to the testing partition
+    maps_test = MAPS(splits=test_splits,
+                     hop_length=hop_length,
+                     sample_rate=sample_rate,
+                     data_proc=data_proc,
+                     store_data=False)
+
+    print('Initializing model...')
 
     # Initialize a new instance of the model
     onsetsframes = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
@@ -102,38 +127,43 @@ def onsets_frames_run(sample_rate, hop_length, seq_length, iterations, checkpoin
     # Initialize a new optimizer for the model parameters
     optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
 
+    print('Training classifier...')
+
     # Create a log directory for the training experiment
     model_dir = os.path.join(root_dir, 'models')
 
-    print('Loading testing partition...')
-
-    # Create a data loader for the validation step
-    maps_val = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
-                    data_proc=data_proc, frame_length=seq_length, reset_data=reset_data)
-
-    print('Training classifier...')
-
     # Train the model
-    onsetsframes = train(onsetsframes, train_loader, optimizer, iterations,
-                         checkpoints, model_dir, maps_val, resume=True)
-    estim_dir = os.path.join(root_dir, 'estimated')
+    onsetsframes = train(model=onsetsframes,
+                         train_loader=train_loader,
+                         optimizer=optimizer,
+                         iterations=iterations,
+                         checkpoints=checkpoints,
+                         log_dir=model_dir)
 
     print('Transcribing and evaluating test partition...')
 
-    # Create a data loader for the testing partition of MAPS
-    maps_test = MAPS(base_dir=None, splits=test_splits, hop_length=hop_length, sample_rate=sample_rate,
-                     data_proc=data_proc, frame_length=None, reset_data=reset_data, store_data=False)
-
+    estim_dir = os.path.join(root_dir, 'estimated')
     results_dir = os.path.join(root_dir, 'results')
 
-    # Generate predictions for the test set
+    # Put the model in evaluation mode
     onsetsframes.eval()
+
+    # Create a dictionary to hold the evaluation results
     results = get_results_format()
+
+    # Loop through the testing track ids
     for track_id in maps_test.tracks:
+        # Obtain the track data
         track = maps_test.get_track_data(track_id)
+        # Transcribe the track
         predictions = transcribe(onsetsframes, track, estim_dir)
+        # Evaluate the predictions
         track_results = evaluate(predictions, track, results_dir, True)
+        # Add the results to the dictionary
         results = add_result_dicts(results, track_results)
+
+    # Average the results from all tracks
     results = average_results(results)
 
+    # Log the average results in metrics.json
     ex.log_scalar('results', results, 0)

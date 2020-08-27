@@ -13,9 +13,9 @@ import os
 
 class MAPS(TranscriptionDataset):
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None,
-                 frame_length=None, split_notes=False, reset_data=False, store_data=True, save_data=True, seed=0):
+                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_data=True, seed=0):
         super().__init__(base_dir, splits, hop_length, sample_rate, data_proc,
-                         frame_length, split_notes, reset_data, store_data, save_data, seed)
+                         num_frames, split_notes, reset_data, store_data, save_data, seed)
 
     def remove_overlapping(self, splits):
         # Initialize list of tracks to remove
