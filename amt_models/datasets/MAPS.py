@@ -62,21 +62,17 @@ class MAPS(TranscriptionDataset):
 
             pitches, intervals = arr_to_note_groups(notes)
             times = self.data_proc.get_times(data['audio'])
-            pianoroll = midi_groups_to_pianoroll(pitches, intervals, times, PIANO_RANGE)
-            data['pianoroll'] = pianoroll
+            pitch = midi_groups_to_pianoroll(pitches, intervals, times, PIANO_RANGE)
+            data['pitch'] = pitch
 
             notes[:, -1] = librosa.midi_to_hz(notes[:, -1])
             data['notes'] = notes
-
-            onsets = get_pianoroll_onsets(pianoroll)
-            data['onsets'] = onsets
 
             if self.save_data:
                 gt_path = self.get_gt_dir(track)
                 np.savez(gt_path,
                          audio=audio,
-                         pianoroll=pianoroll,
-                         onsets=onsets,
+                         pitch=pitch,
                          notes=notes)
 
         return data
@@ -85,10 +81,6 @@ class MAPS(TranscriptionDataset):
     def available_splits():
         return ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb',
                 'ENSTDkAm', 'ENSTDkCl', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
-
-    @staticmethod
-    def dataset_name():
-        return 'MAPS'
 
     @staticmethod
     def download(save_dir):

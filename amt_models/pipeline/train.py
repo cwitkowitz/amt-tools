@@ -5,7 +5,6 @@ from pipeline.evaluate import *
 from tools.utils import *
 
 # Regular imports
-from torch.nn.utils import clip_grad_norm_
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
@@ -35,11 +34,35 @@ def file_sort(file_name):
     return sort_name
 
 
+def validate(model, dataset, estim_dir=None, results_dir=None):
+    # Make sure the model is in evaluation mode
+    model.eval()
+
+    # Create a dictionary to hold the results
+    results = get_results_format()
+
+    with torch.no_grad():
+        # Loop through the validation track ids
+        for track_id in dataset.tracks:
+            # Obtain the track data
+            track = dataset.get_track_data(track_id)
+            # Transcribe the track
+            predictions = transcribe(model, track, estim_dir)
+            # Evaluate the predictions
+            track_results = evaluate(predictions, track, results_dir)
+            # Add the results to the dictionary
+            results = add_result_dicts(results, track_results)
+
+    # Average the results from all tracks
+    results = average_results(results)
+
+    return results
+
+
 def train(model, train_loader, optimizer, iterations,
           checkpoints=0, log_dir='.', val_set=None,
           scheduler=None, resume=True, single_batch=False):
-    # TODO - multi-gpu
-    # TODO - scheduler
+    # TODO - multi_gpu - DataParallel removes ability to call .run_on_batch()
 
     # Initialize a writer to log training loss and validation loss/results
     writer = SummaryWriter(log_dir)
@@ -59,7 +82,6 @@ def train(model, train_loader, optimizer, iterations,
 
             assert start_iter == optimizer_iter
 
-            # TODO - seed random state as well?
             model = torch.load(model_path)
             optimizer.load_state_dict(torch.load(optimizer_path))
 
@@ -76,11 +98,13 @@ def train(model, train_loader, optimizer, iterations,
             batch_loss.backward()
             optimizer.step()
 
+            if scheduler is not None:
+                scheduler.step()
+
             if single_batch:
                 # Move onto the next iteration after the first batch
                 break
 
-        train_loss = np.mean(train_loss)
         writer.add_scalar(f'train/loss', train_loss, global_step=global_iter+1)
 
         # Local iteration of this training sequence
@@ -103,25 +127,7 @@ def train(model, train_loader, optimizer, iterations,
             torch.save(optimizer.state_dict(), os.path.join(log_dir, f'opt-state-{global_iter + 1}.pt'))
 
             if checkpoint and val_set is not None:
-
-                model.eval()
-                with torch.no_grad():
-                    val_results = get_results_format()
-                    for track_id in val_set.tracks:
-                        track = val_set.get_track_data(track_id)
-                        predictions = transcribe(model, track)
-                        track_results = evaluate(predictions, track)
-                        val_results = add_result_dicts(val_results, track_results)
-
-                    val_results = average_results(val_results)
-
-                    # TODO - this and evaluate generalized to a function - add ability to select only f1 scores
-                    for type in val_results.keys():
-                        if isinstance(val_results[type], dict):
-                            for metric in val_results[type].keys():
-                                writer.add_scalar(f'val/{type}/{metric}', val_results[type][metric], global_step=global_iter+1)
-                        else:
-                            writer.add_scalar(f'val/{type}', val_results[type], global_step=global_iter)
-                model.train()
+                val_results = validate(model, val_set)
+                log_results(val_results, writer, global_iter + 1, ['loss', 'f1-score'])
 
     return model

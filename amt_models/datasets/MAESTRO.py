@@ -50,14 +50,11 @@ class MAESTRO_V1(TranscriptionDataset):
             pitches, intervals = arr_to_note_groups(notes)
 
             times = self.data_proc.get_times(data['audio'])
-            pianoroll = midi_groups_to_pianoroll(pitches, intervals, times, PIANO_RANGE)
-            data['pianoroll'] = pianoroll
+            pitch = midi_groups_to_pianoroll(pitches, intervals, times, PIANO_RANGE)
+            data['pitch'] = pitch
 
             notes[:, -1] = librosa.midi_to_hz(notes[:, -1])
             data['notes'] = notes
-
-            onsets = get_pianoroll_onsets(pianoroll)
-            data['onsets'] = onsets
 
             # TODO - bring this out to common?
             if self.save_data:
@@ -66,8 +63,7 @@ class MAESTRO_V1(TranscriptionDataset):
                 os.makedirs(os.path.dirname(gt_path), exist_ok=True)
                 np.savez(gt_path,
                          audio=audio,
-                         pianoroll=pianoroll,
-                         onsets=onsets,
+                         pitch=pitch,
                          notes=notes)
 
         return data
@@ -75,10 +71,6 @@ class MAESTRO_V1(TranscriptionDataset):
     @staticmethod
     def available_splits():
         return ['train', 'validation', 'test']
-
-    @staticmethod
-    def dataset_name():
-        return 'MAESTRO_V1'
 
     @staticmethod
     def download(save_dir):

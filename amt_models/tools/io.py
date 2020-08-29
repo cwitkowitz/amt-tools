@@ -139,3 +139,30 @@ def write_notes(path, pitches, intervals, places=3):
 
     # Close the file
     file.close()
+
+
+def write_results(results, path, verbose=False):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Open the file with writing permissions
+    results_file = open(path, 'w')
+    for type in results.keys():
+        write_and_print(results_file, f'-----{type}-----\n', verbose)
+        if isinstance(results[type], dict):
+            for metric in results[type].keys():
+                write_and_print(results_file, f' {metric} : {results[type][metric]}\n', verbose)
+        else:
+            write_and_print(results_file, f' {type} : {results[type]}\n', verbose)
+        write_and_print(results_file, '', verbose, '\n')
+    # Close the results file
+    results_file.close()
+
+
+def log_results(results, writer, step=0, metrics=None):
+    for type in results.keys():
+        if isinstance(results[type], dict):
+            for metric in results[type].keys():
+                if metrics is None or metric in metrics:
+                    writer.add_scalar(f'val/{type}/{metric}', results[type][metric], global_step=step)
+        else:
+            if metrics is None or type in metrics:
+                writer.add_scalar(f'val/{type}', results[type], global_step=step)

@@ -143,25 +143,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     estim_dir = os.path.join(root_dir, 'estimated')
     results_dir = os.path.join(root_dir, 'results')
 
-    # Put the model in evaluation mode
-    of2.eval()
-
-    # Create a dictionary to hold the evaluation results
-    results = get_results_format()
-
-    # Loop through the testing track ids
-    for track_id in gset_val.tracks:
-        # Obtain the track data
-        track = gset_val.get_track_data(track_id)
-        # Transcribe the track
-        predictions = transcribe(of2, track, estim_dir)
-        # Evaluate the predictions
-        track_results = evaluate(predictions, track, results_dir, True)
-        # Add the results to the dictionary
-        results = add_result_dicts(results, track_results)
-
-    # Average the results from all tracks
-    results = average_results(results)
+    # Get the average results for the testing partition
+    results = validate(of2, gset_val, estim_dir, results_dir)
 
     # Log the average results in metrics.json
     ex.log_scalar('results', results, 0)

@@ -3,6 +3,7 @@ from tools.constants import *
 
 # Regular imports
 import numpy as np
+import mir_eval
 import random
 import torch
 
@@ -84,9 +85,73 @@ def threshold_arr(arr, thr):
     return arr
 
 
-def is_multi(activations):
-    if len(activations.shape) == 3:
-        return True
+def valid_single(activations):
+    single = True
+
+    if len(activations.shape) != 2:
+        single = False
+
+    if isinstance(activations, np.ndarray):
+        if np.max(activations) > 1:
+            single = False
+
+        if np.min(activations) < 0:
+            single = False
+
+    if isinstance(activations, torch.Tensor):
+        if torch.max(activations) > 1:
+            single = False
+
+        if torch.min(activations) < 0:
+            single = False
+
+    return single
+
+
+def valid_multi(activations):
+    multi = True
+
+    if len(activations.shape) != 3:
+        multi = False
+
+    return multi
+
+
+def valid_tabs(activations):
+    """
+    Conceivably, there is a situation where
+    activations could be valid pianoroll and tabs
+    TODO - improve so this corner case doesn't exist
+    """
+
+    tabs = True
+
+    if len(activations.shape) != 2:
+        tabs = False
+
+    # Must be exact integers
+    if isinstance(activations, np.ndarray):
+        if np.sum(activations - np.round(activations)) != 0:
+            tabs = False
+
+    if isinstance(activations, torch.Tensor):
+        if torch.sum(activations - torch.round(activations)) != 0:
+            tabs = False
+
+    return tabs
+
+
+def valid_notes(pitches, intervals):
+    # Validate the intervals
+    valid = librosa.util.valid_intervals(intervals)
+
+    # Validate the pitches - should be in Hz
+    try:
+        mir_eval.util.validate_frequencies(pitches, 5000, 20)
+    except ValueError:
+        valid = False
+
+    return valid
 
 
 # TODO - use this standardized version everywhere

@@ -40,36 +40,18 @@ class GuitarSet(TranscriptionDataset):
             times = self.data_proc.get_times(data['audio'])
 
             jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
-            tabs = load_jams_guitar_tabs(jams_path, times)
-            data['tabs'] = tabs
+            pitch = load_jams_guitar_tabs(jams_path, times)
+            data['pitch'] = pitch
 
             i_ref, p_ref = load_jams_guitar_notes(jams_path)
             notes = note_groups_to_arr(p_ref, i_ref)
             data['notes'] = notes
 
-            # TODO - this causes an error in evaluate since it expected two dims not three
-            # TODO - most of this information is redundant, since it can be derived from tabs
-            multi_pianoroll = tabs_to_multi_pianoroll(tabs)
-            #data['multi_pianoroll'] = multi_pianoroll
-            pianoroll = tabs_to_pianoroll(tabs)
-            data['pianoroll'] = pianoroll
-
-            multi_onsets = get_multi_pianoroll_onsets(multi_pianoroll)
-            #data['multi_onsets'] = multi_onsets
-            #onsets = get_pianoroll_onsets(pianoroll)
-            # TODO - can probably just calculate this later, i.e. in post_proc
-            onsets = multi_pianoroll_to_tabs(multi_onsets)
-            data['onsets'] = onsets
-
             if self.save_data:
                 gt_path = self.get_gt_dir(track)
                 np.savez(gt_path,
                          audio=audio,
-                         tabs=tabs,
-                         #multi_pianoroll=multi_pianoroll,
-                         pianoroll=pianoroll,
-                         #multi_onsets=multi_onsets,
-                         #onsets=onsets,
+                         pitch=pitch,
                          notes=notes)
 
         return data
@@ -77,10 +59,6 @@ class GuitarSet(TranscriptionDataset):
     @staticmethod
     def available_splits():
         return ['00', '01', '02', '03', '04', '05']
-
-    @staticmethod
-    def dataset_name():
-        return 'GuitarSet'
 
     @staticmethod
     def download(save_dir):

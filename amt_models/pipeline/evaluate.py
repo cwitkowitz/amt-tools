@@ -120,19 +120,7 @@ def evaluate(prediction, reference, log_dir=None, verbose=False):
     if log_dir is not None:
         # Construct a path for the track's transcription and separation results
         results_path = os.path.join(log_dir, f'{track_id}.txt')
-        os.makedirs(os.path.dirname(results_path), exist_ok=True)
-        # Open the file with writing permissions
-        results_file = open(results_path, 'w')
-        for type in results.keys():
-            write_and_print(results_file, f'-----{type}-----\n', verbose)
-            if isinstance(results[type], dict):
-                for metric in results[type].keys():
-                    write_and_print(results_file, f' {metric} : {results[type][metric]}\n', verbose)
-            else:
-                write_and_print(results_file, f' {type} : {results[type]}\n', verbose)
-            write_and_print(results_file, '', verbose, '\n')
-        # Close the results file
-        results_file.close()
+        write_results(results, results_path, verbose)
 
     if verbose:
         # Add a newline to the console

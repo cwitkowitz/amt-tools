@@ -7,6 +7,7 @@ from copy import deepcopy
 
 import numpy as np
 import librosa
+import torch
 
 
 def note_groups_to_arr(pitches, intervals):
@@ -101,6 +102,7 @@ def get_multi_pianoroll_offsets(pianoroll):
     pass
 
 
+# TODO - potentially fold notion of tabs into multi_pianoroll or vice versa
 def multi_pianoroll_to_tabs(multi_pianoroll):
     num_frames = multi_pianoroll.shape[-1]
 
@@ -110,6 +112,7 @@ def multi_pianoroll_to_tabs(multi_pianoroll):
     no_note_row = np.ones((1, num_frames))
 
     for i in range(NUM_STRINGS):
+        # TODO - generalize tuning to param
         start_idx = TUNING_MIDI[i, 0] - GUITAR_LOWEST
         pianoroll = multi_pianoroll[i, start_idx : start_idx + NUM_FRETS + 1]
         pianoroll = np.append(pianoroll, no_note_row, axis=0)
@@ -145,12 +148,57 @@ def pianoroll_to_pitchlist(pianoroll):
     return active_pitches
 
 
-# TODO - a function which accepts only feats (for deployment) would be nice
+def to_single(activations):
+    if valid_single(activations):
+        pass
+    elif valid_multi(activations):
+        pass
+    elif valid_tabs(activations):
+        pass
+    else:
+        activations = NotImplementedError
+
+    return activations
+
+
+def to_multi(activations):
+    if valid_single(activations):
+        pass
+    elif valid_multi(activations):
+        pass
+    elif valid_tabs(activations):
+        pass
+    else:
+        activations = NotImplementedError
+
+    return activations
+
+
+def to_tabs(activations):
+    if valid_single(activations):
+        pass
+    elif valid_multi(activations):
+        pass
+    elif valid_tabs(activations):
+        pass
+    else:
+        activations = NotImplementedError
+
+    return activations
+
+
+def feats_to_batch(feats, times):
+    # TODO - a function which accepts only feats (for deployment)
+    pass
+
+
 def track_to_batch(track):
     batch = deepcopy(track)
 
-    # TODO - if no name provided, give it a dummy name
-    batch['track'] = [batch['track']]
+    if 'track' in batch:
+        batch['track'] = [batch['track']]
+    else:
+        batch['track'] = ['no_name']
 
     keys = list(batch.keys())
     for key in keys:
@@ -170,6 +218,7 @@ def track_to_dtype(track, dtype='float32'):
 
     return track
 
+
 def track_to_device(track, device):
     keys = list(track.keys())
 
@@ -178,6 +227,7 @@ def track_to_device(track, device):
             track[key] = track[key].to(device)
 
     return track
+
 
 def track_to_cpu(track):
     keys = list(track.keys())

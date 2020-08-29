@@ -11,6 +11,7 @@ from datasets.MAPS import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
@@ -126,6 +127,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Initialize a new optimizer for the model parameters
     optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
+    # Decay the learning rate over the course of training
+    scheduler = StepLR(optimizer, iterations, 0.95)
 
     print('Training classifier...')
 
@@ -138,32 +141,16 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          optimizer=optimizer,
                          iterations=iterations,
                          checkpoints=checkpoints,
-                         log_dir=model_dir)
+                         log_dir=model_dir,
+                         scheduler=scheduler)
 
     print('Transcribing and evaluating test partition...')
 
     estim_dir = os.path.join(root_dir, 'estimated')
     results_dir = os.path.join(root_dir, 'results')
 
-    # Put the model in evaluation mode
-    onsetsframes.eval()
-
-    # Create a dictionary to hold the evaluation results
-    results = get_results_format()
-
-    # Loop through the testing track ids
-    for track_id in maps_test.tracks:
-        # Obtain the track data
-        track = maps_test.get_track_data(track_id)
-        # Transcribe the track
-        predictions = transcribe(onsetsframes, track, estim_dir)
-        # Evaluate the predictions
-        track_results = evaluate(predictions, track, results_dir, True)
-        # Add the results to the dictionary
-        results = add_result_dicts(results, track_results)
-
-    # Average the results from all tracks
-    results = average_results(results)
+    # Get the average results for the testing partition
+    results = validate(onsetsframes, maps_test, estim_dir, results_dir)
 
     # Log the average results in metrics.json
     ex.log_scalar('results', results, 0)

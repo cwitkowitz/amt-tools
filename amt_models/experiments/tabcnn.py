@@ -14,7 +14,6 @@ from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
-# TODO - multi-threading
 ex = Experiment('TabCNN w/ CQT on GuitarSet 6-fold Cross Validation')
 
 @ex.config
@@ -137,32 +136,16 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                        optimizer=optimizer,
                        iterations=iterations,
                        checkpoints=checkpoints,
-                       log_dir=model_dir)
+                       log_dir=model_dir,
+                       val_set=gset_test)
 
         print('Transcribing and evaluating test partition...')
 
         estim_dir = os.path.join(root_dir, 'estimated')
         results_dir = os.path.join(root_dir, 'results')
 
-        # Put the model in evaluation mode
-        tabcnn.eval()
-
-        # Create a dictionary to hold the evaluation results
-        fold_results = get_results_format()
-
-        # Loop through the testing track ids
-        for track_id in gset_test.tracks:
-            # Obtain the track data
-            track = gset_test.get_track_data(track_id)
-            # Transcribe the track
-            predictions = transcribe(tabcnn, track, estim_dir)
-            # Evaluate the predictions
-            track_results = evaluate(predictions, track, results_dir)
-            # Add the results to the dictionary
-            fold_results = add_result_dicts(fold_results, track_results)
-
-        # Average the results from all tracks
-        fold_results = average_results(fold_results)
+        # Get the average results for the fold
+        fold_results = validate(tabcnn, gset_test, estim_dir, results_dir)
 
         # Log the average results for the fold in metrics.json
         ex.log_scalar('fold_results', fold_results, k)

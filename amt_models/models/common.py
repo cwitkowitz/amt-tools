@@ -153,7 +153,6 @@ class TranscriptionModel(nn.Module):
         Returns
         ----------
         tag : str
-          TODO - make sure this is a string
           Name of the child class calling the function
         """
 
@@ -451,4 +450,4 @@ class LogisticBank(OutputLayer):
         return final_output
 
 
-# TODO - LogisticGroups - might be able to just use LogisticBank instead
+# TODO - LogisticGroups - might be able to make child of LogisticBank instead

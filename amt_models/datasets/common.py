@@ -7,18 +7,14 @@ from tools.utils import *
 # Regular imports
 from torch.utils.data import Dataset
 from abc import abstractmethod
-from random import randint
 from copy import deepcopy
 from tqdm import tqdm
 
 import numpy as np
-import mir_eval
-import librosa
 import shutil
 import os
 
-# TODO - MusicNet already implemented - add an easy ref and maybe some functions to make it compatible
-# TODO - validate methods for each data entry - such as tabs, notes, frames, etc.
+# TODO - MusicNet already implemented - add an easy ref and maybe some functions to make it compatible or redo
 # TODO - implement functions for extending based on sustain pedal - any other bells or whistles
 # TODO - ComboDataset
 
@@ -58,7 +54,6 @@ class TranscriptionDataset(Dataset):
         save_data : bool
           Flag to save data to memory after calculating once
         seed : int
-          TODO - this is currently unused - I should use it instead of assuming a seed has been set
           The seed for random number generation
         """
 
@@ -77,13 +72,17 @@ class TranscriptionDataset(Dataset):
         if self.splits is None:
             self.splits = self.available_splits()
 
-        self.hop_length = hop_length
-        self.sample_rate = sample_rate
-
         self.data_proc = data_proc
         # Default the feature extraction to a plain CQT if none was provided
         if self.data_proc is None:
             self.data_proc = CQT()
+
+        # TODO - having this in here and data_proc might be redundant
+        self.hop_length = hop_length
+        assert self.hop_length == self.data_proc.hop_length
+
+        self.sample_rate = sample_rate
+        assert self.sample_rate == self.data_proc.sample_rate
 
         self.num_frames = num_frames
         # Determine the number of samples per data point
@@ -110,6 +109,9 @@ class TranscriptionDataset(Dataset):
         self.store_data = store_data
         self.save_data = save_data
 
+        # Initialize a random number generator for the dataset
+        self.rng = np.random.RandomState(seed)
+
         self.tracks = []
         # Aggregate all the track names from the selected splits
         for split in self.splits:
@@ -120,7 +122,6 @@ class TranscriptionDataset(Dataset):
             self.data = {}
             for track in tqdm(self.tracks):
                 self.data[track] = self.load(track)
-                assert self.validate_track(self.data[track])
 
     def __len__(self):
         """
@@ -178,17 +179,17 @@ class TranscriptionDataset(Dataset):
             # If so, load the features
             feats_dict = np.load(feats_path)
             feats = feats_dict['feats']
-            times = feats_dict['times']
         else:
             # If not, calculate the features
             feats = self.data_proc.process_audio(data['audio'])
-            # TODO - is there any point to saving times? - it's probably a quick calculation
-            times = self.data_proc.get_times(data['audio'])
 
             if self.save_data:
                 # Save the features to memory
                 os.makedirs(os.path.dirname(feats_path), exist_ok=True)
-                np.savez(feats_path, feats=feats, times=times)
+                np.savez(feats_path, feats=feats)
+
+        # It is faster to just calculate the frame times instead of loading
+        times = self.data_proc.get_times(data['audio'])
 
         # Add the features to the data dictionary
         data['feats'] = feats
@@ -201,7 +202,6 @@ class TranscriptionDataset(Dataset):
 
         return data
 
-    # TODO - I probably need to decouple this sh - load_features(), get_sample_start(), slice_data(), slice_notes() - last one in utils
     def get_track_data(self, track_id, sample_start=None, seq_length=None, snap_to_frame=True):
         """
         Get the features and ground truth for a track within a time interval.
@@ -245,8 +245,7 @@ class TranscriptionDataset(Dataset):
 
         # If a specific starting sample was not provided, sample one randomly
         if sample_start is None:
-            # TODO - boolean for training vs. testing to determing which RNG to call
-            sample_start = randint(0, len(data['audio']) - seq_length)
+            sample_start = self.rng.randint(0, len(data['audio']) - seq_length)
 
         # Determine the frames contained in this slice
         frame_start = sample_start // self.hop_length
@@ -259,18 +258,8 @@ class TranscriptionDataset(Dataset):
         # Calculate the last sample included in the slice
         sample_end = sample_start + seq_length
 
-        # Slice the features
+        # Slice the audio
         data['audio'] = data['audio'][..., sample_start : sample_end]
-        data['feats'] = data['feats'][..., frame_start : frame_end]
-        data['times'] = data['times'][..., frame_start : frame_end + 1]
-
-        # Slice the ground-truth
-        if 'tabs' in data.keys():
-            data['tabs'] = data['tabs'][..., frame_start: frame_end]
-        if 'pianoroll' in data.keys():
-            data['pianoroll'] = data['pianoroll'][..., frame_start: frame_end]
-        if 'onsets' in data.keys():
-            data['onsets'] = data['onsets'][..., frame_start: frame_end]
 
         # Determine if there is note ground-truth and get it
         if 'notes' in data.keys():
@@ -295,10 +284,20 @@ class TranscriptionDataset(Dataset):
             # Clip offsets at the slice stop time
             notes[:, 1] = np.minimum(notes[:, 1], sec_stop)
 
-            # Offset the note intervals by the slice start time
-            #notes[:, 0] = notes[:, 0] - sec_start
-            #notes[:, 1] = notes[:, 1] - sec_start
             data['notes'] = notes
+
+        # Determine which entries remain
+        keys = list(data.keys())
+        keys.remove('audio')
+        keys.remove('notes')
+
+        # Slice remaining entries
+        for key in keys:
+            if isinstance(data[key], np.ndarray):
+                if key == 'times':
+                    data[key] = data[key][..., frame_start : frame_end + 1]
+                else:
+                    data[key] = data[key][..., frame_start : frame_end]
 
         # Convert all numpy arrays in the data dictionary to float32
         data = track_to_dtype(data, dtype='float32')
@@ -307,7 +306,8 @@ class TranscriptionDataset(Dataset):
 
         return data
 
-    def validate_track(self, data):
+    @staticmethod
+    def validate_track(data):
         """
         Get the features and ground truth for a track within a time interval.
 
@@ -324,20 +324,37 @@ class TranscriptionDataset(Dataset):
 
         valid = True
 
-        # TODO - validate each field in some way
+        keys = list(data.keys())
 
-        if 'notes' in data.keys():
+        if 'audio' in keys:
+            valid = valid and (len(data['audio'].shape) == 1)
+
+        if 'pitch' in keys:
+            pitch = data['pitch']
+
+            if not valid_single(pitch) and not valid_multi(pitch) and not valid_tabs(pitch):
+                valid = False
+
+        if 'feats' in keys:
+            num_frames = data['feats'].shape[-1]
+
+            # Make sure features have channel, num_feats, and num_frames dimension
+            valid = valid and (len(data['feats'].shape) == 3)
+
+            valid = valid and ('times' in keys)
+            if 'times' in keys:
+                valid = valid and (len(data['times'].shape) == 1)
+                valid = valid and (data['times'].size == num_frames + 1)
+
+        if 'notes' in keys:
             # Convert the dictionary representation into standard representation
             pitches, intervals = arr_to_note_groups(data['notes'])
+            valid = valid and valid_notes(pitches, intervals)
 
-            # Validate the intervals
-            valid = valid and librosa.util.valid_intervals(intervals)
-
-            # Validate the pitches - should be in Hz
-            try:
-                mir_eval.util.validate_frequencies(pitches, 5000, 20)
-            except ValueError:
-                valid = False
+        for key in keys:
+            entry = data[key]
+            if isinstance(entry, np.ndarray):
+                valid = valid and (entry.dtype == 'float32')
 
         return valid
 
@@ -389,8 +406,6 @@ class TranscriptionDataset(Dataset):
 
         # Add the track ID to the dictionary
         data['track'] = track
-
-        # TODO - can add sample_rate and hop_length if necessary
 
         return data
 
@@ -451,15 +466,20 @@ class TranscriptionDataset(Dataset):
 
         return NotImplementedError
 
-    @staticmethod
-    @abstractmethod
-    def dataset_name():
+    @classmethod
+    def dataset_name(cls):
         """
-        Get an appropriate name for the dataset.
-        """
-        # TODO - shouldn't this be cls.name just like the common class for models and features?
+        Retrieve an appropriate tag, the class name, for the dataset.
 
-        return NotImplementedError
+        Returns
+        ----------
+        tag : str
+          Name of the child class calling the function
+        """
+
+        tag = cls.__name__
+
+        return tag
 
     @staticmethod
     @abstractmethod

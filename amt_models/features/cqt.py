@@ -10,9 +10,7 @@ import librosa
 
 class CQT(FeatureModule):
     def __init__(self, sample_rate=44100, hop_length=512, fmin=None, n_bins=84, bins_per_octave=12):
-        super().__init__(sample_rate)
-
-        self.hop_length = hop_length
+        super().__init__(sample_rate, hop_length)
 
         self.fmin = fmin
         if self.fmin is None:

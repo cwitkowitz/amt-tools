@@ -8,11 +8,10 @@ import librosa
 
 class MelSpec(FeatureModule):
     def __init__(self, sample_rate=16000, n_mels=229, n_fft=2048, hop_length=512, htk=False, norm=None):
-        super().__init__(sample_rate)
+        super().__init__(sample_rate, hop_length)
 
         self.n_mels = n_mels
         self.n_fft = n_fft
-        self.hop_length = hop_length
         self.htk = htk
         self.norm = norm
 

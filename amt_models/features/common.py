@@ -14,7 +14,7 @@ class FeatureModule:
     Implements a generic music feature extraction module.
     """
 
-    def __init__(self, sample_rate):
+    def __init__(self, sample_rate, hop_length):
         """
         Initialize parameters common to all feature extraction modules.
 
@@ -22,9 +22,12 @@ class FeatureModule:
         ----------
         sample_rate : int or float
           Assumed sampling rate for all audio
+        hop_length : int or float
+          Number of samples between feature frames
         """
 
         self.sample_rate = sample_rate
+        self.hop_length = hop_length
 
     @abstractmethod
     def get_expected_frames(self, audio):
@@ -89,7 +92,6 @@ class FeatureModule:
         Returns
         ----------
         tag : str
-          TODO - make sure this is a string
           Name of the child class calling the function
         """
 
