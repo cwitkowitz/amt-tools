@@ -142,8 +142,9 @@ class TranscriptionModel(nn.Module):
 
         return preds
 
-    # TODO - special_steps() function
-    # clip_grad_norm_(model.parameters(), 3)
+    @abstractmethod
+    def special_steps(self):
+        return None
 
     @classmethod
     def model_name(cls):

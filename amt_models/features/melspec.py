@@ -7,8 +7,9 @@ import librosa
 
 
 class MelSpec(FeatureModule):
-    def __init__(self, sample_rate=16000, n_mels=229, n_fft=2048, hop_length=512, htk=False, norm=None):
-        super().__init__(sample_rate, hop_length)
+    def __init__(self, sample_rate=16000, n_mels=229, n_fft=2048,
+                 hop_length=512, htk=False, norm=None, decibels=True):
+        super().__init__(sample_rate, hop_length, decibels)
 
         self.n_mels = n_mels
         self.n_fft = n_fft
@@ -27,19 +28,26 @@ class MelSpec(FeatureModule):
         return sample_range
 
     def process_audio(self, audio):
-        mel = librosa.feature.melspectrogram(audio, self.sample_rate, n_mels=self.n_mels,
-                                             n_fft=self.n_fft, hop_length=self.hop_length,
-                                             htk=self.htk, norm=self.norm)
+        mel = librosa.feature.melspectrogram(y=audio,
+                                             sr=self.sample_rate,
+                                             n_mels=self.n_mels,
+                                             n_fft=self.n_fft,
+                                             hop_length=self.hop_length,
+                                             htk=self.htk,
+                                             norm=self.norm)
 
-        # TODO - allow bypass and abstract this to a parent class
-        mel_log_db = 1 + librosa.core.power_to_db(mel, ref=np.max) / 80
+        if self.decibels:
+            mel = 1 + librosa.core.power_to_db(mel, ref=np.max) / 80
 
-        # Add a channel dimension
-        mel_log_db = np.expand_dims(mel_log_db, axis=0)
+        mel = super().post_proc(mel)
 
-        return mel_log_db
+        return mel
 
     def get_times(self, audio):
         num_frames = self.get_expected_frames(audio)
         frame_idcs = np.arange(num_frames + 1)
-        return librosa.frames_to_time(frame_idcs, self.sample_rate, self.hop_length, self.n_fft)
+        times = librosa.frames_to_time(frames=frame_idcs,
+                                       sr=self.sample_rate,
+                                       hop_length=self.hop_length,
+                                       n_fft=self.n_fft)
+        return times

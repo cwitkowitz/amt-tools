@@ -87,14 +87,14 @@ def write_and_print(file, text, verbose = True, end=''):
 
 
 # TODO - check for NoneType
-def write_frames(path, pianoroll, times, places=3):
+def write_pitch(path, pitch, times, places=3):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     # Open a file at the path with writing permissions
     file = open(path, 'w')
 
     for i in range(times.size): # For each frame
         # Determine the activations across this frame
-        active_pitches = librosa.midi_to_hz(np.where(pianoroll[:, i] != 0)[0] + infer_lowest_note(pianoroll))
+        active_pitches = librosa.midi_to_hz(np.where(pitch[:, i] != 0)[0] + infer_lowest_note(pitch))
 
         # Create a line of the form 'frame_time pitch1 pitch2 ...'
         line = str(round(times[i], places)) + ' ' + str(active_pitches)[1: -1]
@@ -112,6 +112,18 @@ def write_frames(path, pianoroll, times, places=3):
 
     # Close the file
     file.close()
+
+
+def write_pitch_multi(log_dir, multi, times, labels=None, places=3):
+    multi_num = multi.shape[0]
+
+    for i in range(multi_num):
+        if labels is None:
+            path = os.path.join(log_dir, i, '.txt')
+        else:
+            path = os.path.join(log_dir, labels[i], '.txt')
+
+        write_pitch(path, multi[i], times, places)
 
 
 # TODO - check for NoneType
@@ -139,6 +151,19 @@ def write_notes(path, pitches, intervals, places=3):
 
     # Close the file
     file.close()
+
+
+def write_notes_multi(log_dir, notes_multi, labels=None, places=3):
+    multi_num = len(notes_multi)
+
+    for i in range(multi_num):
+        if labels is None:
+            path = os.path.join(log_dir, i, '.txt')
+        else:
+            path = os.path.join(log_dir, labels[i], '.txt')
+
+        pitches, intervals = notes_multi[i]
+        write_notes(path, pitches, intervals, places)
 
 
 def write_results(results, path, verbose=False):

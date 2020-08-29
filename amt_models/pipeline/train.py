@@ -15,8 +15,8 @@ import os
 def file_sort(file_name):
     """
     Augment file names for sorting within the models directory. Since, e.g.,
-    /'500/' will by default be scored as higher than /'1500/', we need to fix
-    this by adding the length of the file to the beginning of the string.
+    /'500/' will by default be scored as higher than /'1500/'. One way to fix
+    this is by adding the length of the file to the beginning of the string.
 
     Parameters
     ----------
@@ -29,12 +29,29 @@ def file_sort(file_name):
       Character count concatenated with original file name
     """
 
-    # Takes into account the decimal place by adding string length
+    # Takes into account the number of digits by adding string length
     sort_name = str(len(file_name)) + file_name
+
     return sort_name
 
 
 def validate(model, dataset, estim_dir=None, results_dir=None):
+    """
+    Augment file names for sorting within the models directory. Since, e.g.,
+    /'500/' will by default be scored as higher than /'1500/'. One way to fix
+    this is by adding the length of the file to the beginning of the string.
+
+    Parameters
+    ----------
+    file_name: str
+      Path being sorted
+
+    Returns
+    ----------
+    sort_name : str
+      Character count concatenated with original file name
+    """
+
     # Make sure the model is in evaluation mode
     model.eval()
 
@@ -101,10 +118,14 @@ def train(model, train_loader, optimizer, iterations,
             if scheduler is not None:
                 scheduler.step()
 
+            model.special_steps()
+
             if single_batch:
                 # Move onto the next iteration after the first batch
                 break
 
+        # Average the loss from all of the batches
+        train_loss = np.mean(train_loss)
         writer.add_scalar(f'train/loss', train_loss, global_step=global_iter+1)
 
         # Local iteration of this training sequence

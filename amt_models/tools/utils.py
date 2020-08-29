@@ -85,6 +85,14 @@ def threshold_arr(arr, thr):
     return arr
 
 
+def valid_activations(activations):
+    valid = valid_single(activations)
+    valid = valid or valid_multi(activations)
+    valid = valid or valid_tabs(activations)
+
+    return valid
+
+
 def valid_single(activations):
     single = True
 

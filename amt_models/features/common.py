@@ -2,10 +2,12 @@
 # None of my imports used
 
 # Regular imports
+from librosa.core import power_to_db
 from abc import abstractmethod
 
+import numpy as np
+
 # TODO - feature stacking - FeatureCombo class
-# TODO - put framify here - another param (frame_span?)
 # TODO - add filterbank learning module
 
 
@@ -14,7 +16,7 @@ class FeatureModule:
     Implements a generic music feature extraction module.
     """
 
-    def __init__(self, sample_rate, hop_length):
+    def __init__(self, sample_rate, hop_length, decibels=True):
         """
         Initialize parameters common to all feature extraction modules.
 
@@ -24,10 +26,13 @@ class FeatureModule:
           Assumed sampling rate for all audio
         hop_length : int or float
           Number of samples between feature frames
+        decibels : bool
+          TODO
         """
 
         self.sample_rate = sample_rate
         self.hop_length = hop_length
+        self.decibels = decibels
 
     @abstractmethod
     def get_expected_frames(self, audio):
@@ -69,6 +74,12 @@ class FeatureModule:
         """
 
         return NotImplementedError
+
+    def post_proc(self, feats):
+        # Add a channel dimension
+        feats = np.expand_dims(feats, axis=0)
+
+        return feats
 
     @abstractmethod
     def get_times(self, audio):

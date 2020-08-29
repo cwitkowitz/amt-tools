@@ -76,7 +76,7 @@ class TabCNN(TranscriptionModel):
             # 2nd dropout
             nn.Dropout(dp2),
             # 2nd fully-connected
-            SoftmaxGroups(nn1, NUM_STRINGS, NUM_FRETS + 2, 'tabs')
+            SoftmaxGroups(nn1, NUM_STRINGS, NUM_FRETS + 2, 'pitch')
         )
 
     def pre_proc(self, batch):

@@ -96,9 +96,12 @@ class OnsetsFrames(TranscriptionModel):
 
         return preds
 
+    def special_steps(self):
+        # TODO - parameterize
+        nn.utils.clip_grad_norm_(self.parameters(), 3)
 
 class OnsetsFrames2(OnsetsFrames):
-    def __init__(self, dim_in, dim_out, model_complexity=2, device='cpu'):
+    def __init__(self, dim_in, dim_out, model_complexity=3, device='cpu'):
         super().__init__(dim_in, dim_out, model_complexity, device)
 
         # TODO - add offset head

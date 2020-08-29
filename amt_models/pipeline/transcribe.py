@@ -42,9 +42,12 @@ def inhibit_activations(activations, times, t_window=0.050):
     return activations
 
 
+# TODO - remember to turn off these params when attempting SOTA recreation
 def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_length=False):
     if onsets is None:
         onsets = get_pianoroll_onsets(frames)
+    else:
+        assert valid_single(onsets)
 
     if hard_inhibition:
         onsets = inhibit_activations(onsets, times, 0.05)
@@ -90,35 +93,21 @@ def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_leng
     return pitches, intervals
 
 
-def transcribe_tabs(tabs_pianoroll, times, tabs_dir=None, tabs_onsets=None):
-    preds = {}
+def predict_multi(pitch_multi, times, onsets_multi=None):
+    multi_num = pitch_multi.shape[0]
 
-    multi_pianoroll = tabs_to_multi_pianoroll(tabs_pianoroll)
-    #preds['multi_pianoroll'] = multi_pianoroll
-
-    pianoroll = tabs_to_pianoroll(tabs_pianoroll)
-    preds['pianoroll'] = pianoroll
-
-    if tabs_onsets is None:
-        multi_onsets = [None] * NUM_STRINGS
+    if onsets_multi is None:
+        onsets_multi = [None] * multi_num
     else:
-        multi_onsets = tabs_to_multi_pianoroll(tabs_onsets)
+        assert valid_multi(onsets_multi)
 
-    all_pitches, all_ints = [], []
+    notes_multi = []
     for i in range(NUM_STRINGS):
-        pitches, ints = predict_notes(multi_pianoroll[i], times, multi_onsets[i])
+        pitches, intervals = predict_notes(pitch_multi[i], times, onsets_multi[i])
 
-        all_pitches += list(pitches)
-        all_ints += list(ints)
+        notes_multi += [[pitches, intervals]]
 
-        if tabs_dir is not None:
-            tab_txt_path = os.path.join(tabs_dir, f'{i}.txt')
-            write_notes(tab_txt_path, pitches, ints)
-
-    all_notes = note_groups_to_arr(all_pitches, all_ints)
-    preds['notes'] = all_notes
-
-    return preds
+    return notes_multi
 
 
 def transcribe(model, track, log_dir=None):
@@ -136,41 +125,52 @@ def transcribe(model, track, log_dir=None):
         times = track['times']
         preds['times'] = times
 
-        # TODO - this might require a significant rework
-        pianoroll = None
-        if 'pianoroll' in preds.keys():
-            pianoroll = preds['pianoroll']
+        pitch = None
+        if 'pitch' in preds.keys():
+            pitch = preds['pitch']
+            preds.pop('pitch')
 
         onsets = None
         if 'onsets' in preds.keys():
             onsets = preds['onsets']
+            preds.pop('onsets')
 
-        if 'tabs' in preds.keys():
-            tabs = preds['tabs']
+        if pitch is not None and valid_activations(pitch):
+            if valid_tabs(pitch):
+                pitch = to_multi(pitch)
 
-            if log_dir is not None:
-                tabs_dir = os.path.join(log_dir, 'tabs', f'{track_id}')
-            else:
-                tabs_dir = None
+            if valid_multi(pitch):
+                preds['pitch_multi'] = pitch
 
-            preds.update(transcribe_tabs(tabs, times, tabs_dir, onsets))
-        else:
-            all_pitches, all_ints = predict_notes(pianoroll, times, onsets)
-            all_notes = note_groups_to_arr(all_pitches, all_ints)
-            preds['notes'] = all_notes
+                if log_dir is not None:
+                    pitch_dir = os.path.join(log_dir, 'pitch_multi', f'{track_id}')
+                    write_pitch_multi(pitch_dir, pitch, times[:-1], TUNING)
 
-        all_pitches, all_ints = arr_to_note_groups(preds['notes'])
-        pianoroll = preds['pianoroll']
+                notes_multi = predict_multi(pitch, times, onsets)
+                preds['notes_multi']
+
+                if log_dir is not None:
+                    notes_dir = os.path.join(log_dir, 'notes_multi', f'{track_id}')
+                    write_notes_multi(notes_dir, notes_multi, TUNING)
+
+                pitch = to_single(pitch)
+                if onsets is not None:
+                    onsets = to_single(onsets)
+
+            if valid_single(pitch):
+                preds['pitch_single'] = pitch
+
+                if log_dir is not None:
+                    pitch_path = os.path.join(log_dir, 'pitch_single', f'{track_id}.txt')
+                    write_pitch(pitch_path, pitch, times[:-1], TUNING)
+
+                note_pitches, note_intervals = predict_notes(pitch, times, onsets)
+                preds['notes_single'] = (note_pitches, note_intervals)
+
+                if log_dir is not None:
+                    notes_path = os.path.join(log_dir, 'notes_single', f'{track_id}.txt')
+                    write_pitch(notes_path, note_pitches, note_intervals, TUNING)
 
         # TODO - option to redo pianoroll from note predictions
-
-        if log_dir is not None:
-            # Construct the paths for frame- and note-wise predictions
-            frm_txt_path = os.path.join(log_dir, 'pianoroll', f'{track_id}.txt')
-            nte_txt_path = os.path.join(log_dir, 'notes', f'{track_id}.txt')
-
-            # Save the predictions to file
-            write_frames(frm_txt_path, pianoroll, times[:-1])
-            write_notes(nte_txt_path, all_pitches, all_ints)
 
     return preds

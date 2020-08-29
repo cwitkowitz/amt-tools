@@ -77,11 +77,12 @@ class TranscriptionDataset(Dataset):
         if self.data_proc is None:
             self.data_proc = CQT()
 
-        # TODO - having this in here and data_proc might be redundant
         self.hop_length = hop_length
-        assert self.hop_length == self.data_proc.hop_length
-
         self.sample_rate = sample_rate
+
+        # This is redundant - but it's good to have in both places
+        # Make sure there is agreement between dataset and feature module
+        assert self.hop_length == self.data_proc.hop_length
         assert self.sample_rate == self.data_proc.sample_rate
 
         self.num_frames = num_frames
@@ -332,7 +333,7 @@ class TranscriptionDataset(Dataset):
         if 'pitch' in keys:
             pitch = data['pitch']
 
-            if not valid_single(pitch) and not valid_multi(pitch) and not valid_tabs(pitch):
+            if not valid_activations(pitch):
                 valid = False
 
         if 'feats' in keys:

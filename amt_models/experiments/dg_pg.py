@@ -70,7 +70,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     # Construct the MAESTRO splits
     train_split = ['train']
 
-    # Validate and evaluate on the full GuitarSet data TODO - for now
+    # Validate and evaluate on the full GuitarSet data TODO - for now (not good practice to validate on test)
     val_split = GuitarSet.available_splits()
 
     # Processing parameters

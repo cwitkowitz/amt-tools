@@ -5,7 +5,6 @@ from tools.conversion import *
 from tools.io import *
 
 # Regular imports
-from mir_eval.io import load_valued_intervals
 from pretty_midi import *
 
 import pandas as pd
@@ -74,4 +73,5 @@ class MAESTRO_V1(TranscriptionDataset):
 
     @staticmethod
     def download(save_dir):
+        # TODO
         return NotImplementedError

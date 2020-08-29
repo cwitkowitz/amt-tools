@@ -9,8 +9,9 @@ import librosa
 
 
 class CQT(FeatureModule):
-    def __init__(self, sample_rate=44100, hop_length=512, fmin=None, n_bins=84, bins_per_octave=12):
-        super().__init__(sample_rate, hop_length)
+    def __init__(self, sample_rate=44100, hop_length=512, fmin=None,
+                 n_bins=84, bins_per_octave=12, decibels=True):
+        super().__init__(sample_rate, hop_length, decibels)
 
         self.fmin = fmin
         if self.fmin is None:
@@ -67,20 +68,26 @@ class CQT(FeatureModule):
         return sample_range
 
     def process_audio(self, audio):
-        cqt = librosa.cqt(audio, self.sample_rate, self.hop_length, self.fmin, self.n_bins, self.bins_per_octave)
+        cqt = librosa.cqt(y=audio,
+                          sr=self.sample_rate,
+                          hop_length=self.hop_length,
+                          fmin=self.fmin,
+                          n_bins=self.n_bins,
+                          bins_per_octave=self.bins_per_octave)
 
-        cqt_mag = np.abs(cqt)
+        cqt = np.abs(cqt)
 
-        # TODO - allow bypass
-        cqt_log_db = 1 + librosa.core.amplitude_to_db(cqt_mag, ref=np.max) / 80
+        if self.decibels:
+            cqt = 1 + librosa.core.amplitude_to_db(cqt, ref=np.max) / 80
 
-        # Add a channel dimension
-        # TODO - do this in parent class - it always needs to be run
-        cqt_log_db = np.expand_dims(cqt_log_db, axis=0)
+        cqt = super().post_proc(cqt)
 
-        return cqt_log_db
+        return cqt
 
     def get_times(self, audio):
         num_frames = self.get_expected_frames(audio)
         frame_idcs = np.arange(num_frames + 1)
-        return librosa.frames_to_time(frame_idcs, self.sample_rate, self.hop_length)
+        times = librosa.frames_to_time(frames=frame_idcs,
+                                       sr=self.sample_rate,
+                                       hop_length=self.hop_length)
+        return times
