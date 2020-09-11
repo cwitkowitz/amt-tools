@@ -11,10 +11,6 @@ import torch
 import os
 
 
-def get_num_nzs(arr):
-    return len(arr.nonzero()[0])
-
-
 def filter_short_notes(pitches, intervals, t_trh=0.250):
     note_arr = note_groups_to_arr(pitches, intervals)
     durations = note_arr[:, 1] - note_arr[:, 0]
@@ -26,8 +22,8 @@ def filter_short_notes(pitches, intervals, t_trh=0.250):
 def inhibit_activations(activations, times, t_window=0.050):
     num_nz_prev = 0
 
-    while num_nz_prev != get_num_nzs(activations):
-        num_nz_prev = get_num_nzs(activations)
+    while num_nz_prev != len(activations.nonzero()[0]):
+        num_nz_prev = len(activations.nonzero()[0])
         # TODO - could remove nonzeros which have already been processed
         nzs = activations.nonzero()
         for pitch, inhib_start in zip(nzs[0], nzs[1]):
@@ -43,11 +39,11 @@ def inhibit_activations(activations, times, t_window=0.050):
 
 
 # TODO - remember to turn off these params when attempting SOTA recreation
-def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_length=False):
+def predict_notes(frames, times, lowest=0, onsets=None, hard_inhibition=False, filter_length=False):
     if onsets is None:
         onsets = get_pianoroll_onsets(frames)
-    else:
-        assert valid_single(onsets)
+    #else:
+    #    assert valid_single(onsets)
 
     if hard_inhibition:
         onsets = inhibit_activations(onsets, times, 0.05)
@@ -69,7 +65,7 @@ def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_leng
                 break
 
         # Add the frequency to the list
-        pitches.append(librosa.midi_to_hz(pitch + infer_lowest_note(frames)))
+        pitches.append(librosa.midi_to_hz(pitch + lowest))
 
         # Add the interval to the list
         onset, offset = times[onset], times[offset]
@@ -93,24 +89,24 @@ def predict_notes(frames, times, onsets=None, hard_inhibition=False, filter_leng
     return pitches, intervals
 
 
-def predict_multi(pitch_multi, times, onsets_multi=None):
+def predict_multi(pitch_multi, times, lowest=0, onsets_multi=None):
     multi_num = pitch_multi.shape[0]
 
     if onsets_multi is None:
         onsets_multi = [None] * multi_num
-    else:
-        assert valid_multi(onsets_multi)
+    #else:
+    #    assert valid_multi(onsets_multi)
 
     notes_multi = []
-    for i in range(NUM_STRINGS):
-        pitches, intervals = predict_notes(pitch_multi[i], times, onsets_multi[i])
+    for i in range(multi_num):
+        pitches, intervals = predict_notes(pitch_multi[i], times, lowest, onsets_multi[i])
 
         notes_multi += [[pitches, intervals]]
 
     return notes_multi
 
 
-def transcribe(model, track, log_dir=None):
+def transcribe(model, track, profile, log_dir=None):
     # Just in case
     model.eval()
 
@@ -135,41 +131,45 @@ def transcribe(model, track, log_dir=None):
             onsets = preds['onsets']
             preds.pop('onsets')
 
-        if pitch is not None and valid_activations(pitch):
-            if valid_tabs(pitch):
-                pitch = to_multi(pitch)
+        if pitch is not None and valid_activations(pitch, profile):
+            if valid_tabs(pitch, profile):
+                pitch = to_multi(pitch, profile)
 
-            if valid_multi(pitch):
+            if onsets is not None:
+                if valid_tabs(onsets, profile):
+                    onsets = to_multi(onsets, profile)
+
+            if valid_multi(pitch, profile):
                 preds['pitch_multi'] = pitch
 
                 if log_dir is not None:
-                    pitch_dir = os.path.join(log_dir, 'pitch_multi', f'{track_id}')
-                    write_pitch_multi(pitch_dir, pitch, times[:-1], TUNING)
+                    pitch_dir = os.path.join(log_dir, f'{track_id}', 'pitch_multi')
+                    write_pitch_multi(pitch_dir, pitch, times[:-1], profile.low, profile.tuning)
 
-                notes_multi = predict_multi(pitch, times, onsets)
-                preds['notes_multi']
+                notes_multi = predict_multi(pitch, times, profile.low, onsets)
+                preds['notes_multi'] = notes_multi
 
                 if log_dir is not None:
-                    notes_dir = os.path.join(log_dir, 'notes_multi', f'{track_id}')
-                    write_notes_multi(notes_dir, notes_multi, TUNING)
+                    notes_dir = os.path.join(log_dir, f'{track_id}', 'notes_multi')
+                    write_notes_multi(notes_dir, notes_multi, profile.tuning)
 
-                pitch = to_single(pitch)
+                pitch = to_single(pitch, profile)
                 if onsets is not None:
-                    onsets = to_single(onsets)
+                    onsets = to_single(onsets, profile)
 
-            if valid_single(pitch):
+            if valid_single(pitch, profile):
                 preds['pitch_single'] = pitch
 
                 if log_dir is not None:
-                    pitch_path = os.path.join(log_dir, 'pitch_single', f'{track_id}.txt')
-                    write_pitch(pitch_path, pitch, times[:-1], TUNING)
+                    pitch_path = os.path.join(log_dir, f'{track_id}', 'pitch_single.txt')
+                    write_pitch(pitch_path, pitch, times[:-1], profile.low)
 
-                note_pitches, note_intervals = predict_notes(pitch, times, onsets)
+                note_pitches, note_intervals = predict_notes(pitch, times, profile.low, onsets)
                 preds['notes_single'] = (note_pitches, note_intervals)
 
                 if log_dir is not None:
-                    notes_path = os.path.join(log_dir, 'notes_single', f'{track_id}.txt')
-                    write_pitch(notes_path, note_pitches, note_intervals, TUNING)
+                    notes_path = os.path.join(log_dir, f'{track_id}', 'notes_single.txt')
+                    write_notes(notes_path, note_pitches, note_intervals)
 
         # TODO - option to redo pianoroll from note predictions
 

@@ -15,13 +15,12 @@ import os
 
 eps = sys.float_info.epsilon
 
-# TODO - significant cleanup
-
-def framewise(prediction, reference):
-    f_ref = pianoroll_to_pitchlist(reference['pianoroll'])
+def framewise(prediction, reference, profile):
+    lowest = profile.get_midi_range()[0]
+    f_ref = pianoroll_to_pitchlist(to_single(reference['pitch'], profile), lowest)
     t_ref = reference['times'][:-1]
 
-    f_est = pianoroll_to_pitchlist(prediction['pianoroll'])
+    f_est = pianoroll_to_pitchlist(prediction['pitch_single'], lowest)
     t_est = prediction['times'][:-1]
 
     # Compare the ground-truth to the predictions to get the frame-wise metrics
@@ -36,7 +35,7 @@ def framewise(prediction, reference):
     return metrics
 
 def notewise(prediction, reference, offset_ratio=None):
-    p_est, i_est = arr_to_note_groups(prediction['notes'])
+    p_est, i_est = prediction['notes_single']
     p_ref, i_ref = arr_to_note_groups(reference['notes'])
 
     # Calculate frame-wise precision, recall, and f1 score with or without offset
@@ -99,23 +98,29 @@ def get_results_format():
 
     return results
 
-def evaluate(prediction, reference, log_dir=None, verbose=False):
+def evaluate(prediction, reference, profile, log_dir=None, verbose=False):
     results = get_results_format()
 
     track_id = prediction['track']
 
     assert track_id == reference['track']
 
-    results['loss'] = prediction['loss']
+    if 'loss' in prediction.keys():
+        results['loss'] = prediction['loss']
 
     # Add the frame-wise metrics to the dictionary
-    results['frame'] = framewise(prediction, reference)
+    results['frame'] = framewise(prediction, reference, profile)
 
     # Add the note-wise metrics to the dictionary
     results['note-on'] = notewise(prediction, reference, offset_ratio=None)
     results['note-off'] = notewise(prediction, reference, offset_ratio=0.2)
 
     # TODO - tablature metrics
+    if 'pitch_multi' in prediction.keys():
+        pass
+
+    if 'notes_multi' in prediction.keys():
+        pass
 
     if log_dir is not None:
         # Construct a path for the track's transcription and separation results

@@ -17,17 +17,22 @@ def load_audio(wav_path, sample_rate=None):
     return audio, fs
 
 
-def load_jams_guitar_tabs(jams_path, times):
+# TODO - clean up or simplify?
+def load_jams_guitar_tabs(jams_path, times, tuning):
     jam = jams.load(jams_path)
 
     # TODO - duration fails at 00_Jazz3-150-C_comp bc of an even division
     # duration = jam.file_metadata['duration']
 
-    num_frames = times.size - 1
-    tabs = np.zeros((NUM_STRINGS, num_frames))
+    note_data = jam.annotations['note_midi']
 
-    for s in range(NUM_STRINGS):
-        string_notes = jam.annotations['note_midi'][s]
+    num_frames = times.size - 1
+    num_strings = len(note_data)
+    assert num_strings == len(tuning)
+    tabs = np.zeros((num_strings, num_frames))
+
+    for s in range(num_strings):
+        string_notes = note_data[s]
         frame_string_pitch = string_notes.to_samples(times[:-1])
 
         silent = np.array([pitch == [] for pitch in frame_string_pitch])
@@ -40,7 +45,7 @@ def load_jams_guitar_tabs(jams_path, times):
         frame_string_pitch[np.logical_not(silent)] = np.array(active_pitches).squeeze()
         frame_string_pitch = frame_string_pitch.astype('float')
 
-        open_string_midi_val = librosa.note_to_midi(TUNING[s])
+        open_string_midi_val = librosa.note_to_midi(tuning[s])
         frets = frame_string_pitch[np.logical_not(silent)] - open_string_midi_val
         frets = np.round(frets)
 
@@ -52,28 +57,33 @@ def load_jams_guitar_tabs(jams_path, times):
     return tabs
 
 
-def load_jams_guitar_notes(jams_path):
+def load_jams_guitar_notes(jams_path, hz=True):
     jam = jams.load(jams_path)
 
-    i_ref = []
-    p_ref = []
+    note_data = jam.annotations['note_midi']
+    num_strings = len(note_data)
 
-    for s in range(NUM_STRINGS):
-        string_notes = jam.annotations['note_midi'][s]
+    intervals = []
+    pitches = []
+
+    for s in range(num_strings):
+        string_notes = note_data[s]
 
         for note in string_notes:
-            p_ref += [note.value]
-            i_ref += [[note.time, note.time + note.duration]]
+            pitches += [note.value]
+            intervals += [[note.time, note.time + note.duration]]
 
     # Obtain an array of time intervals for all note occurrences
-    i_ref = np.array(i_ref)
+    intervals = np.array(intervals)
 
     # TODO - validate intervals
 
-    # Extract the ground-truth note pitch values into an array
-    p_ref = librosa.midi_to_hz(np.array(p_ref))
+    pitches = np.array(pitches)
 
-    return i_ref, p_ref
+    if hz:
+        pitches = librosa.midi_to_hz(pitches)
+
+    return pitches, intervals
 
 
 def write_and_print(file, text, verbose = True, end=''):
@@ -86,15 +96,17 @@ def write_and_print(file, text, verbose = True, end=''):
             print(text, end=end)
 
 
-# TODO - check for NoneType
-def write_pitch(path, pitch, times, places=3):
+# TODO - make sure it works for NoneType or empty
+def write_pitch(path, pitch, times, low, places=3):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     # Open a file at the path with writing permissions
     file = open(path, 'w')
 
+    # TODO - can this be done without a loop?
     for i in range(times.size): # For each frame
         # Determine the activations across this frame
-        active_pitches = librosa.midi_to_hz(np.where(pitch[:, i] != 0)[0] + infer_lowest_note(pitch))
+        # TODO - change this to Hz
+        active_pitches = librosa.midi_to_hz(np.where(pitch[:, i] != 0)[0] + low)
 
         # Create a line of the form 'frame_time pitch1 pitch2 ...'
         line = str(round(times[i], places)) + ' ' + str(active_pitches)[1: -1]
@@ -114,7 +126,7 @@ def write_pitch(path, pitch, times, places=3):
     file.close()
 
 
-def write_pitch_multi(log_dir, multi, times, labels=None, places=3):
+def write_pitch_multi(log_dir, multi, times, low, labels=None, places=3):
     multi_num = multi.shape[0]
 
     for i in range(multi_num):
@@ -123,7 +135,7 @@ def write_pitch_multi(log_dir, multi, times, labels=None, places=3):
         else:
             path = os.path.join(log_dir, labels[i], '.txt')
 
-        write_pitch(path, multi[i], times, places)
+        write_pitch(path, multi[i], times, low, places)
 
 
 # TODO - check for NoneType
@@ -132,6 +144,7 @@ def write_notes(path, pitches, intervals, places=3):
     # Open a file at the path with writing permissions
     file = open(path, 'w')
 
+    # TODO - can this be done without a loop?
     for i in range(len(pitches)): # For each note
         # Create a line of the form 'start_time end_time pitch'
         line = str(round(intervals[i][0], places)) + ' ' + \

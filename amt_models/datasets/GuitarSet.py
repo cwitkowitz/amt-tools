@@ -1,6 +1,7 @@
 # My imports
 from datasets.common import TranscriptionDataset
 
+from tools.instrument import *
 from tools.conversion import *
 from tools.io import *
 
@@ -11,9 +12,9 @@ import shutil
 import os
 
 class GuitarSet(TranscriptionDataset):
-    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100, data_proc=None,
+    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100, data_proc=None, profile=None,
                  num_frames=None, split_notes=False, reset_data=False, store_data=True, save_data=True, seed=0):
-        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc,
+        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile,
                          num_frames, split_notes, reset_data, store_data, save_data, seed)
 
     def get_tracks(self, split):
@@ -40,11 +41,17 @@ class GuitarSet(TranscriptionDataset):
             times = self.data_proc.get_times(data['audio'])
 
             jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
-            pitch = load_jams_guitar_tabs(jams_path, times)
+            if isinstance(self.profile, GuitarProfile):
+                pitch = load_jams_guitar_tabs(jams_path, times, self.profile.tuning)
+            elif isinstance(self.profile, PianoProfile):
+                pitches, intervals = load_jams_guitar_notes(jams_path, hz=False)
+                pitch = midi_groups_to_pianoroll(pitches, intervals, times, self.profile.get_midi_range())
+            else:
+                raise AssertionError('Provided InstrumentProfile not supported...')
             data['pitch'] = pitch
 
-            i_ref, p_ref = load_jams_guitar_notes(jams_path)
-            notes = note_groups_to_arr(p_ref, i_ref)
+            pitches, intervals = load_jams_guitar_notes(jams_path)
+            notes = note_groups_to_arr(pitches, intervals)
             data['notes'] = notes
 
             if self.save_data:

@@ -7,6 +7,8 @@ from models.onsetsframes import *
 
 from datasets.GuitarSet import *
 
+from tools.instrument import *
+
 from features.melspec import *
 
 # Regular imports
@@ -66,9 +68,12 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     # Get a list of the GuitarSet splits
     splits = GuitarSet.available_splits()
 
+    # Initialize the default guitar profile
+    profile = GuitarProfile()
+
     # Processing parameters
     dim_in = 229
-    dim_out = NUM_STRINGS * (NUM_FRETS + 2)
+    dim_out = profile.num_strings * (profile.num_frets + 2)
     model_complexity = 2
 
     # Create the mel spectrogram data processing module
@@ -94,6 +99,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                                hop_length=hop_length,
                                sample_rate=sample_rate,
                                data_proc=data_proc,
+                               profile=profile,
                                num_frames=num_frames,
                                reset_data=reset_data)
 
@@ -112,16 +118,25 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                               hop_length=hop_length,
                               sample_rate=sample_rate,
                               data_proc=data_proc,
+                              profile=profile,
                               split_notes=False)
 
         print('Initializing model...')
 
         # Initialize a new instance of the model and exchange the
         # logistic banks for group softmax layers
-        of1 = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
-        of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, NUM_STRINGS, NUM_FRETS + 2, 'onsets')
-        of1.pianoroll[-1] = SoftmaxGroups(of1.dim_am, NUM_STRINGS, NUM_FRETS + 2)
-        of1.adjoin[-1] = SoftmaxGroups(of1.dim_lm2, NUM_STRINGS, NUM_FRETS + 2, 'tabs')
+        of1 = OnsetsFrames(dim_in, None, model_complexity, gpu_id)
+
+        of1.profile = profile
+        of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
+        of1.pianoroll[-1] = SoftmaxGroups(of1.dim_am, profile)
+
+        of1.dim_lm2 = of1.onsets[-1].dim_out + of1.pianoroll[-1].dim_out
+        of1.adjoin = nn.Sequential(
+            LanguageModel(of1.dim_lm2, of1.dim_lm2),
+            SoftmaxGroups(of1.dim_lm2, profile, 'pitch')
+        )
+
         of1.change_device()
         of1.train()
 
@@ -139,7 +154,8 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                     optimizer=optimizer,
                     iterations=iterations,
                     checkpoints=checkpoints,
-                    log_dir=model_dir)
+                    log_dir=model_dir,
+                    val_set=gset_test)
 
         print('Transcribing and evaluating test partition...')
 

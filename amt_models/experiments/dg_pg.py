@@ -8,6 +8,8 @@ from models.onsetsframes import *
 from datasets.GuitarSet import *
 from datasets.MAESTRO import *
 
+from tools.instrument import *
+
 from features.melspec import *
 
 # Regular imports
@@ -32,7 +34,7 @@ def config():
     iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 20
+    checkpoints = 40
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -73,9 +75,12 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     # Validate and evaluate on the full GuitarSet data TODO - for now (not good practice to validate on test)
     val_split = GuitarSet.available_splits()
 
+    # Initialize the default piano profile
+    profile = PianoProfile()
+
     # Processing parameters
     dim_in = 229
-    dim_out = PIANO_RANGE
+    dim_out = profile.get_range_len()
     model_complexity = 3
 
     # Create the mel spectrogram data processing module
@@ -91,6 +96,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                              hop_length=hop_length,
                              sample_rate=sample_rate,
                              data_proc=data_proc,
+                             profile=profile,
                              num_frames=num_frames,
                              split_notes=split_notes,
                              reset_data=reset_data,
@@ -105,19 +111,19 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     print('Loading validation partition...')
 
-    # TODO - the size mismatch is breaking this run - fix with dataset param?
     # Create a dataset corresponding to the training partition
     gset_val = GuitarSet(splits=val_split,
                          hop_length=hop_length,
                          sample_rate=sample_rate,
                          data_proc=data_proc,
+                         profile=profile,
                          split_notes=split_notes,
                          reset_data=reset_data)
 
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    of2 = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
+    of2 = OnsetsFrames(dim_in, profile, model_complexity, gpu_id)
     of2.change_device()
     of2.train()
 

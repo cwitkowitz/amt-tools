@@ -8,6 +8,7 @@ import numpy as np
 import librosa
 
 
+# TODO - add gamma for VQT
 class CQT(FeatureModule):
     def __init__(self, sample_rate=44100, hop_length=512, fmin=None,
                  n_bins=84, bins_per_octave=12, decibels=True):
@@ -21,16 +22,11 @@ class CQT(FeatureModule):
         self.n_bins = n_bins
         self.bins_per_octave = bins_per_octave
 
-    # TODO - can this be abstracted from librosa?
-    def get_num_octaves(self):
-        # How many octaves are we dealing with?
-        n_octaves = int(np.ceil(float(self.n_bins) / self.bins_per_octave))
-        return n_octaves
+        # How many octaves does the transform span
+        self.n_octs = int(np.ceil(float(self.n_bins) / self.bins_per_octave))
 
     # TODO - can this be abstracted from librosa?
     def get_early_ds_count(self):
-        n_octaves = self.get_num_octaves()
-
         # First thing, get the freqs of the top octave
         freqs = librosa.cqt_frequencies(self.n_bins, self.fmin, bins_per_octave=self.bins_per_octave)[-self.bins_per_octave:]
 
@@ -42,14 +38,13 @@ class CQT(FeatureModule):
         filter_cutoff = fmax_t * (1 + 0.5 * librosa.filters.window_bandwidth(window) / Q)
         nyquist = self.sample_rate / 2.0
 
-        early_ds_count = early_downsample_count(nyquist, filter_cutoff, self.hop_length, n_octaves)
+        early_ds_count = early_downsample_count(nyquist, filter_cutoff, self.hop_length, self.n_octs)
         return early_ds_count
 
     def get_expected_frames(self, audio):
-        n_octaves = self.get_num_octaves()
         early_ds_count = self.get_early_ds_count()
 
-        k = early_ds_count + n_octaves - 1
+        k = early_ds_count + self.n_octs - 1
         k = np.arange(early_ds_count, k + 1)
         sig_lens = np.ceil(len(audio) / (2**k))
         hop_lens = self.hop_length // (2**k)
@@ -78,6 +73,7 @@ class CQT(FeatureModule):
         cqt = np.abs(cqt)
 
         if self.decibels:
+            # TODO - make this an abstract function and call in super
             cqt = 1 + librosa.core.amplitude_to_db(cqt, ref=np.max) / 80
 
         cqt = super().post_proc(cqt)

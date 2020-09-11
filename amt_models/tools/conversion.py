@@ -1,4 +1,5 @@
 # My imports
+from tools.instrument import *
 from tools.constants import *
 from tools.utils import *
 
@@ -10,7 +11,10 @@ import librosa
 import torch
 
 
+# TODO - major cleanup needed for all of these functions
+
 def note_groups_to_arr(pitches, intervals):
+    # TODO - validate prior to conversion?
     if len(pitches) > 0:
         # Batch-friendly note storage
         pitches = np.array([pitches]).T
@@ -22,21 +26,21 @@ def note_groups_to_arr(pitches, intervals):
 
 
 def arr_to_note_groups(note_arr):
-    # TODO - make sure this is consistent across usage - i.e. GuitarSet/MAPS/etc. - librosa.validate_intervals
     if note_arr is None:
-        # TODO - this is a risky branch
+        # TODO - this is a risky branch - can't remember why
         pitches, intervals = np.array([]), np.array([[], []]).T
     else:
         pitches, intervals = note_arr[:, -1], note_arr[:, :2]
+    assert valid_notes(pitches, intervals)
     return pitches, intervals
 
 
 def midi_groups_to_pianoroll(pitches, intervals, times, note_range):
     num_frames = times.size - 1
     num_notes = pitches.size
-    pianoroll = np.zeros((note_range, num_frames))
+    pianoroll = np.zeros((note_range.size, num_frames))
 
-    pitches = np.round(pitches - infer_lowest_note(pianoroll)).astype('uint')
+    pitches = np.round(pitches - note_range[0]).astype('uint')
     times = np.tile(np.expand_dims(times, axis=0), (num_notes, 1))
 
     onsets = np.argmin((times <= intervals[:, :1]), axis=1) - 1
@@ -49,31 +53,34 @@ def midi_groups_to_pianoroll(pitches, intervals, times, note_range):
     return pianoroll
 
 
-# TODO - tabs to softmax function? - yes this was confusing
-"""
-tabs = batch['tabs'].transpose(1, 2)
-tabs[tabs == -1] = NUM_FRETS + 1
-tabs = torch.zeros(tabs_temp.shape + tuple([NUM_FRETS + 2]))
-tabs = tabs.to(tabs_temp.device)
+def tabs_to_multi_pianoroll(tabs, profile):
+    # TODO - for now make sure it's guitar - can generalize in future
+    assert isinstance(profile, GuitarProfile)
 
-b, f, s = tabs_temp.size()
-b, f, s = torch.meshgrid(torch.arange(b), torch.arange(f), torch.arange(s))
-tabs[b, f, s, tabs_temp] = 1
-tabs = tabs.view(-1, NUM_FRETS + 2).long()
-"""
+    tabs = tabs.copy().astype('int')
 
-def tabs_to_multi_pianoroll(tabs):
-    num_frames = tabs.shape[-1]
+    shape = list(tabs.shape) + [profile.get_range_len()]
+    #shape = list(tabs.shape)
+    #shape = shape[:-1] + [profile.get_range_len()] + shape[-1:]
+    pianoroll = np.zeros(shape)
 
-    pianoroll = np.zeros((NUM_STRINGS, GUITAR_RANGE, num_frames))
+    midi_tuning = profile.get_midi_tuning()
+    multi_start = midi_tuning - profile.low
 
-    # TODO - vectorize this
-    for i in range(NUM_STRINGS):
-        non_silent = tabs[i] != -1
+    if shape[0] != profile.num_strings:
+        # Add a batch dimension
+        multi_start = np.expand_dims(multi_start, axis=0)
+        multi_start = np.repeat(multi_start, shape[0], axis=0)
 
-        pitches = librosa.note_to_midi(TUNING[i]) + tabs[i, non_silent] - GUITAR_LOWEST
+    non_silent = tabs != -1
 
-        pianoroll[i, pitches, non_silent] = 1
+    pitches = tabs + multi_start
+    pitches = pitches[non_silent]
+
+    idcs = tuple(list(non_silent.nonzero()) + [pitches])
+
+    pianoroll[idcs] = 1
+    pianoroll = np.swapaxes(pianoroll, -1, -2)
 
     return pianoroll
 
@@ -86,46 +93,66 @@ def tabs_to_pianoroll(tabs):
     return pianoroll
 
 
-def get_multi_pianoroll_onsets(multi_pianoroll):
-    multi_onsets = np.zeros(multi_pianoroll.shape)
+def get_onsets(pitch, profile):
+    to_torch = 'torch' in str(pitch.dtype)
+    if to_torch:
+        device = pitch.device
+        pitch = pitch.cpu().detach().numpy()
 
-    # TODO - verify onset in first frame
-    # TODO - vectorize this
-    for i in range(NUM_STRINGS):
-        multi_onsets[i] = get_pianoroll_onsets(multi_pianoroll[i])
+    tabs = False
+    onsets = None
 
-    return multi_onsets
+    # TODO - how to deal with batch dimension properly?
+    if valid_tabs(pitch[0], profile):
+        pitch = tabs_to_multi_pianoroll(pitch, profile)
+        tabs = True
+
+    if valid_multi(pitch[0], profile) or valid_single(pitch[0], profile):
+        onsets = get_pianoroll_onsets(pitch)
+
+    if tabs:
+        onsets = multi_pianoroll_to_tabs(onsets, profile)
+
+    if to_torch:
+        onsets = torch.from_numpy(onsets)
+        onsets = onsets.to(device)
+
+    return onsets
 
 
-def get_multi_pianoroll_offsets(pianoroll):
-    # TODO - just use pianoroll function
-    pass
+def multi_pianoroll_to_tabs(multi_pianoroll, profile):
+    # TODO - for now make sure it's guitar - can generalize (num_dofs) in future
+    assert isinstance(profile, GuitarProfile)
 
+    shape = list(multi_pianoroll.shape)
+    silent_idx = shape.pop(-2)
 
-# TODO - potentially fold notion of tabs into multi_pianoroll or vice versa
-def multi_pianoroll_to_tabs(multi_pianoroll):
-    num_frames = multi_pianoroll.shape[-1]
+    no_note_row = np.ones(shape)
+    no_note_row = np.expand_dims(no_note_row, axis=-2)
+    multi_pianoroll = np.append(multi_pianoroll, no_note_row, axis=-2)
 
-    # TODO - generalize num_strings to num_dofs?
-    tabs = np.zeros((NUM_STRINGS, num_frames))
+    tabs = np.argmax(multi_pianoroll, axis=-2)
 
-    no_note_row = np.ones((1, num_frames))
+    silent = tabs == silent_idx
 
-    for i in range(NUM_STRINGS):
-        # TODO - generalize tuning to param
-        start_idx = TUNING_MIDI[i, 0] - GUITAR_LOWEST
-        pianoroll = multi_pianoroll[i, start_idx : start_idx + NUM_FRETS + 1]
-        pianoroll = np.append(pianoroll, no_note_row, axis=0)
-        tabs[i] = np.expand_dims(np.argmax(pianoroll, axis=0), axis=0)
+    midi_tuning = profile.get_midi_tuning()
+    multi_start = midi_tuning - profile.low
 
-    tabs[tabs == NUM_FRETS + 1] = -1
+    if shape[0] != profile.num_strings:
+        # Add a batch dimension
+        multi_start = np.expand_dims(multi_start, axis=0)
+        multi_start = np.repeat(multi_start, shape[0], axis=0)
+
+    tabs = tabs - multi_start
+
+    tabs[silent] = -1
     return tabs
 
 
 def get_pianoroll_onsets(pianoroll):
-    first_frame = pianoroll[:, :1]
-    adjacent_diff = pianoroll[:, 1:] - pianoroll[:, :-1]
-    onsets = np.concatenate([first_frame, adjacent_diff], axis=1) == 1
+    first_frame = pianoroll[..., :1]
+    adjacent_diff = pianoroll[..., 1:] - pianoroll[..., :-1]
+    onsets = np.concatenate([first_frame, adjacent_diff], axis=-1) == 1
     return onsets
 
 
@@ -137,52 +164,50 @@ def get_note_offsets(note_arr):
     pass
 
 
-def pianoroll_to_pitchlist(pianoroll):
+def pianoroll_to_pitchlist(pianoroll, lowest):
     active_pitches = []
 
     # TODO - vectorize?
     for i in range(pianoroll.shape[-1]): # For each frame
         # Determine the activations across this frame
-        active_pitches += [librosa.midi_to_hz(np.where(pianoroll[:, i] != 0)[0] + infer_lowest_note(pianoroll))]
+        active_pitches += [librosa.midi_to_hz(np.where(pianoroll[:, i] != 0)[0] + lowest)]
 
     return active_pitches
 
 
-def to_single(activations):
-    if valid_single(activations):
-        pass
-    elif valid_multi(activations):
-        pass
-    elif valid_tabs(activations):
-        pass
-    else:
-        activations = NotImplementedError
+def to_single(activations, profile):
+    if valid_tabs(activations, profile):
+        activations = tabs_to_multi_pianoroll(activations, profile)
+
+    if valid_multi(activations, profile):
+        # TODO - multi_to_single and single_to_multi funcs
+        activations = np.max(activations, axis=0)
+
+    assert valid_single(activations, profile)
 
     return activations
 
 
-def to_multi(activations):
-    if valid_single(activations):
-        pass
-    elif valid_multi(activations):
-        pass
-    elif valid_tabs(activations):
-        pass
-    else:
-        activations = NotImplementedError
+def to_multi(activations, profile):
+    if valid_single(activations, profile):
+        activations = np.expand_dims(activations, axis=0)
+
+    if valid_tabs(activations, profile):
+        activations = tabs_to_multi_pianoroll(activations, profile)
+
+    assert valid_multi(activations, profile)
 
     return activations
 
 
-def to_tabs(activations):
-    if valid_single(activations):
-        pass
-    elif valid_multi(activations):
-        pass
-    elif valid_tabs(activations):
-        pass
-    else:
-        activations = NotImplementedError
+def to_tabs(activations, profile):
+    if valid_single(activations, profile):
+        activations = np.expand_dims(activations, axis=0)
+
+    if valid_multi(activations, profile):
+        activations = multi_pianoroll_to_tabs(activations, profile)
+
+    assert valid_tabs(activations, profile)
 
     return activations
 

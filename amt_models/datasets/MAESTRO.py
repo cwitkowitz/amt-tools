@@ -1,6 +1,7 @@
 # My imports
 from datasets.common import TranscriptionDataset
 
+from tools.instrument import *
 from tools.conversion import *
 from tools.io import *
 
@@ -13,9 +14,9 @@ import os
 
 
 class MAESTRO_V1(TranscriptionDataset):
-    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None,
+    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None, profile=None,
                  num_frames=None, split_notes=False, reset_data=False, store_data=False, save_data=True, seed=0):
-        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc,
+        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile,
                          num_frames, split_notes, reset_data, store_data, save_data, seed)
 
     def get_tracks(self, split):
@@ -49,7 +50,10 @@ class MAESTRO_V1(TranscriptionDataset):
             pitches, intervals = arr_to_note_groups(notes)
 
             times = self.data_proc.get_times(data['audio'])
-            pitch = midi_groups_to_pianoroll(pitches, intervals, times, PIANO_RANGE)
+            if isinstance(self.profile, PianoProfile):
+                pitch = midi_groups_to_pianoroll(pitches, intervals, times, self.profile.get_midi_range())
+            else:
+                raise AssertionError('Provided InstrumentProfile not supported...')
             data['pitch'] = pitch
 
             notes[:, -1] = librosa.midi_to_hz(notes[:, -1])

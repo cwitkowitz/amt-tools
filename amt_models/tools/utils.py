@@ -4,6 +4,7 @@ from tools.constants import *
 # Regular imports
 import numpy as np
 import mir_eval
+import librosa
 import random
 import torch
 
@@ -68,6 +69,7 @@ def framify_tfr(tfr, win_length, hop_length, pad=None):
     return stack
 
 
+"""
 def infer_lowest_note(pianoroll):
     note_range = pianoroll.shape[0]
     if note_range == PIANO_RANGE:
@@ -77,6 +79,7 @@ def infer_lowest_note(pianoroll):
     else:
         # Something went awry
         return None
+"""
 
 
 def threshold_arr(arr, thr):
@@ -85,18 +88,23 @@ def threshold_arr(arr, thr):
     return arr
 
 
-def valid_activations(activations):
-    valid = valid_single(activations)
-    valid = valid or valid_multi(activations)
-    valid = valid or valid_tabs(activations)
+def valid_activations(activations, profile):
+    valid = valid_single(activations, profile)
+    valid = valid or valid_multi(activations, profile)
+    valid = valid or valid_tabs(activations, profile)
 
     return valid
 
 
-def valid_single(activations):
+def valid_single(activations, profile):
     single = True
 
-    if len(activations.shape) != 2:
+    shape = activations.shape
+
+    if len(shape) != 2:
+        single = False
+
+    if shape[0] != profile.get_range_len():
         single = False
 
     if isinstance(activations, np.ndarray):
@@ -116,25 +124,29 @@ def valid_single(activations):
     return single
 
 
-def valid_multi(activations):
+def valid_multi(activations, profile):
     multi = True
 
-    if len(activations.shape) != 3:
+    shape = activations.shape
+
+    if len(shape) != 3:
+        multi = False
+
+    if shape[1] != profile.get_range_len():
         multi = False
 
     return multi
 
 
-def valid_tabs(activations):
-    """
-    Conceivably, there is a situation where
-    activations could be valid pianoroll and tabs
-    TODO - improve so this corner case doesn't exist
-    """
-
+def valid_tabs(activations, profile):
     tabs = True
 
-    if len(activations.shape) != 2:
+    shape = activations.shape
+
+    if len(shape) != 2:
+        tabs = False
+
+    if shape[0] == profile.get_range_len():
         tabs = False
 
     # Must be exact integers
@@ -150,6 +162,7 @@ def valid_tabs(activations):
 
 
 def valid_notes(pitches, intervals):
+    # TODO - array dimensions as well
     # Validate the intervals
     valid = librosa.util.valid_intervals(intervals)
 

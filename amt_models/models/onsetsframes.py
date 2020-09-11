@@ -10,30 +10,31 @@ from torch import nn
 
 class OnsetsFrames(TranscriptionModel):
     # TODO - try to adhere to details of paper as much as possible
-    def __init__(self, dim_in, dim_out, model_complexity=2, device='cpu'):
-        super().__init__(dim_in, dim_out, model_complexity, device)
+    def __init__(self, dim_in, profile, model_complexity=2, device='cpu'):
+        super().__init__(dim_in, profile, model_complexity, device)
 
         # Number of output neurons for the acoustic models
         self.dim_am = 256 * self.model_complexity
 
         # Number of output neurons for the language models
         self.dim_lm1 = 128 * self.model_complexity
-        self.dim_lm2 = 2 * self.dim_out
 
         self.onsets = nn.Sequential(
             AcousticModel(self.dim_in, self.dim_am, self.model_complexity),
             LanguageModel(self.dim_am, self.dim_lm1),
-            LogisticBank(self.dim_lm1, self.dim_out, 'onsets')
+            LogisticBank(self.dim_lm1, self.profile, 'onsets')
         )
 
         self.pianoroll = nn.Sequential(
             AcousticModel(self.dim_in, self.dim_am, self.model_complexity),
-            LogisticBank(self.dim_am, self.dim_out)
+            LogisticBank(self.dim_am, self.profile)
         )
+
+        self.dim_lm2 = self.onsets[-1].dim_out + self.pianoroll[-1].dim_out
 
         self.adjoin = nn.Sequential(
             LanguageModel(self.dim_lm2, self.dim_lm2),
-            LogisticBank(self.dim_lm2, self.dim_out, 'pianoroll')
+            LogisticBank(self.dim_lm2, self.profile, 'pitch')
         )
 
     def pre_proc(self, batch):
@@ -78,10 +79,7 @@ class OnsetsFrames(TranscriptionModel):
             if onsets_label in batch.keys():
                 reference_onsets = batch[onsets_label]
             else:
-                reference_onsets = get_pianoroll_onsets(reference_pianoroll)
-
-            # TODO - more specific functions for is_multi, is_tabs, is_single
-            # TODO - then, to_multi, to_tabs, to_single inside of loss calculation
+                reference_onsets = get_onsets(reference_pianoroll, self.profile)
 
             onsets_loss = onsets_layer.get_loss(onsets, reference_onsets)
             pianoroll_loss = pianoroll_layer.get_loss(pianoroll, reference_pianoroll)

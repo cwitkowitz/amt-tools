@@ -11,7 +11,7 @@ import numpy as np
 # TODO - add filterbank learning module
 
 
-class FeatureModule:
+class FeatureModule(object):
     """
     Implements a generic music feature extraction module.
     """

@@ -5,6 +5,8 @@ from pipeline.train import *
 
 from models.onsetsframes import *
 
+from tools.instrument import *
+
 from features.melspec import *
 
 from datasets.MAESTRO import *
@@ -19,7 +21,7 @@ ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAPS')
 @ex.config
 def config():
     # Number of samples per second of audio
-    sample_rate = 16000
+    sample_rate = 22050
 
     # Number of samples between frames
     hop_length = 512
@@ -28,7 +30,7 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 5000
+    iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 20
@@ -71,9 +73,12 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     val_split = ['validation']
     test_split = ['test']
 
+    # Initialize the default piano profile
+    profile = PianoProfile()
+
     # Processing parameters
     dim_in = 229
-    dim_out = PIANO_RANGE
+    dim_out = profile.get_range_len()
     model_complexity = 3
 
     # Create the mel spectrogram data processing module
@@ -89,6 +94,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                              hop_length=hop_length,
                              sample_rate=sample_rate,
                              data_proc=data_proc,
+                             profile=profile,
                              num_frames=num_frames,
                              split_notes=split_notes,
                              reset_data=reset_data,
@@ -108,6 +114,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                            hop_length=hop_length,
                            sample_rate=sample_rate,
                            data_proc=data_proc,
+                           profile=profile,
                            num_frames=num_frames,
                            split_notes=split_notes,
                            store_data=False)
@@ -119,12 +126,13 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                             hop_length=hop_length,
                             sample_rate=sample_rate,
                             data_proc=data_proc,
+                            profile=profile,
                             store_data=False)
 
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in, profile, model_complexity, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 

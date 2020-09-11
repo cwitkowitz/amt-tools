@@ -1,4 +1,5 @@
 # My imports
+from tools.instrument import *
 from tools.conversion import *
 
 # Regular imports
@@ -14,7 +15,7 @@ class TranscriptionModel(nn.Module):
     Implements a generic music transcription model.
     """
 
-    def __init__(self, dim_in, dim_out, model_complexity=1, device='cpu'):
+    def __init__(self, dim_in, profile, model_complexity=1, device='cpu'):
         """
         Initialize parameters common to all models as model fields and instantiate
         model as a PyTorch processing Module.
@@ -34,7 +35,7 @@ class TranscriptionModel(nn.Module):
         super().__init__()
 
         self.dim_in = dim_in
-        self.dim_out = dim_out
+        self.profile = profile
         self.model_complexity = model_complexity
         self.device = device
 
@@ -167,7 +168,7 @@ class OutputLayer(nn.Module):
     Implements a generic output layer for transcription models.
     """
 
-    def __init__(self, dim_in, dim_out, tag):
+    def __init__(self, dim_in, dim_out, profile, tag):
         """
         Initialize parameters common to all output layers as model fields
         and instantiate layers as a PyTorch processing Module.
@@ -178,6 +179,8 @@ class OutputLayer(nn.Module):
           Dimensionality of input features
         dim_out : int
           Dimensionality of output vectors
+        profile : InstrumentProfile
+          TODO
         tag : str
           TODO
         """
@@ -186,6 +189,7 @@ class OutputLayer(nn.Module):
 
         self.dim_in = dim_in
         self.dim_out = dim_out
+        self.profile = profile
         self.tag = tag
 
     @abstractmethod
@@ -245,7 +249,7 @@ class SoftmaxGroups(OutputLayer):
     across the possibilities (the string's fretting).
     """
 
-    def __init__(self, dim_in, num_dofs=6, num_poss=22, tag='tabs'):
+    def __init__(self, dim_in, profile=None, tag='tabs'):
         """
         Initialize fields of the multi-label softmax layer.
 
@@ -262,12 +266,17 @@ class SoftmaxGroups(OutputLayer):
           TODO
         """
 
-        self.num_dofs = num_dofs
-        self.num_poss = num_poss
+        if profile is None:
+            profile = GuitarProfile()
+
+        assert isinstance(profile, GuitarProfile)
+
+        self.num_dofs = profile.num_strings
+        self.num_poss = profile.num_frets + 2
 
         dim_out = self.num_dofs * self.num_poss
 
-        super().__init__(dim_in, dim_out, tag)
+        super().__init__(dim_in, dim_out, profile, tag)
 
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
 
@@ -365,7 +374,7 @@ class LogisticBank(OutputLayer):
     or not the key is active.
     """
 
-    def __init__(self, dim_in, num_keys, tag='keys'):
+    def __init__(self, dim_in, profile=None, tag='keys'):
         """
         Initialize fields of the multi-label logistic layer.
 
@@ -379,11 +388,16 @@ class LogisticBank(OutputLayer):
           TODO
         """
 
-        self.num_keys = num_keys
+        if profile is None:
+            profile = PianoProfile()
+
+        assert isinstance(profile, PianoProfile)
+
+        self.num_keys = profile.get_range_len()
 
         dim_out = self.num_keys
 
-        super().__init__(dim_in, dim_out, tag)
+        super().__init__(dim_in, dim_out, profile, tag)
 
         self.output_layer = nn.Sequential(
             nn.Linear(self.dim_in, self.dim_out),
@@ -435,11 +449,11 @@ class LogisticBank(OutputLayer):
 
         output = output.transpose(1, 2)
         loss = F.binary_cross_entropy(output.float(), reference.float(), reduction='none')
-        # Sum loss across frames
-        loss = torch.sum(loss, dim=-1)
+        # Average loss across frames
+        loss = torch.mean(loss, dim=-1)
         # Sum loss across keys
         loss = torch.sum(loss, dim=-1)
-        # Average the loss across the batch
+        # Average loss across the batch
         loss = torch.mean(loss)
         return loss
 

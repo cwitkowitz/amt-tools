@@ -1,6 +1,7 @@
 # My imports
-from features.cqt import CQT
+from features.melspec import *
 
+from tools.instrument import *
 from tools.conversion import *
 from tools.utils import *
 
@@ -24,7 +25,7 @@ class TranscriptionDataset(Dataset):
     Implements a generic music transcription dataset.
     """
 
-    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc,
+    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, profile,
                  num_frames, split_notes, reset_data, store_data, save_data, seed):
         """
         Initialize parameters common to all datasets as fields and instantiate
@@ -42,6 +43,8 @@ class TranscriptionDataset(Dataset):
           Number of samples per second of audio
         data_proc : FeatureModel (features/common.py)
           Feature extraction model to use for the dataset
+        profile : InstrumentProfile
+          Instructions for organizing data and ground-truth
         num_frames : int
           Number of frames per data sample
         split_notes : bool
@@ -57,42 +60,48 @@ class TranscriptionDataset(Dataset):
           The seed for random number generation
         """
 
-        self.base_dir = base_dir
         # Select a default base directory path if none was provided
-        if self.base_dir is None:
-            self.base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
+        if base_dir is None:
+            base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
+        self.base_dir = base_dir
 
         # Check if the dataset exists in memory
         if not os.path.isdir(self.base_dir):
             # Download the dataset if it is missing
             self.download(self.base_dir)
 
-        self.splits = splits
         # Choose all available dataset splits if none were provided
-        if self.splits is None:
-            self.splits = self.available_splits()
+        if splits is None:
+            splits = self.available_splits()
+        self.splits = splits
 
-        self.data_proc = data_proc
-        # Default the feature extraction to a plain CQT if none was provided
-        if self.data_proc is None:
-            self.data_proc = CQT()
-
+        # This is redundant - but it's good to have in both places
         self.hop_length = hop_length
         self.sample_rate = sample_rate
 
-        # This is redundant - but it's good to have in both places
+        # Default the feature extraction to a plain Mel Spectrogram if none was provided
+        if data_proc is None:
+            data_proc = MelSpec(hop_length=self.hop_length,
+                                sample_rate=self.sample_rate)
+        self.data_proc = data_proc
+
+        # Default the instrument profile to a standard piano if none was provided
+        if profile is None:
+            profile = PianoProfile()
+        self.profile = profile
+
         # Make sure there is agreement between dataset and feature module
         assert self.hop_length == self.data_proc.hop_length
         assert self.sample_rate == self.data_proc.sample_rate
 
-        self.num_frames = num_frames
         # Determine the number of samples per data point
-        if self.num_frames is None:
+        if num_frames is None:
             # Transcribe whole tracks at a time (all samples)
             self.seq_length = None
         else:
             # The maximum number of samples which give the number of frames
-            self.seq_length = max(self.data_proc.get_sample_range(self.num_frames))
+            self.seq_length = max(self.data_proc.get_sample_range(num_frames))
+        self.num_frames = num_frames
 
         self.reset_data = reset_data
         # Remove any saved ground-truth for the dataset if reset_data is selected
@@ -303,12 +312,12 @@ class TranscriptionDataset(Dataset):
         # Convert all numpy arrays in the data dictionary to float32
         data = track_to_dtype(data, dtype='float32')
 
-        assert self.validate_track(data)
+        assert self.validate_track(data, self.profile)
 
         return data
 
     @staticmethod
-    def validate_track(data):
+    def validate_track(data, profile):
         """
         Get the features and ground truth for a track within a time interval.
 
@@ -333,7 +342,7 @@ class TranscriptionDataset(Dataset):
         if 'pitch' in keys:
             pitch = data['pitch']
 
-            if not valid_activations(pitch):
+            if not valid_activations(pitch, profile):
                 valid = False
 
         if 'feats' in keys:
@@ -399,6 +408,7 @@ class TranscriptionDataset(Dataset):
         if os.path.exists(gt_path):
             # Load the ground-truth if it exists
             data = dict(np.load(gt_path))
+            # TODO - might want to assert sampling rate here to make sure there's no mismatch
 
         # If the data was not previously generated
         if data is None:

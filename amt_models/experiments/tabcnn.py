@@ -5,6 +5,8 @@ from pipeline.train import *
 
 from datasets.GuitarSet import *
 
+from tools.instrument import *
+
 from features.cqt import *
 
 from models.tabcnn import *
@@ -28,10 +30,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 100
+    iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 2
+    checkpoints = 20
 
     # Number of samples to gather for a batch
     batch_size = 30
@@ -40,11 +42,11 @@ def config():
     learning_rate = 1.0
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
-    reset_data = False
+    reset_data = True
 
     # The random seed for this experiment
     seed = 0
@@ -66,9 +68,11 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     # Get a list of the GuitarSet splits
     splits = GuitarSet.available_splits()
 
+    # Initialize the default guitar profile
+    profile = GuitarProfile()
+
     # Processing parameters
     dim_in = 192
-    dim_out = NUM_STRINGS * (NUM_FRETS + 2)
     model_complexity = 1
 
     # Create the cqt data processing module
@@ -95,6 +99,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                                hop_length=hop_length,
                                sample_rate=sample_rate,
                                data_proc=data_proc,
+                               profile=profile,
                                num_frames=num_frames,
                                reset_data=reset_data)
 
@@ -113,12 +118,13 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                               hop_length=hop_length,
                               sample_rate=sample_rate,
                               data_proc=data_proc,
+                              profile=profile,
                               store_data=False)
 
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        tabcnn = TabCNN(dim_in, dim_out, model_complexity, gpu_id)
+        tabcnn = TabCNN(dim_in, profile, model_complexity, gpu_id)
         tabcnn.change_device()
         tabcnn.train()
 

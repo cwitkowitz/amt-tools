@@ -7,6 +7,8 @@ from models.onsetsframes import *
 
 from features.melspec import *
 
+from tools.instrument import *
+
 from datasets.MAPS import *
 
 # Regular imports
@@ -29,7 +31,7 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 5000
+    iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 20
@@ -41,7 +43,7 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 0
+    gpu_id = 1
 
     # Flag to control whether sampled blocks of frames should avoid splitting notes
     split_notes = False
@@ -70,6 +72,9 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     # Get a list of the MAPS splits
     splits = MAPS.available_splits()
 
+    # Initialize the default piano profile
+    profile = PianoProfile()
+
     # Initialize the testing splits as the real piano data
     test_splits = ['ENSTDkAm', 'ENSTDkCl']
     # Remove the real piano splits to get the training partition
@@ -79,7 +84,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Processing parameters
     dim_in = 229
-    dim_out = PIANO_RANGE
     model_complexity = 2
 
     # Create the mel spectrogram data processing module
@@ -94,6 +98,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                       hop_length=hop_length,
                       sample_rate=sample_rate,
                       data_proc=data_proc,
+                      profile=profile,
                       num_frames=num_frames,
                       split_notes=split_notes,
                       reset_data=reset_data)
@@ -116,12 +121,13 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                      hop_length=hop_length,
                      sample_rate=sample_rate,
                      data_proc=data_proc,
+                     profile=profile,
                      store_data=False)
 
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, dim_out, model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in, profile, model_complexity, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 
@@ -142,7 +148,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          iterations=iterations,
                          checkpoints=checkpoints,
                          log_dir=model_dir,
-                         scheduler=scheduler)
+                         scheduler=scheduler,
+                         val_set=maps_test)
 
     print('Transcribing and evaluating test partition...')
 

@@ -1,22 +1,21 @@
 # My imports
 from models.common import *
 
+from tools.instrument import *
 from tools.conversion import *
 from tools.utils import *
 
 # Regular imports
 from torch import nn
 
-import torch.nn.functional as F
-
 # TODO - different file naming scheme? - don't remember why I put this here
 
 
 class TabCNN(TranscriptionModel):
-    def __init__(self, dim_in, dim_out, model_complexity=1, device='cpu', win_len=9):
-        super().__init__(dim_in, dim_out, model_complexity, device)
+    def __init__(self, dim_in, profile, model_complexity=1, device='cpu', win_len=9):
+        super().__init__(dim_in, profile, model_complexity, device)
 
-        # TODO - redo model complexity
+        # TODO - redo model complexity - don't remember why I put this here
         # Number of frames required for a prediction
         sample_width = 9
 
@@ -39,10 +38,7 @@ class TabCNN(TranscriptionModel):
 
         # Number of neurons for each fully-connected stage
         nn1 = 128
-        nn2 = dim_out
 
-        # TODO - fold into the data_proc module? might save redundant information to disk
-        #        might also get hairy w.r.t. what the user decides to feed in - this pre_proc block will still be run
         self.win_len = win_len
 
         self.spatial = nn.Sequential(
@@ -76,7 +72,7 @@ class TabCNN(TranscriptionModel):
             # 2nd dropout
             nn.Dropout(dp2),
             # 2nd fully-connected
-            SoftmaxGroups(nn1, NUM_STRINGS, NUM_FRETS + 2, 'pitch')
+            SoftmaxGroups(nn1, profile, 'pitch')
         )
 
     def pre_proc(self, batch):
@@ -107,7 +103,6 @@ class TabCNN(TranscriptionModel):
 
         return preds
 
-    # TODO - if this will be the same for other transcription models, abstract it to a function and just call that
     def post_proc(self, batch):
         preds = batch['preds']
 
@@ -130,3 +125,6 @@ class TabCNN(TranscriptionModel):
         preds[label] = out_layer.finalize_output(output)
 
         return preds
+
+    def special_steps(self):
+        super().special_steps()

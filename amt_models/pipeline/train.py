@@ -20,7 +20,7 @@ def file_sort(file_name):
 
     Parameters
     ----------
-    file_name: str
+    file_name : str
       Path being sorted
 
     Returns
@@ -37,19 +37,24 @@ def file_sort(file_name):
 
 def validate(model, dataset, estim_dir=None, results_dir=None):
     """
-    Augment file names for sorting within the models directory. Since, e.g.,
-    /'500/' will by default be scored as higher than /'1500/'. One way to fix
-    this is by adding the length of the file to the beginning of the string.
+    Implements the validation or evaluation loop for a model and dataset partition.
+    Optionally save predictions and log results.
 
     Parameters
     ----------
-    file_name: str
-      Path being sorted
+    model : TranscriptionModel
+      Model to validate or evalaute
+    dataset : TranscriptionDataset
+      Dataset (partition) to use for validation or evaluation
+    estim_dir : str or None (optional)
+      Path to the directory to save predictions
+    results_dir : str or None (optional)
+      Path to the directory to log results
 
     Returns
     ----------
-    sort_name : str
-      Character count concatenated with original file name
+    results : dict
+      Dictionary containing all relevant results averaged across all tracks
     """
 
     # Make sure the model is in evaluation mode
@@ -58,15 +63,16 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
     # Create a dictionary to hold the results
     results = get_results_format()
 
+    # Turn off gradient computation
     with torch.no_grad():
         # Loop through the validation track ids
         for track_id in dataset.tracks:
             # Obtain the track data
             track = dataset.get_track_data(track_id)
             # Transcribe the track
-            predictions = transcribe(model, track, estim_dir)
+            predictions = transcribe(model, track, dataset.profile, estim_dir)
             # Evaluate the predictions
-            track_results = evaluate(predictions, track, results_dir)
+            track_results = evaluate(predictions, track, dataset.profile, results_dir)
             # Add the results to the dictionary
             results = add_result_dicts(results, track_results)
 
@@ -79,53 +85,117 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
 def train(model, train_loader, optimizer, iterations,
           checkpoints=0, log_dir='.', val_set=None,
           scheduler=None, resume=True, single_batch=False):
+    """
+    Implements the training loop for an experiment.
+
+    Parameters
+    ----------
+    model : TranscriptionModel
+      Model to train
+    train_loader : DataLoader
+      PyTorch Dataloader object for retrieving batches of data
+    optimizer : Optimizer
+      PyTorch Optimizer for updating weights
+    iterations : int
+      Number of loops through the dataset;
+      Each loop may be comprised of multiple batches;
+      Each loop contains a snippet of each track exactly once
+    checkpoints : int
+      Number of equally spaced save/validation checkpoints - 0 to disable
+    log_dir : str
+      Path to directory for saving model, optimizer state, and events
+    val_set : TranscriptionDataset or None (optional)
+      Dataset to use for validation loops
+    scheduler : Scheduler or None (optional)
+      PyTorch Scheduler used to update learning rate
+    resume : bool
+      Start from most recently saved model and optimizer state
+    single_batch : bool
+      Only process the first batch within each validation loop
+
+    Returns
+    ----------
+    model : TranscriptionModel
+      Trained model
+    """
     # TODO - multi_gpu - DataParallel removes ability to call .run_on_batch()
 
     # Initialize a writer to log training loss and validation loss/results
     writer = SummaryWriter(log_dir)
 
+    # Start at iteration 0 by default
     start_iter = 0
+
+    # TODO - resume might be a bit wonky - take a closer look
+    #      - saw loss go way up for of_1 (could have been different gt/feats)
+    #      - results flatlined?
     if resume:
+        # Obtain the files that already exist in the log directory
         log_files = os.listdir(log_dir)
+
+        # Extract and sort files pertaining to the model
         model_files = sorted([path for path in log_files if 'model' in path], key=file_sort)
+        # Extract and sort files pertaining to the optimizer state
         optimizer_files = sorted([path for path in log_files if 'opt-state' in path], key=file_sort)
 
+        # Check if any previous checkpoints exist
         if len(model_files) > 0 and len(optimizer_files) > 0:
+            # Get the path to the latest model file
             model_path = os.path.join(log_dir, model_files[-1])
+            # Get the path to the latest optimizer state file
             optimizer_path = os.path.join(log_dir, optimizer_files[-1])
 
+            # Make the start iteration the iteration when the checkpoint was taken
             start_iter = int(''.join([ch for ch in model_files[-1] if ch.isdigit()]))
+            # Get the iteration for the latest optimizer state
             optimizer_iter = int(''.join([ch for ch in optimizer_files[-1] if ch.isdigit()]))
-
+            # Make sure these iterations match
             assert start_iter == optimizer_iter
 
+            # Load the latest model
             model = torch.load(model_path)
+            # Replace the randomly initialized parameters with the saved parameters
+            super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
+            # Load the latest optimizer state
             optimizer.load_state_dict(torch.load(optimizer_path))
+
+    # Make sure the model is in training mode
+    model.train()
 
     # How many new iterations to run
     new_iters = iterations - start_iter
 
     for global_iter in tqdm(range(start_iter, iterations)):
+        # List of losses for each batch in the loop
         train_loss = []
+        # Loop through the dataset
         for batch in train_loader:
+            # Zero the accumulated gradients
             optimizer.zero_grad()
+            # Get the predictions and loss for the batch
             preds = model.run_on_batch(batch)
+            # Add the loss to the list of batch losses
             batch_loss = preds['loss']
             train_loss.append(batch_loss.item())
+            # Compute gradients
             batch_loss.backward()
+            # Perform an optimization step
             optimizer.step()
 
             if scheduler is not None:
+                # Perform a learning rate scheduler step
                 scheduler.step()
 
+            # Run additional steps required by model
             model.special_steps()
 
             if single_batch:
                 # Move onto the next iteration after the first batch
                 break
 
-        # Average the loss from all of the batches
+        # Average the loss from all of the batches within this loop
         train_loss = np.mean(train_loss)
+        # Log the loss
         writer.add_scalar(f'train/loss', train_loss, global_step=global_iter+1)
 
         # Local iteration of this training sequence
@@ -147,8 +217,13 @@ def train(model, train_loader, optimizer, iterations,
             # Save the optimizer sate
             torch.save(optimizer.state_dict(), os.path.join(log_dir, f'opt-state-{global_iter + 1}.pt'))
 
+            # If we are at a checkpoint, and a validation set is available
             if checkpoint and val_set is not None:
+                # Validate the current model weights
                 val_results = validate(model, val_set)
+                # Make sure the model is back in training mode
+                model.train()
+                # Log the results with patterns containing 'loss' and 'f1-score'
                 log_results(val_results, writer, global_iter + 1, ['loss', 'f1-score'])
 
     return model
