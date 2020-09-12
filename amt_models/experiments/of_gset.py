@@ -33,7 +33,7 @@ def config():
     iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 20
+    checkpoints = 19
 
     # Number of samples to gather for a batch
     batch_size = 30
@@ -73,7 +73,6 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
     # Processing parameters
     dim_in = 229
-    dim_out = profile.num_strings * (profile.num_frets + 2)
     model_complexity = 2
 
     # Create the mel spectrogram data processing module

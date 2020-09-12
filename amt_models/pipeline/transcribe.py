@@ -132,12 +132,10 @@ def transcribe(model, track, profile, log_dir=None):
             preds.pop('onsets')
 
         if pitch is not None and valid_activations(pitch, profile):
-            if valid_tabs(pitch, profile):
-                pitch = to_multi(pitch, profile)
+            pitch = to_multi(pitch, profile)
 
             if onsets is not None:
-                if valid_tabs(onsets, profile):
-                    onsets = to_multi(onsets, profile)
+                onsets = to_multi(onsets, profile)
 
             if valid_multi(pitch, profile):
                 preds['pitch_multi'] = pitch

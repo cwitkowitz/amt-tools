@@ -126,9 +126,6 @@ def train(model, train_loader, optimizer, iterations,
     # Start at iteration 0 by default
     start_iter = 0
 
-    # TODO - resume might be a bit wonky - take a closer look
-    #      - saw loss go way up for of_1 (could have been different gt/feats)
-    #      - results flatlined?
     if resume:
         # Obtain the files that already exist in the log directory
         log_files = os.listdir(log_dir)

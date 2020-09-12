@@ -21,7 +21,7 @@ ex = Experiment('TabCNN w/ CQT on GuitarSet 6-fold Cross Validation')
 @ex.config
 def config():
     # Number of samples per second of audio
-    sample_rate = 44100
+    sample_rate = 22050
 
     # Number of samples between frames
     hop_length = 512

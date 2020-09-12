@@ -63,8 +63,8 @@ class GuitarProfile(InstrumentProfile):
         self.num_strings = len(self.tuning)
 
         midi_tuning = self.get_midi_tuning()
-        low = midi_tuning[0]
-        high = midi_tuning[-1] + num_frets
+        low = midi_tuning[0].item()
+        high = (midi_tuning[-1] + num_frets).item()
         super().__init__(low, high)
 
     def get_midi_tuning(self):
