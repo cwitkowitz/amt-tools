@@ -54,8 +54,8 @@ class MAPS(TranscriptionDataset):
             track_dir = os.path.join(self.base_dir, piano, 'MUS')
 
             wav_path = os.path.join(track_dir, track + '.wav')
-            audio, _ = load_audio(wav_path, self.sample_rate)
-            data['audio'] = audio
+            audio, fs = load_audio(wav_path, self.sample_rate)
+            data['audio'], data['fs'] = audio, fs
 
             txt_path = os.path.join(track_dir, track + '.txt')
             notes = load_valued_intervals(txt_path, comment='O|\n')

@@ -36,12 +36,13 @@ class GuitarSet(TranscriptionDataset):
         if 'audio' not in data.keys():
             wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic.wav')
             audio, fs = load_audio(wav_path, self.sample_rate)
-            data['audio'] = audio
+            data['audio'], data['fs'] = audio, fs
 
             times = self.data_proc.get_times(data['audio'])
 
             jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
             if isinstance(self.profile, GuitarProfile):
+                # TODO - add format function to profile to call to_x?
                 pitch = load_jams_guitar_tabs(jams_path, times, self.profile.tuning)
             elif isinstance(self.profile, PianoProfile):
                 pitches, intervals = load_jams_guitar_notes(jams_path, hz=False)

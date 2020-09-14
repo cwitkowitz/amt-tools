@@ -1,8 +1,6 @@
 import os
 
-##################################################
-# Paths                                          #
-##################################################
+# TODO - add extensions and folder names
 
 HOME = os.path.expanduser('~')
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))

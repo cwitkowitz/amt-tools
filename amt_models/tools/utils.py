@@ -89,6 +89,7 @@ def threshold_arr(arr, thr):
 
 
 def valid_activations(activations, profile):
+    # TODO - add valid pitchlist?
     valid = valid_single(activations, profile)
     valid = valid or valid_multi(activations, profile)
     valid = valid or valid_tabs(activations, profile)

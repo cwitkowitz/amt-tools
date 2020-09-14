@@ -37,8 +37,8 @@ class MAESTRO_V1(TranscriptionDataset):
         if 'audio' not in data.keys():
             # TODO - clean this up significantly and implement sustain
             wav_path = os.path.join(self.base_dir, track + '.wav')
-            audio, _ = load_audio(wav_path, self.sample_rate)
-            data['audio'] = audio
+            audio, fs = load_audio(wav_path, self.sample_rate)
+            data['audio'], data['fs'] = audio, fs
 
             mid_path = os.path.join(self.base_dir, track + '.midi')
             mid_data = PrettyMIDI(mid_path)
