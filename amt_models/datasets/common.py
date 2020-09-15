@@ -206,8 +206,8 @@ class TranscriptionDataset(Dataset):
             feats = feats_dict['feats']
 
             # Load supporting hyper-parameters
-            fs = feats_dict['fs']
-            hop_length = feats_dict['hop_length']
+            fs = feats_dict['fs'].item()
+            hop_length = feats_dict['hop_length'].item()
 
         else:
             # If not, calculate the features
@@ -329,6 +329,7 @@ class TranscriptionDataset(Dataset):
         keys = list(data.keys())
         keys.remove('audio')
         keys.remove('notes')
+        keys.remove('fs')
 
         # Slice remaining entries (all assumed to be NumPy arrays)
         for key in keys:
@@ -446,7 +447,7 @@ class TranscriptionDataset(Dataset):
             data = dict(np.load(gt_path))
 
             # Make sure there is agreement between dataset and saved data
-            assert self.sample_rate == data['fs']
+            assert self.sample_rate == data['fs'].item()
 
         if data is None:
             # Initialize a new dictionary if there is no saved data

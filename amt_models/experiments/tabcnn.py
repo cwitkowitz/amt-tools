@@ -46,7 +46,7 @@ def config():
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
-    reset_data = True
+    reset_data = False
 
     # The random seed for this experiment
     seed = 0

@@ -65,6 +65,7 @@ class MAESTRO_V1(TranscriptionDataset):
                 # TODO - get rid of the base dir or do for all to stay consistent
                 os.makedirs(os.path.dirname(gt_path), exist_ok=True)
                 np.savez(gt_path,
+                         fs=fs,
                          audio=audio,
                          pitch=pitch,
                          notes=notes)

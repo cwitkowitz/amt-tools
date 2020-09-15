@@ -9,6 +9,8 @@ from torch import nn
 import torch.nn.functional as F
 import torch
 
+# TODO - LogisticGroups - might be able to make child of LogisticBank instead
+
 
 class TranscriptionModel(nn.Module):
     """
@@ -17,15 +19,15 @@ class TranscriptionModel(nn.Module):
 
     def __init__(self, dim_in, profile, model_complexity=1, device='cpu'):
         """
-        Initialize parameters common to all models as model fields and instantiate
-        model as a PyTorch processing Module.
+        Initialize parameters common to all models and instantiate
+        model as a PyTorch Module.
 
         Parameters
         ----------
         dim_in : int
-          Dimensionality of framewise input vectors along the frequency axis
-        dim_out : int
-          Dimensionality of framewise output vectors along the frequency axis
+          Dimensionality of framewise input vectors along the feature axis
+        profile : InstrumentProfile (tools/instrument.py)
+          Instructions for organizing output and ground-truth
         model_complexity : int, optional (default 1)
           Scaling parameter for sizes of model's components
         device : string, optional (default /'cpu/')
@@ -70,8 +72,7 @@ class TranscriptionModel(nn.Module):
         Parameters
         ----------
         batch : dict
-          Dictionary containing all relevant fields for a group of tracks - if a single
-          track is to be transcribed, it must be organized as a batch of size 1
+          Dictionary containing all relevant fields for a group of tracks
 
         Returns
         ----------
@@ -90,13 +91,10 @@ class TranscriptionModel(nn.Module):
 
         Parameters
         ----------
-        feats : Tensor (B x C x H x W)
+        feats : Tensor (B x C x ...)
           input features for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
           B - batch size,
-          C - number of channels,
-          H - dimensionality across vertical axis,
-          W - dimensionality across horizontal axis
+          C - number of channels
         """
 
         return NotImplementedError
@@ -109,9 +107,7 @@ class TranscriptionModel(nn.Module):
         Parameters
         ----------
         batch : dict
-          Dictionary containing all relevant fields, including model output, for a group
-          of tracks - if a single track is to be transcribed, it must be organized as a
-          batch of size 1
+          Dictionary including model output for a group of tracks
         """
 
         return NotImplementedError
@@ -145,7 +141,11 @@ class TranscriptionModel(nn.Module):
 
     @abstractmethod
     def special_steps(self):
-        return None
+        """
+        Perform any final training steps specific to this model.
+        """
+
+        return NotImplementedError
 
     @classmethod
     def model_name(cls):
@@ -162,7 +162,7 @@ class TranscriptionModel(nn.Module):
 
         return tag
 
-# TODO - convert reference and prediction to expected data types within get_loss function
+
 class OutputLayer(nn.Module):
     """
     Implements a generic output layer for transcription models.
@@ -179,10 +179,10 @@ class OutputLayer(nn.Module):
           Dimensionality of input features
         dim_out : int
           Dimensionality of output vectors
-        profile : InstrumentProfile
-          TODO
+        profile : InstrumentProfile (tools/instrument.py)
+          Instructions for organizing output and ground-truth
         tag : str
-          TODO
+          Key to use for adding output to prediction dictionary
         """
 
         super().__init__()
@@ -199,12 +199,8 @@ class OutputLayer(nn.Module):
 
         Parameters
         ----------
-        feats : Tensor (B x F x T)
-          input features for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
-          B - batch size,
-          F - dimensionality of input features,
-          T - number of time steps
+        feats : Tensor (see child class for expected dimensions)
+          Input features for a batch of tracks
         """
 
         return NotImplementedError
@@ -216,25 +212,34 @@ class OutputLayer(nn.Module):
 
         Parameters
         ----------
-        output : Tensor (B x F x T)
-          output vectors for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
-          B - batch size,
-          F - dimensionality of output features,
-          T - number of time steps
-        reference : Tensor (B x F x T)
-          ground-truth for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
-          B - batch size,
-          F - dimensionality of output features,
-          T - number of time steps
+        output : Tensor (child class for expected dimensions)
+          Output vectors for a batch of tracks
+        reference : Tensor (see child class for expected dimensions)
+          Ground-truth for a batch of tracks
         """
 
         return NotImplementedError
 
     @abstractmethod
     def finalize_output(self, raw_output):
+        """
+        Convert loss-friendly output into actual symbolic transcription.
+
+        Parameters
+        ----------
+        raw_output : Tensor (child class for expected dimensions)
+          Raw model output used for calculating loss
+
+        Returns
+        ----------
+        final_output : Tensor (child class for expected dimensions)
+          Symbolic transcription serving as final predictions
+        """
+
+        # Create a new copy (to be double-safe not to affect gradient),
+        # and remove the Tensor from the computational graph
         final_output = raw_output.clone().detach()
+
         return final_output
 
 
@@ -257,54 +262,58 @@ class SoftmaxGroups(OutputLayer):
         ----------
         dim_in : int
           Dimensionality of input features
-        num_dofs : int
-          Number of degrees of freedom on instrument, e.g. number of strings
-        num_poss : int
-          Number of possibilities for each degree of freedom, e.g. number of
-          frets + 2 (for open string and no activity possibilities)
+        profile : InstrumentProfile (tools/instrument.py)
+          Instructions for organizing output and ground-truth
         tag : str
-          TODO
+          Key to use for adding output to prediction dictionary
         """
 
+        # Default the instrument profile
         if profile is None:
             profile = GuitarProfile()
 
+        # Make sure the provided instrument profile is compatible
+        # TODO - generalize to tabs in future
         assert isinstance(profile, GuitarProfile)
 
+        # Degrees of freedom - number of softmax groups
         self.num_dofs = profile.num_strings
+        # Possibilities - number of choices in each softmax
         self.num_poss = profile.num_frets + 2
 
+        # Total number of output neurons
         dim_out = self.num_dofs * self.num_poss
 
         super().__init__(dim_in, dim_out, profile, tag)
 
+        # Intitialize the output layer
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
 
     def forward(self, feats):
         """
-        Perform the main processing steps for the output layer.
+        Perform the main processing steps for the softmax groups.
 
         Parameters
         ----------
         feats : Tensor (B x T x F)
-          input features for a batch of tracks,
+          Input features for a batch of tracks
           B - batch size,
           T - number of time steps (frames),
           F - dimensionality of input features
 
         Returns
         ----------
-        preds : dict w/ Tensor (B x T x DOFs x POSSs)
-          dictionary containing tablature output,
+        preds : dict w/ Tensor (B x T x O)
+          Dictionary containing tablature output
           B - batch size,
           T - number of time steps (frames),
-          TODO - actually this is dim_out now
-          DOFs - degrees of freedom,
-          POSSs - number of possibilities
+          O - number of output neurons (dim_out)
         """
 
+        # Get the tabs
         tabs = self.output_layer(feats)
 
+        # Create and return a new dictionary containing the tabs
         preds = {
             self.tag : tabs
         }
@@ -313,27 +322,35 @@ class SoftmaxGroups(OutputLayer):
 
     def get_loss(self, output, reference):
         """
-        Compute the cross entropy softmax loss for each string independently.
+        Compute the cross entropy softmax loss for each group independently.
 
         Parameters
         ----------
-        output : Tensor (B x T x DOFs x POSSs)
-          tablature output
+        output : Tensor (B x T x O)
+          Tablature output
           B - batch size,
           T - number of time steps (frames),
-          DOFs - degrees of freedom,
-          POSSs - number of possibilities
+          O - number of output neurons (dim_out)
         reference : Tensor (B x DOFs x T)
-          ground-truth for a batch of tracks,
+          Ground-truth for a batch of tracks
           B - batch size,
           DOFs - degrees of freedom,
           T - number of time steps (frames)
+
+        Returns
+        ----------
+        loss : Tensor (1-D)
+          Loss or error for entire batch
         """
 
         # Obtain the true batch size
         bs = get_batch_size(output)
         # Fold the degrees of freedom axis into the pseudo-batch axis
         output = output.view(-1, self.num_poss)
+
+        # Ensure ground-truth is in tablature format
+        # TODO - batch dimension is roughing me up here
+        #reference = to_tabs(reference, self.profile)
 
         # Transform ground-truth tabs into 1D softmax labels
         reference = reference.transpose(1, 2)
@@ -353,12 +370,38 @@ class SoftmaxGroups(OutputLayer):
         return loss
 
     def finalize_output(self, raw_output):
+        """
+        Convert loss-friendly output into actual symbolic transcription.
+
+        Parameters
+        ----------
+        raw_output : Tensor (B x T x O)
+          Raw model output used for calculating loss
+          B - batch size,
+          T - number of time steps (frames),
+          O - number of output neurons (dim_out)
+
+        Returns
+        ----------
+        final_output : Tensor (B x DOFs x T)
+          Symbolic transcription serving as final predictions
+          B - batch size,
+          DOFs - degrees of freedom,
+          T - number of time steps (frames)
+        """
+
         final_output = super().finalize_output(raw_output)
+
         # Obtain the true batch size
         bs = get_batch_size(final_output)
+
+        # Break apart the softmax groups across another dimension
         final_output = final_output.view(bs, -1, self.num_dofs, self.num_poss)
+        # Pick the most choice with the most weight for each group
         final_output = torch.argmax(torch.softmax(final_output, dim=-1), dim=-1)
+        # Convert the last choice to the value representing silent tablature (-1)
         final_output[final_output == self.num_poss - 1] = -1
+        # Switch the DOF and frame dimension to end up with tabs
         final_output = final_output.transpose(1, 2)
 
         return final_output
@@ -382,23 +425,22 @@ class LogisticBank(OutputLayer):
         ----------
         dim_in : int
           Dimensionality of input features
-        num_keys : int
-          Total number of independent keys or quantized pitches
+        profile : InstrumentProfile (tools/instrument.py)
+          Instructions for organizing output and ground-truth
         tag : str
-          TODO
+          Key to use for adding output to prediction dictionary
         """
 
+        # Default the instrument profile
         if profile is None:
             profile = PianoProfile()
 
-        assert isinstance(profile, PianoProfile)
-
-        self.num_keys = profile.get_range_len()
-
-        dim_out = self.num_keys
+        # Number of independent logistic units
+        dim_out = profile.get_range_len()
 
         super().__init__(dim_in, dim_out, profile, tag)
 
+        # Intitialize the output layer
         self.output_layer = nn.Sequential(
             nn.Linear(self.dim_in, self.dim_out),
             # TODO - make sure stability is not an issue - see ""_with_logits()
@@ -411,16 +453,25 @@ class LogisticBank(OutputLayer):
 
         Parameters
         ----------
-        feats : Tensor (B x F x T)
-          input features for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
+        feats : Tensor (B x T x F)
+          input features for a batch of tracks
           B - batch size,
-          F - dimensionality of input features,
-          T - number of time steps
+          T - number of time steps,
+          F - dimensionality of input features
+
+        Returns
+        ----------
+        preds : dict w/ Tensor (B x T x O)
+          Dictionary containing pianoroll output
+          B - batch size,
+          T - number of time steps (frames),
+          O - number of output neurons (dim_out)
         """
 
+        # Get the pianoroll
         keys = self.output_layer(feats)
 
+        # Create and return a new dictionary containing the pianoroll
         preds = {
             self.tag : keys
         }
@@ -433,36 +484,67 @@ class LogisticBank(OutputLayer):
 
         Parameters
         ----------
-        output : Tensor (B x F x T)
-          output vectors for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
+        output : Tensor (B x T x O)
+          output vectors for a batch of tracks
           B - batch size,
-          F - dimensionality of output features,
-          T - number of time steps
-        reference : Tensor (B x F x T)
-          ground-truth for a batch of tracks,
-          TODO - check that this is accurate for what I have so far
+          T - number of time steps (frames),
+          O - number of output neurons (dim_out)
+        reference : Tensor (B x O x T)
+          ground-truth for a batch of tracks
           B - batch size,
-          F - dimensionality of output features,
-          T - number of time steps
+          O - number of output neurons (dim_out),
+          T - number of time steps (frames)
+
+        Returns
+        ----------
+        loss : Tensor (1-D)
+          Loss or error for entire batch
         """
 
+        # Switch the frame and key dimension
         output = output.transpose(1, 2)
+
+        # Ensure ground-truth is in single pianoroll format
+        # TODO - batch dimension is roughing me up here
+        # reference = to_single(reference, self.profile)
+
+        # Calculate the loss for the entire pseudo-batch
         loss = F.binary_cross_entropy(output.float(), reference.float(), reduction='none')
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
-        # Sum loss across keys
-        loss = torch.sum(loss, dim=-1)
+        # Average loss across keys
+        loss = torch.mean(loss, dim=-1)
         # Average loss across the batch
         loss = torch.mean(loss)
+
         return loss
 
     def finalize_output(self, raw_output):
+        """
+        Convert loss-friendly output into actual symbolic transcription.
+
+        Parameters
+        ----------
+        raw_output : Tensor (B x T x O)
+          Raw model output used for calculating loss
+          B - batch size,
+          T - number of time steps (frames),
+          O - number of output neurons (dim_out)
+
+        Returns
+        ----------
+        final_output : Tensor (B x O x T)
+          Symbolic transcription serving as final predictions
+          B - batch size,
+          O - number of output neurons (dim_out),
+          T - number of time steps (frames)
+        """
+
         final_output = super().finalize_output(raw_output)
+
+        # Switch the frame and key dimension
         final_output = final_output.transpose(1, 2)
+        # Convert output to binary values
         final_output = threshold_arr(final_output, 0.5)
 
         return final_output
-
-
-# TODO - LogisticGroups - might be able to make child of LogisticBank instead

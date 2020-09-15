@@ -2,13 +2,12 @@
 # None of my imports used
 
 # Regular imports
-from librosa.core import power_to_db
 from abc import abstractmethod
 
 import numpy as np
 
-# TODO - feature stacking - FeatureCombo class
-# TODO - add filterbank learning module
+# TODO - LHVQT
+# TODO - FeatureCombo (stacking features)
 
 
 class FeatureModule(object):
@@ -27,7 +26,7 @@ class FeatureModule(object):
         hop_length : int or float
           Number of samples between feature frames
         decibels : bool
-          TODO
+          Convert features to decibel (dB) units
         """
 
         self.sample_rate = sample_rate
@@ -69,13 +68,51 @@ class FeatureModule(object):
 
         Parameters
         ----------
-        audio: ndarray
+        audio : ndarray
           Mono-channel audio
         """
 
         return NotImplementedError
 
+    @abstractmethod
+    def to_decibels(self, feats):
+        """
+        Convert features to decibels (dB) units.
+
+        Parameters
+        ----------
+        feats : ndarray
+          Calculated features
+        """
+
+        return NotImplementedError
+
     def post_proc(self, feats):
+        """
+        Perform post-processing steps.
+
+        Parameters
+        ----------
+        feats : ndarray
+          Calculated features
+
+        Returns
+        ----------
+        feats : ndarray
+          Post-processed features
+        """
+
+        if self.decibels:
+            # Convert to decibels (dB)
+            feats = self.to_decibels(feats)
+
+            # Assuming range of -80 to 0 dB, scale between 0 and 1
+            feats = feats / 80
+            feats = feats + 1
+        else:
+            # TODO - should anything be done here?
+            pass
+
         # Add a channel dimension
         feats = np.expand_dims(feats, axis=0)
 

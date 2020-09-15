@@ -72,13 +72,13 @@ class CQT(FeatureModule):
 
         cqt = np.abs(cqt)
 
-        if self.decibels:
-            # TODO - make this an abstract function and call in super
-            cqt = 1 + librosa.core.amplitude_to_db(cqt, ref=np.max) / 80
-
         cqt = super().post_proc(cqt)
 
         return cqt
+
+    def to_decibels(self, feats):
+        feats = librosa.core.amplitude_to_db(feats, ref=np.max)
+        return feats
 
     def get_times(self, audio):
         num_frames = self.get_expected_frames(audio)

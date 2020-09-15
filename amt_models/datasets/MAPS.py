@@ -76,6 +76,7 @@ class MAPS(TranscriptionDataset):
             if self.save_data:
                 gt_path = self.get_gt_dir(track)
                 np.savez(gt_path,
+                         fs=fs,
                          audio=audio,
                          pitch=pitch,
                          notes=notes)

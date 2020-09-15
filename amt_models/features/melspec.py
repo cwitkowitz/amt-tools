@@ -36,12 +36,13 @@ class MelSpec(FeatureModule):
                                              htk=self.htk,
                                              norm=self.norm)
 
-        if self.decibels:
-            mel = 1 + librosa.core.power_to_db(mel, ref=np.max) / 80
-
         mel = super().post_proc(mel)
 
         return mel
+
+    def to_decibels(self, feats):
+        feats = librosa.core.power_to_db(feats, ref=np.max)
+        return feats
 
     def get_times(self, audio):
         num_frames = self.get_expected_frames(audio)
