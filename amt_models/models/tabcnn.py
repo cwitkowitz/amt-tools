@@ -60,7 +60,7 @@ class TabCNN(TranscriptionModel):
             nn.Dropout(dp1)
         )
 
-        feat_map_height = (dim_in - 6) // 2
+        feat_map_height = (self.dim_in - 6) // 2
         feat_map_width = (sample_width - 6) // 2
         self.feat_map_size = nf3 * feat_map_height * feat_map_width
 
@@ -72,7 +72,7 @@ class TabCNN(TranscriptionModel):
             # 2nd dropout
             nn.Dropout(dp2),
             # 2nd fully-connected
-            SoftmaxGroups(nn1, profile, 'pitch')
+            SoftmaxGroups(nn1, self.profile, 'pitch')
         )
 
     def pre_proc(self, batch):

@@ -80,7 +80,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Processing parameters
     dim_in = 229
-    dim_out = profile.get_range_len()
     model_complexity = 3
 
     # Create the mel spectrogram data processing module

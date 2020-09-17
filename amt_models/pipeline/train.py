@@ -61,7 +61,7 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
     model.eval()
 
     # Create a dictionary to hold the results
-    results = get_results_format()
+    results = {}
 
     # Turn off gradient computation
     with torch.no_grad():
@@ -74,7 +74,7 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
             # Evaluate the predictions
             track_results = evaluate(predictions, track, dataset.profile, results_dir)
             # Add the results to the dictionary
-            results = add_result_dicts(results, track_results)
+            results = append_results(results, track_results)
 
     # Average the results from all tracks
     results = average_results(results)

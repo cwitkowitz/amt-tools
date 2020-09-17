@@ -42,7 +42,7 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
@@ -83,15 +83,21 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     # Perform each fold of cross-validation
     for k in range(6):
         # Determine the name of the split being removed
-        hold_out = '0' + str(k)
+        test_hold_out = '0' + str(k)
+        val_hold_out = '0' + str(5 - k)
 
         print('--------------------')
-        print(f'Fold {hold_out}:')
-        print('Loading training partition...')
+        print(f'Fold {test_hold_out}:')
 
         # Remove the hold out split to get the training partition
         train_splits = splits.copy()
-        train_splits.remove(hold_out)
+        train_splits.remove(test_hold_out)
+        train_splits.remove(val_hold_out)
+
+        val_splits = [val_hold_out]
+        test_splits = [test_hold_out]
+
+        print('Loading training partition...')
 
         # Create a dataset corresponding to the training partition
         gset_train = GuitarSet(splits=train_splits,
@@ -109,10 +115,19 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                                   num_workers=16,
                                   drop_last=True)
 
+        print('Loading validation partition...')
+
+        # Create a dataset corresponding to the validation partition
+        gset_val = GuitarSet(splits=val_splits,
+                              hop_length=hop_length,
+                              sample_rate=sample_rate,
+                              data_proc=data_proc,
+                              profile=profile,
+                              store_data=True)
+
         print('Loading testing partition...')
 
         # Create a dataset corresponding to the training partition
-        test_splits = [hold_out]
         gset_test = GuitarSet(splits=test_splits,
                               hop_length=hop_length,
                               sample_rate=sample_rate,
@@ -122,19 +137,20 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         print('Initializing model...')
 
-        # Initialize a new instance of the model and exchange the
-        # logistic banks for group softmax layers
+        # Initialize a new instance of the model
         of1 = OnsetsFrames(dim_in, None, model_complexity, gpu_id)
 
-        of1.profile = profile
+        # Exchange the logistic banks for group softmax layers
         of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
         of1.pianoroll[-1] = SoftmaxGroups(of1.dim_am, profile)
-
         of1.dim_lm2 = of1.onsets[-1].dim_out + of1.pianoroll[-1].dim_out
         of1.adjoin = nn.Sequential(
             LanguageModel(of1.dim_lm2, of1.dim_lm2),
             SoftmaxGroups(of1.dim_lm2, profile, 'pitch')
         )
+
+        # Set the new model profile
+        of1.profile = profile
 
         of1.change_device()
         of1.train()

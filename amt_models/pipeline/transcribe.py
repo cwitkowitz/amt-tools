@@ -115,21 +115,23 @@ def transcribe(model, track, profile, log_dir=None):
         preds = model.run_on_batch(batch)
         preds = track_to_cpu(preds)
 
-        track_id = track['track']
-        preds['track'] = track_id
+        track_id = track[TR_ID]
+        preds[TR_ID] = track_id
 
-        times = track['times']
-        preds['times'] = times
+        preds['loss'] = preds['loss'].item()
+
+        times = track[TIMES]
+        preds[TIMES] = times
 
         pitch = None
-        if 'pitch' in preds.keys():
-            pitch = preds['pitch']
-            preds.pop('pitch')
+        if PITCH in preds.keys():
+            pitch = preds[PITCH]
+            preds.pop(PITCH)
 
         onsets = None
-        if 'onsets' in preds.keys():
-            onsets = preds['onsets']
-            preds.pop('onsets')
+        if ONSET in preds.keys():
+            onsets = preds[ONSET]
+            preds.pop(ONSET)
 
         if pitch is not None and valid_activations(pitch, profile):
             pitch = to_multi(pitch, profile)
@@ -138,17 +140,17 @@ def transcribe(model, track, profile, log_dir=None):
                 onsets = to_multi(onsets, profile)
 
             if valid_multi(pitch, profile):
-                preds['pitch_multi'] = pitch
+                preds[MULT_PITCH] = pitch
 
                 if log_dir is not None:
-                    pitch_dir = os.path.join(log_dir, f'{track_id}', 'pitch_multi')
+                    pitch_dir = os.path.join(log_dir, f'{track_id}', MULT_PITCH)
                     write_pitch_multi(pitch_dir, pitch, times[:-1], profile.low, profile.tuning)
 
                 notes_multi = predict_multi(pitch, times, profile.low, onsets)
-                preds['notes_multi'] = notes_multi
+                preds[MULT_NOTES] = notes_multi
 
                 if log_dir is not None:
-                    notes_dir = os.path.join(log_dir, f'{track_id}', 'notes_multi')
+                    notes_dir = os.path.join(log_dir, f'{track_id}', MULT_NOTES)
                     write_notes_multi(notes_dir, notes_multi, profile.tuning)
 
                 pitch = to_single(pitch, profile)
@@ -156,17 +158,17 @@ def transcribe(model, track, profile, log_dir=None):
                     onsets = to_single(onsets, profile)
 
             if valid_single(pitch, profile):
-                preds['pitch_single'] = pitch
+                preds[SOLO_PITCH] = pitch
 
                 if log_dir is not None:
-                    pitch_path = os.path.join(log_dir, f'{track_id}', 'pitch_single.txt')
+                    pitch_path = os.path.join(log_dir, f'{track_id}', f'{SOLO_PITCH}.txt')
                     write_pitch(pitch_path, pitch, times[:-1], profile.low)
 
                 note_pitches, note_intervals = predict_notes(pitch, times, profile.low, onsets)
-                preds['notes_single'] = (note_pitches, note_intervals)
+                preds[SOLO_NOTES] = (note_pitches, note_intervals)
 
                 if log_dir is not None:
-                    notes_path = os.path.join(log_dir, f'{track_id}', 'notes_single.txt')
+                    notes_path = os.path.join(log_dir, f'{track_id}', f'{SOLO_NOTES}.txt')
                     write_notes(notes_path, note_pitches, note_intervals)
 
         # TODO - option to redo pianoroll from note predictions
