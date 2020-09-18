@@ -20,6 +20,7 @@ import os
 # TODO - Note splitting
 # TODO - Changes for filterbank learning, if any
 # TODO - sustain boolean, other bells/whistles in OF/TabCNN
+# TODO - separate booleans for saving/storing feats/gt?
 
 
 class TranscriptionDataset(Dataset):
@@ -229,13 +230,17 @@ class TranscriptionDataset(Dataset):
         # Calculate the frame times every time (faster than saving/loading)
         times = self.data_proc.get_times(data['audio'])
 
-        # Add the features to the data dictionary
-        data['feats'] = feats
+        # Check if fixed features were provided
+        if feats:
+            # Add the features to the data dictionary
+            data['feats'] = feats
         data['times'] = times
 
         if self.store_data:
-            # Add the features to the data dictionary in RAM
-            self.data[track]['feats'] = feats
+            # Check if fixed features were provided
+            if feats:
+                # Add the features to the data dictionary in RAM
+                self.data[track]['feats'] = feats
             self.data[track]['times'] = times
 
         return data

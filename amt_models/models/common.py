@@ -41,6 +41,11 @@ class TranscriptionModel(nn.Module):
         self.model_complexity = model_complexity
         self.device = device
 
+        # Placeholder for appending additional modules, such as learnable filterbanks
+        self.feat_ext = nn.Sequential(
+            nn.Identity()
+        )
+
     def change_device(self, device=None):
         """
         Change the device and load the model onto the new device.
@@ -82,6 +87,16 @@ class TranscriptionModel(nn.Module):
 
         batch = track_to_device(batch, self.device)
 
+        # If features exist, extract them
+        if 'feats' in batch.keys():
+            feats = batch['feats']
+        # Otherwise, we assume feature extraction occurs here
+        else:
+            feats = batch['audio'].unsqueeze(1)
+
+        # Run input through the feature extraction module, which does nothing by default
+        batch['feats'] = self.feat_ext(feats)
+
         return batch
 
     @abstractmethod
@@ -92,9 +107,9 @@ class TranscriptionModel(nn.Module):
         Parameters
         ----------
         feats : Tensor (B x C x ...)
-          input features for a batch of tracks,
-          B - batch size,
-          C - number of channels
+          Input features for a batch of tracks,
+          B - batch size
+          C - channels
         """
 
         return NotImplementedError

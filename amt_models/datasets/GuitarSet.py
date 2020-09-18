@@ -11,6 +11,7 @@ import mirdata
 import shutil
 import os
 
+
 class GuitarSet(TranscriptionDataset):
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100, data_proc=None, profile=None,
                  num_frames=None, split_notes=False, reset_data=False, store_data=True, save_data=True, seed=0):

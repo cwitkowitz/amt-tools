@@ -76,6 +76,9 @@ class TabCNN(TranscriptionModel):
         )
 
     def pre_proc(self, batch):
+        # Add the batch to the model's device
+        super().pre_proc(batch)
+
         feats = batch['feats']
         # Window the features
         feats = framify_tfr(feats, self.win_len, 1, self.win_len // 2)
@@ -87,9 +90,6 @@ class TabCNN(TranscriptionModel):
         feats = feats.squeeze(1)
         batch['feats'] = feats
 
-        # Add the batch to the model's device
-        super().pre_proc(batch)
-
         return batch
 
     def forward(self, feats):
@@ -97,7 +97,8 @@ class TabCNN(TranscriptionModel):
         # Collapse the sequence-frame axis into the batch axis, so that
         # each windowed group of frames is treated as one independent sample
         feats = feats.reshape(-1, 1, self.dim_in, self.win_len)
-        x = (self.spatial(feats))
+
+        x = self.spatial(feats)
         x = x.flatten().view(bs, -1, self.feat_map_size)
         preds = self.dense(x)
 

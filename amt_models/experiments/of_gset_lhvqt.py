@@ -9,14 +9,14 @@ from datasets.GuitarSet import *
 
 from tools.instrument import *
 
-from features.melspec import *
+from features.lhvqt import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
-ex = Experiment('Onsets & Frames w/ Mel Spectrogram on GuitarSet')
+ex = Experiment('Onsets & Frames w/ Learnable Filterbank on GuitarSet')
 
 @ex.config
 def config():
@@ -30,10 +30,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 1000
+    iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 19
+    checkpoints = 40
 
     # Number of samples to gather for a batch
     batch_size = 30
@@ -52,7 +52,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), MelSpec.features_name()])
+    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), LHVQT.features_name()])
     root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -72,13 +72,16 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     profile = GuitarProfile()
 
     # Processing parameters
-    dim_in = 229
-    model_complexity = 2
+    dim_in = 192
+    model_complexity = 1
 
     # Create the mel spectrogram data processing module
-    data_proc = MelSpec(sample_rate=sample_rate,
-                        n_mels=dim_in,
-                        hop_length=hop_length)
+    data_proc = LHVQT(sample_rate=sample_rate,
+                      hop_length=hop_length,
+                      n_bins=dim_in,
+                      bins_per_octave=24,
+                      harmonics=[1],
+                      random=True)
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -119,11 +122,10 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Create a dataset corresponding to the validation partition
         gset_val = GuitarSet(splits=val_splits,
-                              hop_length=hop_length,
-                              sample_rate=sample_rate,
-                              data_proc=data_proc,
-                              profile=profile,
-                              store_data=True)
+                             hop_length=hop_length,
+                             sample_rate=sample_rate,
+                             data_proc=data_proc,
+                             profile=profile)
 
         print('Loading testing partition...')
 
@@ -133,7 +135,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                               sample_rate=sample_rate,
                               data_proc=data_proc,
                               profile=profile,
-                              split_notes=False)
+                              store_data=False)
 
         print('Initializing model...')
 
@@ -151,6 +153,9 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Set the new model profile
         of1.profile = profile
+
+        # Append the filterbank learning module to the front of the model
+        of1.feat_ext.add_module('fb', data_proc.lhvqt)
 
         of1.change_device()
         of1.train()

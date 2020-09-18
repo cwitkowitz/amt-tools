@@ -38,10 +38,11 @@ class OnsetsFrames(TranscriptionModel):
         )
 
     def pre_proc(self, batch):
-        # Switch the frequency and time axes
-        batch['feats'] = batch['feats'].transpose(-1, -2)
         # Add the batch to the model's device
         super().pre_proc(batch)
+
+        # Switch the frequency and time axes
+        batch['feats'] = batch['feats'].transpose(-1, -2)
 
         return batch
 

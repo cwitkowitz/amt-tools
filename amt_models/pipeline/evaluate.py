@@ -136,7 +136,10 @@ def evaluate(prediction, reference, profile, log_dir=None, verbose=False):
         pitch_multi_est = prediction[MULT_PITCH]
         pitch_tab_results = framewise_multi(t_ref[:-1], pitch_multi_ref, t_est[:-1], pitch_multi_est, profile.low)
         # TODO - TDR is not correct
-        pitch_tdr = pitch_tab_results[PR_KEY] / results[PITCH][PR_KEY]
+        if results[PITCH][PR_KEY]:
+            pitch_tdr = pitch_tab_results[PR_KEY] / results[PITCH][PR_KEY]
+        else:
+            pitch_tdr = 0
         pitch_tab_results[TDR] = pitch_tdr
         results[TAB_PITCH] = pitch_tab_results
 
@@ -148,7 +151,10 @@ def evaluate(prediction, reference, profile, log_dir=None, verbose=False):
         notes_multi_est = prediction[MULT_NOTES]
         notes_tab_results = notewise_multi(notes_multi_ref, notes_multi_est)
         # TODO - TDR is not correct
-        note_tdr = notes_tab_results[PR_KEY] / results[NOTE_ON][PR_KEY]
+        if results[NOTE_ON][PR_KEY] != 0:
+            note_tdr = notes_tab_results[PR_KEY] / results[NOTE_ON][PR_KEY]
+        else:
+            note_tdr = 0
         notes_tab_results[TDR] = note_tdr
         results[TAB_NOTES] = notes_tab_results
 

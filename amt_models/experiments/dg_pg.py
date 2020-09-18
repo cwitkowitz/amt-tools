@@ -116,7 +116,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          sample_rate=sample_rate,
                          data_proc=data_proc,
                          profile=profile,
-                         split_notes=split_notes,
                          reset_data=reset_data)
 
     print('Initializing model...')
