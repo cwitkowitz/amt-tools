@@ -555,7 +555,7 @@ class TranscriptionDataset(Dataset):
     @abstractmethod
     def download(save_dir):
         """
-        Download the dataset to disk if possible.
+        Download the dataset to disk if possible. This is to be extended by a child class.
 
         Parameters
         ----------
@@ -563,4 +563,9 @@ class TranscriptionDataset(Dataset):
           Directory under which to save the dataset
         """
 
-        return NotImplementedError
+        # If the directory already exists, remove it
+        if os.path.isdir(save_dir):
+            shutil.rmtree(save_dir)
+
+        # Create the base directory
+        os.mkdir(save_dir)

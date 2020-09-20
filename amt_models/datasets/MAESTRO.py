@@ -6,13 +6,9 @@ from tools.conversion import *
 from tools.io import *
 
 # Regular imports
-from tqdm import tqdm
 
 import pandas as pd
 import numpy as np
-import requests
-import zipfile
-import shutil
 import os
 
 
@@ -166,8 +162,7 @@ class _MAESTRO(TranscriptionDataset):
     @staticmethod
     def download(save_dir):
         """
-        This is to be overridden by a child class.
-        Resets the target directory if it already exists.
+        This is to be extended by a child class.
 
         Parameters
         ----------
@@ -175,54 +170,7 @@ class _MAESTRO(TranscriptionDataset):
           Directory in which to save the contents of MAESTRO
         """
 
-        # If the directory already exists, remove it
-        if os.path.isdir(save_dir):
-            shutil.rmtree(save_dir)
-
-        # Create the base directory
-        os.mkdir(save_dir)
-
-def stream_and_unzip(url, save_dir, chunk_size=1024):
-    """
-    Download a zip file at a URL by streaming it, unzip it, and remove the zip file.
-
-    Parameters
-    ----------
-    url : string
-      URL pointing to the zip file
-    save_dir : string
-      Directory to use when saving and extracting the zip file
-    chunk_size : int
-      Number of bytes to download at a time
-    """
-
-    # Construct a path for saving the zip file
-    save_path = os.path.join(save_dir, os.path.basename(url))
-
-    # Create an HTTP GET request
-    r = requests.get(url, stream=True)
-
-    # Determine the total number of bytes to be downloaded
-    total_length = int(r.headers.get('content-length'))
-
-    # Open the target zip file in write mode
-    with open(save_path, 'wb') as zip_file:
-        # Iteratively download chunks of the zip file,
-        # displaying a progress bar in the console
-        for chunk in tqdm(r.iter_content(chunk_size=chunk_size),
-                               total=int(total_length/chunk_size+1)):
-            # If a chunk was successfully downloaded,
-            if chunk:
-                # Write the chunk to the zip file
-                zip_file.write(chunk)
-
-    # Open the zip file in read mode
-    with zipfile.ZipFile(save_path, 'r') as zip_ref:
-        # Extract the contents of the zip file in the same directory
-        zip_ref.extractall(save_dir)
-
-    # Delete the zip file
-    shutil.rmtree(save_path)
+        TranscriptionDataset.download(save_dir)
 
 
 class MAESTRO_V1(_MAESTRO):
@@ -240,7 +188,7 @@ class MAESTRO_V1(_MAESTRO):
     @staticmethod
     def download(save_dir):
         """
-        Download MAESTRO version 1.
+        Download MAESTRO version 1 to a specified location.
 
         Parameters
         ----------
@@ -251,11 +199,25 @@ class MAESTRO_V1(_MAESTRO):
         # Reset the directory if it already exists
         _MAESTRO.download(save_dir)
 
+        print(f'Downloading {MAESTRO_V1.dataset_name()}')
+
         # URL pointing to the zip file
         url = f'https://storage.googleapis.com/magentadata/datasets/maestro/v1.0.0/maestro-v1.0.0.zip'
 
-        # Download the zip file, unzip it, and remove it
-        stream_and_unzip(url, save_dir, 1000 * 1024)
+        # Construct a path for saving the file
+        save_path = os.path.join(save_dir, os.path.basename(url))
+
+        # Download the zip file
+        stream_url_resource(url, save_path, 1000 * 1024)
+
+        # Unzip the downloaded file and remove it
+        unzip_and_remove(save_path)
+
+        # Construct a path to the out-of-the-box top-level directory
+        old_dir = os.path.join(save_dir, 'maestro-v1.0.0/')
+
+        # Remove the out-of-the-box top-level directory from the path chain
+        change_base_dir(save_dir, old_dir)
 
 
 class MAESTRO_V2(_MAESTRO):
@@ -273,7 +235,7 @@ class MAESTRO_V2(_MAESTRO):
     @staticmethod
     def download(save_dir):
         """
-        Download MAESTRO version 1.
+        Download MAESTRO version 2 to a specified location.
 
         Parameters
         ----------
@@ -284,8 +246,22 @@ class MAESTRO_V2(_MAESTRO):
         # Reset the directory if it already exists
         _MAESTRO.download(save_dir)
 
+        print(f'Downloading {MAESTRO_V2.dataset_name()}')
+
         # URL pointing to the zip file
         url = f'https://storage.googleapis.com/magentadata/datasets/maestro/v2.0.0/maestro-v2.0.0.zip'
 
-        # Download the zip file, unzip it, and remove it
-        stream_and_unzip(url, save_dir, 1000 * 1024)
+        # Construct a path for saving the file
+        save_path = os.path.join(save_dir, os.path.basename(url))
+
+        # Download the zip file
+        stream_url_resource(url, save_path, 1000 * 1024)
+
+        # Unzip the downloaded file and remove it
+        unzip_and_remove(save_path)
+
+        # Construct a path to the out-of-the-box top-level directory
+        old_dir = os.path.join(save_dir, 'maestro-v2.0.0/')
+
+        # Remove the out-of-the-box top-level directory from the path chain
+        change_base_dir(save_dir, old_dir)

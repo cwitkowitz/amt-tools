@@ -155,14 +155,10 @@ class GuitarSet(TranscriptionDataset):
           Directory in which to save the contents of GuitarSet
         """
 
-        # If the directory already exists, remove it
-        if os.path.isdir(save_dir):
-            shutil.rmtree(save_dir)
-
-        # Create the base directory
-        os.mkdir(save_dir)
+        TranscriptionDataset.download(save_dir)
 
         print(f'Downloading {GuitarSet.dataset_name()}')
 
+        # TODO - can download directly from https://zenodo.org/record/3371780#.X2dWA3VKgk8
         # Download GuitarSet
         mirdata.guitarset.download(data_home=save_dir)
