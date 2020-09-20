@@ -84,7 +84,8 @@ def average_results(d):
         if isinstance(d_avg[key], dict):
             d_avg[key] = average_results(d_avg[key])
         else:
-            d_avg[key] = np.mean(d_avg[key])
+            # Take the average of all entries and convert to float (necessary for logger)
+            d_avg[key] = float(np.mean(d_avg[key]))
     return d_avg
 
 

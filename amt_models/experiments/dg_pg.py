@@ -91,7 +91,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Loading training partition...')
 
     # Create a dataset corresponding to the training partition
-    mstro_train = MAESTRO_V1(splits=train_split,
+    mstro_train = MAESTRO_V2(splits=train_split,
                              hop_length=hop_length,
                              sample_rate=sample_rate,
                              data_proc=data_proc,

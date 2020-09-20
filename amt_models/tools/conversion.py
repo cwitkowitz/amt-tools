@@ -1,5 +1,5 @@
 # My imports
-from tools.instrument import *
+#from tools.instrument import *
 from tools.constants import *
 from tools.utils import *
 
@@ -55,7 +55,7 @@ def midi_groups_to_pianoroll(pitches, intervals, times, note_range):
 
 def tabs_to_multi_pianoroll(tabs, profile):
     # TODO - for now make sure it's guitar - can generalize in future
-    assert isinstance(profile, GuitarProfile)
+    #assert isinstance(profile, GuitarProfile)
 
     tabs = tabs.copy().astype('int')
 
@@ -122,7 +122,7 @@ def get_onsets(pitch, profile):
 
 def multi_pianoroll_to_tabs(multi_pianoroll, profile):
     # TODO - for now make sure it's guitar - can generalize (num_dofs) in future
-    assert isinstance(profile, GuitarProfile)
+    #assert isinstance(profile, GuitarProfile)
 
     shape = list(multi_pianoroll.shape)
     silent_idx = shape.pop(-2)

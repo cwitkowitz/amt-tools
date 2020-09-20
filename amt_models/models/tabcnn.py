@@ -88,7 +88,7 @@ class TabCNN(TranscriptionModel):
         feats = feats.transpose(-2, -3)
         # Remove the single channel dimension
         feats = feats.squeeze(1)
-        batch['feats'] = feats
+        batch['feats'] = feats.to(self.device)
 
         return batch
 

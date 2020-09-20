@@ -31,10 +31,10 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 1000
+    iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 20
+    checkpoints = 40
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -113,6 +113,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                               shuffle=True,
                               num_workers=16,
                               drop_last=True)
+
+    # TODO - validation using overlapping tracks which were removed
 
     print('Loading testing partition...')
 

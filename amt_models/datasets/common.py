@@ -18,9 +18,8 @@ import os
 # TODO - MusicNet
 # TODO - ComboDataset
 # TODO - Note splitting
-# TODO - Changes for filterbank learning, if any
-# TODO - sustain boolean, other bells/whistles in OF/TabCNN
-# TODO - separate booleans for saving/storing feats/gt?
+# TODO - other bells/whistles in OF/TabCNN
+# TODO - optionally download datasets in flac to save memory
 
 
 class TranscriptionDataset(Dataset):
@@ -231,14 +230,14 @@ class TranscriptionDataset(Dataset):
         times = self.data_proc.get_times(data['audio'])
 
         # Check if fixed features were provided
-        if feats:
+        if feats is not None:
             # Add the features to the data dictionary
             data['feats'] = feats
         data['times'] = times
 
         if self.store_data:
             # Check if fixed features were provided
-            if feats:
+            if feats is not None:
                 # Add the features to the data dictionary in RAM
                 self.data[track]['feats'] = feats
             self.data[track]['times'] = times
@@ -273,9 +272,23 @@ class TranscriptionDataset(Dataset):
             # Load the track's ground-truth
             data = self.load(track_id)
 
+        # TODO - for now, this cannot be done, as it requires knowledge of original profile
+        # # Determine which keys exist before calculating features
+        # keys = list(data.keys())
+        #
+        # # Loop through possible ground-truth time frequency representations
+        # for tfr_key in ['pitch', 'onsets', 'offsets']:
+        #     # If the tfr exists in the ground-truth
+        #     if tfr_key in keys:
+        #         # Make sure it adheres to the chosen instrument profile
+        #         data[tfr_key] = self.profile.to(data[tfr_key])
+
         if 'feats' not in data.keys():
             # Calculate the features and add to the dictionary
             data.update(self.calculate_feats(data))
+
+        # Determine which keys exist after calculating features
+        keys = list(data.keys())
 
         # Check to see if a specific sequence length was given
         if seq_length is None:
@@ -284,6 +297,10 @@ class TranscriptionDataset(Dataset):
                 seq_length = self.seq_length
             # Otherwise, we assume the whole track is desired and perform no further actions
             else:
+                # Convert all numpy arrays in the data dictionary to float32
+                data = track_to_dtype(data, dtype='float32')
+                # Validate all of the track data before returning
+                assert self.validate_track(data, self.profile)
                 return data
 
         # If a specific starting sample was not provided, sample one randomly
@@ -305,7 +322,7 @@ class TranscriptionDataset(Dataset):
         data['audio'] = data['audio'][..., sample_start : sample_end]
 
         # Determine if there is note ground-truth and, if so, get it
-        if 'notes' in data.keys():
+        if 'notes' in keys:
             # Notes entry has not been popped by a dataloader
             notes = data['notes']
         elif 'notes' in self.data[track_id].keys():
@@ -330,8 +347,7 @@ class TranscriptionDataset(Dataset):
 
             data['notes'] = notes
 
-        # Determine which entries remain
-        keys = list(data.keys())
+        # Remove keys already processed
         keys.remove('audio')
         keys.remove('notes')
         keys.remove('fs')
@@ -346,9 +362,9 @@ class TranscriptionDataset(Dataset):
                     # Normal frame slicing protocol
                     data[key] = data[key][..., frame_start : frame_end]
 
+        # TODO - repeat code of returning whole track above
         # Convert all numpy arrays in the data dictionary to float32
         data = track_to_dtype(data, dtype='float32')
-
         # Validate all of the track data before returning
         assert self.validate_track(data, self.profile)
 

@@ -75,13 +75,13 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     dim_in = 192
     model_complexity = 1
 
-    # Create the mel spectrogram data processing module
+    # Create the learnable filterbank data processing module
     data_proc = LHVQT(sample_rate=sample_rate,
                       hop_length=hop_length,
                       n_bins=dim_in,
                       bins_per_octave=24,
                       harmonics=[1],
-                      random=True)
+                      random=False)
 
     # Perform each fold of cross-validation
     for k in range(6):

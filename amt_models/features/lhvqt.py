@@ -35,7 +35,7 @@ class LHVQT(FeatureModule):
         return sample_range
 
     def process_audio(self, audio):
-        return False
+        return None
 
     def to_decibels(self, feats):
         return NotImplementedError
