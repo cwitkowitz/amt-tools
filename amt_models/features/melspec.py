@@ -49,6 +49,6 @@ class MelSpec(FeatureModule):
         frame_idcs = np.arange(num_frames + 1)
         times = librosa.frames_to_time(frames=frame_idcs,
                                        sr=self.sample_rate,
-                                       hop_length=self.hop_length,
-                                       n_fft=self.n_fft)
+                                       hop_length=self.hop_length)
+                                       #n_fft=self.n_fft)
         return times

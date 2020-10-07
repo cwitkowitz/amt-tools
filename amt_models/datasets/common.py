@@ -215,8 +215,8 @@ class TranscriptionDataset(Dataset):
             feats = self.data_proc.process_audio(data['audio'])
 
             # Fetch the hyper-parameters of the feature module
-            fs = self.data_proc.sample_rate
-            hop_length = self.data_proc.hop_length
+            fs = self.data_proc.get_sample_rate()
+            hop_length = self.data_proc.get_hop_length()
 
             if self.save_data:
                 # Save the features to memory

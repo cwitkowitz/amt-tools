@@ -21,7 +21,7 @@ class FeatureModule(object):
         Parameters
         ----------
         sample_rate : int or float
-          Assumed sampling rate for all audio
+          Presumed sampling rate for all audio
         hop_length : int or float
           Number of samples between feature frames
         decibels : bool
@@ -130,6 +130,34 @@ class FeatureModule(object):
         """
 
         return NotImplementedError
+
+    def get_sample_rate(self):
+        """
+        Helper function to access sampling rate.
+
+        Returns
+        ----------
+        sample_rate : int or float
+          Presumed sampling rate for all audio
+        """
+
+        sample_rate = self.sample_rate
+
+        return sample_rate
+
+    def get_hop_length(self):
+        """
+        Helper function to access hop length.
+
+        Returns
+        ----------
+        hop_length : int or float
+          Number of samples between feature frames
+        """
+
+        hop_length = self.hop_length
+
+        return hop_length
 
     @classmethod
     def features_name(cls):
