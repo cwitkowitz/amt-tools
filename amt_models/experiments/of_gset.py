@@ -33,7 +33,7 @@ def config():
     iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 19
+    checkpoints = 20
 
     # Number of samples to gather for a batch
     batch_size = 30

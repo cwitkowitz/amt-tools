@@ -12,8 +12,8 @@ from torch import nn
 
 
 class TabCNN(TranscriptionModel):
-    def __init__(self, dim_in, profile, model_complexity=1, device='cpu', win_len=9):
-        super().__init__(dim_in, profile, model_complexity, device)
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=1, device='cpu', win_len=9):
+        super().__init__(dim_in, profile, in_channels, model_complexity, device)
 
         # TODO - redo model complexity - don't remember why I put this here
         # Number of frames required for a prediction
@@ -43,7 +43,7 @@ class TabCNN(TranscriptionModel):
 
         self.spatial = nn.Sequential(
             # 1st convolution
-            nn.Conv2d(1, nf1, ks1),
+            nn.Conv2d(self.in_channels, nf1, ks1),
             # Activation function
             nn.ReLU(),
             # 2nd convolution

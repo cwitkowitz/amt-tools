@@ -46,6 +46,7 @@ def predict_notes(frames, times, lowest=0, onsets=None, hard_inhibition=False, f
     #    assert valid_single(onsets)
 
     if hard_inhibition:
+        # TODO - inhibit after filtering short notes
         onsets = inhibit_activations(onsets, times, 0.05)
 
     # Create empty lists for note pitches and their time intervals
@@ -64,12 +65,14 @@ def predict_notes(frames, times, lowest=0, onsets=None, hard_inhibition=False, f
             if offset == frames.shape[1]:
                 break
 
-        # Add the frequency to the list
-        pitches.append(librosa.midi_to_hz(pitch + lowest))
+        # Make sure there were corresponding frame activations
+        if onset != offset:
+            # Add the frequency to the list
+            pitches.append(librosa.midi_to_hz(pitch + lowest))
 
-        # Add the interval to the list
-        onset, offset = times[onset], times[offset]
-        ints.append([onset, offset])
+            # Add the interval to the list
+            onset, offset = times[onset], times[offset]
+            ints.append([onset, offset])
 
     # Convert the lists to numpy arrays
     pitches, intervals = np.array(pitches), np.array(ints)
@@ -134,6 +137,7 @@ def transcribe(model, track, profile, log_dir=None):
             preds.pop(ONSET)
 
         if pitch is not None and valid_activations(pitch, profile):
+            # TODO - only if we want tabs
             pitch = to_multi(pitch, profile)
 
             if onsets is not None:

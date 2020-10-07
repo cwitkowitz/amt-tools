@@ -10,6 +10,8 @@ from datasets.GuitarSet import *
 from tools.instrument import *
 
 from features.lhvqt import *
+from features.combo import *
+from features.cqt import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
@@ -72,16 +74,24 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     profile = GuitarProfile()
 
     # Processing parameters
-    dim_in = 192
+    dim_in = 24
     model_complexity = 1
 
     # Create the learnable filterbank data processing module
-    data_proc = LHVQT(sample_rate=sample_rate,
+    lhvqt = LHVQT(sample_rate=sample_rate,
                       hop_length=hop_length,
                       n_bins=dim_in,
                       bins_per_octave=24,
-                      harmonics=[1],
+                      harmonics=[1, 2, 3, 4, 5, 6, 7, 8],
                       random=False)
+
+    #cqt = CQT(sample_rate=sample_rate,
+    #                hop_length=hop_length,
+    #                n_bins=dim_in,
+    #                bins_per_octave=24)
+
+    #data_proc = Combo([cqt, cqt])
+    data_proc = lhvqt
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -140,7 +150,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, model_complexity, gpu_id)
+        of1 = OnsetsFrames(dim_in, None, 8, model_complexity, gpu_id)
 
         # Exchange the logistic banks for group softmax layers
         of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')

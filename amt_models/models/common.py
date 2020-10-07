@@ -17,7 +17,7 @@ class TranscriptionModel(nn.Module):
     Implements a generic music transcription model.
     """
 
-    def __init__(self, dim_in, profile, model_complexity=1, device='cpu'):
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=1, device='cpu'):
         """
         Initialize parameters common to all models and instantiate
         model as a PyTorch Module.
@@ -28,6 +28,8 @@ class TranscriptionModel(nn.Module):
           Dimensionality of framewise input vectors along the feature axis
         profile : InstrumentProfile (tools/instrument.py)
           Instructions for organizing output and ground-truth
+        in_channels : int
+          Number of channels in input features
         model_complexity : int, optional (default 1)
           Scaling parameter for sizes of model's components
         device : string, optional (default /'cpu/')
@@ -38,6 +40,7 @@ class TranscriptionModel(nn.Module):
 
         self.dim_in = dim_in
         self.profile = profile
+        self.in_channels = in_channels
         self.model_complexity = model_complexity
         self.device = device
 

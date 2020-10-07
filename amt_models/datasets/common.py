@@ -202,8 +202,9 @@ class TranscriptionDataset(Dataset):
         # Check if the features already exist
         if os.path.exists(feats_path):
             # If so, load the features
-            feats_dict = np.load(feats_path)
+            feats_dict = np.load(feats_path, allow_pickle=True)
             feats = feats_dict['feats']
+            feats = feats.item() if feats.size == 1 else feats
 
             # Load supporting hyper-parameters
             fs = feats_dict['fs'].item()

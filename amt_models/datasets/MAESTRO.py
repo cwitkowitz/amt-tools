@@ -173,6 +173,7 @@ class _MAESTRO(TranscriptionDataset):
         TranscriptionDataset.download(save_dir)
 
 
+# TODO - is it possible to just download the csv file and work with V2?
 class MAESTRO_V1(_MAESTRO):
     """
     MAESTRO version 1.

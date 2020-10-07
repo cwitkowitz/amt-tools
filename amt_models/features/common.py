@@ -6,7 +6,6 @@ from abc import abstractmethod
 
 import numpy as np
 
-# TODO - LHVQT
 # TODO - FeatureCombo (stacking features)
 
 

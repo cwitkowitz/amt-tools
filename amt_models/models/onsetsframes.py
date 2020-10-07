@@ -10,8 +10,8 @@ from torch import nn
 
 class OnsetsFrames(TranscriptionModel):
     # TODO - try to adhere to details of paper as much as possible
-    def __init__(self, dim_in, profile, model_complexity=2, device='cpu'):
-        super().__init__(dim_in, profile, model_complexity, device)
+    def __init__(self, dim_in, profile, in_channels, model_complexity=2, device='cpu'):
+        super().__init__(dim_in, profile, in_channels, model_complexity, device)
 
         # Number of output neurons for the acoustic models
         self.dim_am = 256 * self.model_complexity
@@ -20,13 +20,13 @@ class OnsetsFrames(TranscriptionModel):
         self.dim_lm1 = 128 * self.model_complexity
 
         self.onsets = nn.Sequential(
-            AcousticModel(self.dim_in, self.dim_am, self.model_complexity),
+            AcousticModel(self.dim_in, self.dim_am, self.in_channels, self.model_complexity),
             LanguageModel(self.dim_am, self.dim_lm1),
             LogisticBank(self.dim_lm1, self.profile, 'onsets')
         )
 
         self.pianoroll = nn.Sequential(
-            AcousticModel(self.dim_in, self.dim_am, self.model_complexity),
+            AcousticModel(self.dim_in, self.dim_am, self.in_channels, self.model_complexity),
             LogisticBank(self.dim_am, self.profile)
         )
 
@@ -118,7 +118,7 @@ class OnsetsFrames2(OnsetsFrames):
         return preds, loss
 
 class AcousticModel(nn.Module):
-    def __init__(self, dim_in, dim_out, model_complexity=2):
+    def __init__(self, dim_in, dim_out, in_channels=1, model_complexity=2):
         super(AcousticModel, self).__init__()
 
         # Number of filters for each convolutional layer
@@ -147,7 +147,8 @@ class AcousticModel(nn.Module):
 
         self.layer1 = nn.Sequential(
             # 1st convolution
-            nn.Conv2d(1, nf1, ks1, padding=pd1),
+            # TODO - parameterize in_channels
+            nn.Conv2d(in_channels, nf1, ks1, padding=pd1),
             # 1st batch normalization
             nn.BatchNorm2d(nf1),
             # Activation function

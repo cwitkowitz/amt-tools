@@ -30,10 +30,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 500
+    iterations = 400
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 50
+    checkpoints = 8
 
     # Number of samples to gather for a batch
     batch_size = 30

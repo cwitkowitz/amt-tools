@@ -104,8 +104,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                       reset_data=reset_data)
 
     # Remove tracks in both partitions from the training partitions
-    #print('Removing overlapping tracks from training partition')
-    #maps_train.remove_overlapping(test_splits)
+    print('Removing overlapping tracks from training partition')
+    maps_train.remove_overlapping(test_splits)
 
     # Create a PyTorch data loader for the dataset
     train_loader = DataLoader(dataset=maps_train,
