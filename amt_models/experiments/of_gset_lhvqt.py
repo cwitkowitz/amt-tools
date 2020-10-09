@@ -32,10 +32,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 100
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 40
+    checkpoints = 2
 
     # Number of samples to gather for a batch
     batch_size = 30
@@ -54,7 +54,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), Combo.features_name()])
+    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), MelSpec.features_name()])
     root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -96,6 +96,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
     data_proc = Combo([cqt, msc])
     #data_proc = lhvqt
+    data_proc = msc
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -124,7 +125,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                                profile=profile,
                                num_frames=num_frames,
                                reset_data=reset_data,
-                               save_data=False)
+                               save_data=True)
 
         # Create a PyTorch data loader for the dataset
         train_loader = DataLoader(dataset=gset_train,
@@ -155,7 +156,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, 2, model_complexity, gpu_id)
+        of1 = OnsetsFrames(dim_in, None, 1, model_complexity, gpu_id)
 
         # Exchange the logistic banks for group softmax layers
         of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
