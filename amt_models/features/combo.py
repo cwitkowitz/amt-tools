@@ -42,7 +42,12 @@ class Combo(FeatureModule):
 
         feats = []
         for module in self.modules:
-            feats += [module.process_audio(audio)]
+            mod_feats = module.process_audio(audio)
+            if mod_feats is not None:
+                feats += [mod_feats]
+
+        if len(feats) == 0:
+            feats = None
 
         # TODO - this will break if dimensionality mismatch
         feats = np.concatenate(feats, axis=0)

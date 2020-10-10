@@ -2,7 +2,7 @@
 from features.common import *
 
 # Regular imports
-from lhvqt.lhvqt_ds import LHVQT_DS as _LHVQT
+from lhvqt.lhvqt import LHVQT as _LHVQT
 from lhvqt.lvqt_orig import LVQT
 
 import librosa

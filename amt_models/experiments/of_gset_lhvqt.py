@@ -32,10 +32,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 100
+    iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 2
+    checkpoints = 40
 
     # Number of samples to gather for a batch
     batch_size = 30
@@ -54,7 +54,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), MelSpec.features_name()])
+    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), Combo.features_name()])
     root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -77,26 +77,22 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     dim_in = 192
     model_complexity = 1
 
-    # Create the learnable filterbank data processing module
-    #lhvqt = LHVQT(sample_rate=sample_rate,
-    #                  hop_length=hop_length,
-    #                  n_bins=dim_in,
-    #                  bins_per_octave=24,
-    #                  harmonics=[1, 2, 3, 4, 5, 6, 7, 8],
-    #                  random=False)
+    # Initialize learnable filterbank data processing module
+    lhvqt = LHVQT(sample_rate=sample_rate,
+                  hop_length=hop_length,
+                  n_bins=dim_in,
+                  bins_per_octave=24,
+                  harmonics=[1],
+                  random=False)
 
+    # Initialize constant-Q transform data processing module
     cqt = CQT(sample_rate=sample_rate,
-                    hop_length=hop_length,
-                    n_bins=dim_in,
-                    bins_per_octave=24)
+              hop_length=hop_length,
+              n_bins=dim_in,
+              bins_per_octave=24)
 
-    msc = MelSpec(sample_rate=sample_rate,
-                        n_mels=dim_in,
-                        hop_length=hop_length)
-
-    data_proc = Combo([cqt, msc])
-    #data_proc = lhvqt
-    data_proc = msc
+    # Create a combo feature extractor with fixed and learnable CQT filters
+    data_proc = Combo([cqt, lhvqt])
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -141,7 +137,8 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                              hop_length=hop_length,
                              sample_rate=sample_rate,
                              data_proc=data_proc,
-                             profile=profile)
+                             profile=profile,
+                             save_data=True)
 
         print('Loading testing partition...')
 
@@ -151,12 +148,13 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                               sample_rate=sample_rate,
                               data_proc=data_proc,
                               profile=profile,
-                              store_data=False)
+                              store_data=False,
+                              save_data=True)
 
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, 1, model_complexity, gpu_id)
+        of1 = OnsetsFrames(dim_in, None, 2, model_complexity, gpu_id)
 
         # Exchange the logistic banks for group softmax layers
         of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
@@ -171,7 +169,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         of1.profile = profile
 
         # Append the filterbank learning module to the front of the model
-        #of1.feat_ext.add_module('fb', data_proc.lhvqt)
+        of1.feat_ext.add_module('fb', lhvqt.lhvqt)
 
         of1.change_device()
         of1.train()

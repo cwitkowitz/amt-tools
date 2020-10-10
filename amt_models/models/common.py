@@ -90,15 +90,27 @@ class TranscriptionModel(nn.Module):
 
         batch = track_to_device(batch, self.device)
 
+        # Get input audio
+        input_audio = batch['audio'].unsqueeze(1)
+
+        # Run audio through the feature extraction module, which does nothing by default
+        auto_feats = self.feat_ext(input_audio)
+
         # If features exist, extract them
         if 'feats' in batch.keys():
+            # Obtain any fixed features
             feats = batch['feats']
-        # Otherwise, we assume feature extraction occurs here
+            # Check if any features were calculated automatically
+            if not auto_feats.equal(input_audio):
+                # If so, add to fixed features (number of frames must match)
+                feats = torch.cat((feats, auto_feats), dim=1)
         else:
-            feats = batch['audio'].unsqueeze(1)
+            # Otherwise we assume features were calculated automatically
+            # - if feature extraction module was left as
+            #   identity, our features are the audio itself
+            feats = auto_feats
 
-        # Run input through the feature extraction module, which does nothing by default
-        batch['feats'] = self.feat_ext(feats)
+        batch['feats'] = feats
 
         return batch
 

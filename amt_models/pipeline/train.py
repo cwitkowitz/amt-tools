@@ -151,7 +151,7 @@ def train(model, train_loader, optimizer, iterations,
 
             # Load the latest model
             model = torch.load(model_path)
-            # TODO - how to initialize learned filterbank weights into data_proc?
+            # TODO - how to initialize learned filterbank weights into data_proc? - should be fixed (part of model), just test and verify
             # Replace the randomly initialized parameters with the saved parameters
             super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
             # Load the latest optimizer state

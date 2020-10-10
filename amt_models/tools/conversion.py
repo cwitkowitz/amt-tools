@@ -240,6 +240,8 @@ def track_to_dtype(track, dtype='float32'):
     for key in keys:
         if isinstance(track[key], np.ndarray):
             track[key] = track[key].astype(dtype)
+        if isinstance(track[key], int):
+            track[key] = float(track[key])
 
     return track
 
