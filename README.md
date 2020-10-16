@@ -7,4 +7,7 @@ Inspiration for this work came mostly from https://github.com/jongwook/onsets-an
 
 For now, the models and datasets are based on single-instrument transcription.
 
+Run: tensorboard --logdir=<logdir>/models --port=6006+
+from the generated/experiments directory to visualize loss and validation
+
 This is a HUGE work-in-progress. I have big plans, but my ground-up approach means that this repository will remain hacky for some time.

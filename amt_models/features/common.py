@@ -5,13 +5,14 @@
 from abc import abstractmethod
 
 import numpy as np
+import librosa
 
-# TODO - FeatureCombo (stacking features)
+# TODO - add expected dimensions to docs
 
 
 class FeatureModule(object):
     """
-    Implements a generic music feature extraction module.
+    Implements a generic music feature extraction module wrapper.
     """
 
     def __init__(self, sample_rate, hop_length, decibels=True):
@@ -32,33 +33,56 @@ class FeatureModule(object):
         self.hop_length = hop_length
         self.decibels = decibels
 
-    @abstractmethod
     def get_expected_frames(self, audio):
         """
         Determine the number of frames the module will return
         for a piece of audio.
 
+        This is the default behavior. It can be overridden.
+
         Parameters
         ----------
         audio : ndarray
           Mono-channel audio
+
+        Returns
+        ----------
+        num_frames : int
+          Number of frames expected
         """
 
-        return NotImplementedError
+        # Simply the number of hops plus one
+        num_frames = 1 + len(audio) // self.hop_length
 
-    @abstractmethod
+        return num_frames
+
     def get_sample_range(self, num_frames):
         """
-        Determine the range of audio samples which will produce
-        features with a given number of frames
+        Determine the range of audio samples which will produce features
+        with a given number of frames.
+
+        This is the default behavior. It can be overridden.
 
         Parameters
         ----------
         num_frames : int
           Number of frames for sample-range query
+
+        Returns
+        ----------
+        sample_range : ndarray
+          Valid audio signal lengths to obtain queried number of frames
         """
 
-        return NotImplementedError
+        # Calculate the boundaries
+        max_samples = num_frames * self.hop_length - 1
+        min_samples = max(1, max_samples - self.hop_length + 1)
+
+        # Construct an array ranging between the minimum and maximum number of samples
+        sample_range = np.arange(min_samples, max_samples + 1)
+
+        return sample_range
+
 
     @abstractmethod
     def process_audio(self, audio):
@@ -73,18 +97,27 @@ class FeatureModule(object):
 
         return NotImplementedError
 
-    @abstractmethod
     def to_decibels(self, feats):
         """
         Convert features to decibels (dB) units.
 
+        This is the default behavior. It can be overridden.
+
         Parameters
         ----------
         feats : ndarray
-          Calculated features
+          Calculated amplitude features
+
+        Returns
+        ----------
+        feats : ndarray
+          Calculated features in decibels
         """
 
-        return NotImplementedError
+        # Simply use the appropriate librosa function
+        feats = librosa.core.amplitude_to_db(feats, ref=np.max)
+
+        return feats
 
     def post_proc(self, feats):
         """
@@ -117,19 +150,33 @@ class FeatureModule(object):
 
         return feats
 
-    @abstractmethod
     def get_times(self, audio):
         """
-        Determine the time, in seconds, associated with each sample
-        or frame of audio.
+        Determine the time, in seconds, associated with frame.
+
+        This is the default behavior. It can be overridden.
 
         Parameters
         ----------
         audio: ndarray
           Mono-channel audio
+
+        Returns
+        ----------
+        times : ndarray
+          Time in seconds of each frame
         """
 
-        return NotImplementedError
+        # Determine the number of frames we will get
+        num_frames = self.get_expected_frames(audio)
+
+        frame_idcs = np.arange(num_frames + 1)
+        # Obtain the time of the first sample of each frame
+        times = librosa.frames_to_time(frames=frame_idcs,
+                                       sr=self.sample_rate,
+                                       hop_length=self.hop_length)
+
+        return times
 
     def get_sample_rate(self):
         """

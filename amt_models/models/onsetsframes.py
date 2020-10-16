@@ -147,7 +147,6 @@ class AcousticModel(nn.Module):
 
         self.layer1 = nn.Sequential(
             # 1st convolution
-            # TODO - parameterize in_channels
             nn.Conv2d(in_channels, nf1, ks1, padding=pd1),
             # 1st batch normalization
             nn.BatchNorm2d(nf1),

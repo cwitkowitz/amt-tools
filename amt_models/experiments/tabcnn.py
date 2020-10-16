@@ -139,7 +139,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        tabcnn = TabCNN(dim_in, profile, model_complexity, gpu_id)
+        tabcnn = TabCNN(dim_in, profile, 1, model_complexity, gpu_id)
         tabcnn.change_device()
         tabcnn.train()
 

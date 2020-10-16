@@ -2,56 +2,84 @@
 from features.common import *
 
 # Regular imports
-from lhvqt.lhvqt import LHVQT as _LHVQT
-from lhvqt.lvqt_orig import LVQT
+from lhvqt.lhvqt_ds import LHVQT_DS as _LHVQT
 
-import librosa
-import torch
+# TODO - different get_sample_range() behavior if padding vs. not padding for extra frame
 
 
 class LHVQT(FeatureModule):
-    def __init__(self, sample_rate=44100, harmonics=[0.5, 1, 2, 3, 4, 5], hop_length=512,
-                 fmin=None, n_bins=84, bins_per_octave=12, gamma=0, random=False, max_p=1):
+    """
+    Implements a Harmonic Variable-Q Transform wrapper.
+    """
+    def __init__(self, sample_rate=44100, hop_length=512, decibels=True, lhvqt=None, lvqt=None,
+                 fmin=None, harmonics=None, n_bins=84, bins_per_octave=12, gamma=0, random=False,
+                 max_p=1, batch_norm=True):
+        """
+        Initialize parameters for the HVQT.
 
-        super().__init__(sample_rate, hop_length, False)
+        Parameters
+        ----------
+        See FeatureModule and chosen LHVQT & LVQT class for others...
+        lhvqt : type
+          Class definition of chosen harmonic-level module
+        lvqt : type
+          Class definition of chosen lower-level module
+        """
 
-        self.lhvqt = _LHVQT(fmin=fmin,
-                            harmonics=harmonics,
-                            lvqt=LVQT,
-                            fs=self.sample_rate,
-                            hop_length=self.hop_length,
-                            n_bins=n_bins,
-                            bins_per_octave=bins_per_octave,
-                            gamma=gamma,
-                            random=random,
-                            max_p=max_p)
+        super().__init__(sample_rate, hop_length, decibels)
+
+        # Default the class definition for the harmonic-level
+        if lhvqt is None:
+            # Original LVQT module
+            lhvqt = _LHVQT
+
+        self.lhvqt = lhvqt(fmin=fmin,
+                           harmonics=harmonics,
+                           lvqt=lvqt,
+                           fs=self.sample_rate,
+                           hop_length=self.hop_length,
+                           n_bins=n_bins,
+                           bins_per_octave=bins_per_octave,
+                           gamma=gamma,
+                           random=random,
+                           max_p=max_p,
+                           to_db=decibels,
+                           batch_norm=batch_norm)
 
     def get_expected_frames(self, audio):
-        # TODO - one frame more than librosa in compare.py? - related to padding for extra frame or filter lengths?
-        audio = torch.from_numpy(audio)
-        num_frames_all = self.lhvqt.get_expected_frames(audio)
-        num_frames = int(np.mean(num_frames_all))
-        assert np.sum(np.array(num_frames_all) - num_frames) == 0
+        """
+        Determine the number of frames the module will return
+        for a piece of audio.
+
+        Parameters
+        ----------
+        audio : ndarray
+          Mono-channel audio
+
+        Returns
+        ----------
+        num_frames : int
+          Number of frames expected
+        """
+
+        # Use the function of the harmonic-level module
+        num_frames = self.lhvqt.get_expected_frames(audio)
+
         return num_frames
 
-    def get_sample_range(self, num_frames):
-        # TODO - different behavior if padding vs. not padding for extra frame
-        # sample_range = np.arange(1, self.hop_length + 1) + (num_frames - 2) * self.hop_length
-        sample_range = np.arange(0, self.hop_length) + (num_frames - 1) * self.hop_length
-        sample_range = sample_range[sample_range > 0]
-        return sample_range
-
     def process_audio(self, audio):
-        return None
+        """
+        Return None to indicate that the audio are the true features
+        to be processed by this module within a transcription model.
 
-    def to_decibels(self, feats):
-        return None
+        Parameters
+        ----------
+        audio : ndarray
+          Mono-channel audio
 
-    def get_times(self, audio):
-        num_frames = self.get_expected_frames(audio)
-        frame_idcs = np.arange(num_frames + 1)
-        # TODO - is there a centering factor?
-        times = librosa.frames_to_time(frames=frame_idcs,
-                                       sr=self.sample_rate,
-                                       hop_length=self.hop_length)
-        return times
+        Returns
+        ----------
+        None
+        """
+
+        return None

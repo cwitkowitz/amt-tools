@@ -11,12 +11,13 @@ import mirdata
 import shutil
 import os
 
+# TODO - ComboDataset
 # TODO - clean this up and verify
 
 
 class DatasetCombo(TranscriptionDataset):
     """
-    Implements the combination of one or more datasets.
+    Implements the combination of multiple datasets.
     """
 
     def __init__(self, datasets, splits):
@@ -65,7 +66,8 @@ class DatasetCombo(TranscriptionDataset):
     @staticmethod
     def download(save_dir):
         """
-        Download GuitarSet to a specified location.
+        Each constituent dataset will be downloaded,
+        if necessary, at the time of it's initialization.
 
         Parameters
         ----------

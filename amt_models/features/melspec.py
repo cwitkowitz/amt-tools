@@ -5,50 +5,79 @@ from features.common import *
 import numpy as np
 import librosa
 
+# TODO - can use n_fft in get_times() if wanted to (parameterize offset?)
+
 
 class MelSpec(FeatureModule):
-    def __init__(self, sample_rate=16000, n_mels=229, n_fft=2048,
-                 hop_length=512, htk=False, norm=None, decibels=True):
+    """
+    Implements a Mel Spectrogram wrapper.
+    """
+    def __init__(self, sample_rate=16000, hop_length=512, decibels=True,
+                 n_mels=229, n_fft=2048, htk=False):
+        """
+        Initialize parameters for the Mel Spectrogram.
+
+        Parameters
+        ----------
+        See FeatureModule class for others...
+        n_mels : int
+          Number of bins (filters) in Mel spectrogram
+        n_fft : int
+          Length of the FFT window in spectrogram calculation
+        htk : bool
+          Whether to use HTK formula instead of Slaney
+        """
+
         super().__init__(sample_rate, hop_length, decibels)
 
         self.n_mels = n_mels
         self.n_fft = n_fft
         self.htk = htk
-        self.norm = norm
-
-    def get_expected_frames(self, audio):
-        num_frames = 1 + len(audio) // self.hop_length
-
-        return num_frames
-
-    def get_sample_range(self, num_frames):
-        max_samples = num_frames * self.hop_length - 1
-        min_samples = max(1, max_samples - self.hop_length + 1)
-        sample_range = np.arange(min_samples, max_samples + 1)
-        return sample_range
 
     def process_audio(self, audio):
+        """
+        Get the Mel Spectrogram features for a piece of audio.
+
+        Parameters
+        ----------
+        audio : ndarray
+          Mono-channel audio
+
+        Returns
+        ----------
+        feats : ndarray
+          Post-processed features
+        """
+
+        # Calculate the Mel Spectrogram using librosa
         mel = librosa.feature.melspectrogram(y=audio,
                                              sr=self.sample_rate,
                                              n_mels=self.n_mels,
                                              n_fft=self.n_fft,
                                              hop_length=self.hop_length,
-                                             htk=self.htk,
-                                             norm=self.norm)
+                                             htk=self.htk)
 
+        # Post-process the Mel Spectrogram
         mel = super().post_proc(mel)
 
         return mel
 
     def to_decibels(self, feats):
-        feats = librosa.core.power_to_db(feats, ref=np.max)
-        return feats
+        """
+        Convert features to decibels (dB) units.
 
-    def get_times(self, audio):
-        num_frames = self.get_expected_frames(audio)
-        frame_idcs = np.arange(num_frames + 1)
-        times = librosa.frames_to_time(frames=frame_idcs,
-                                       sr=self.sample_rate,
-                                       hop_length=self.hop_length)
-                                       #n_fft=self.n_fft)
-        return times
+        Parameters
+        ----------
+        feats : ndarray
+          Calculated power features
+
+        Returns
+        ----------
+        feats : ndarray
+          Calculated features in decibels
+        """
+
+        # Simply use the appropriate librosa function
+        feats = librosa.core.power_to_db(feats, ref=np.max)
+
+        return feats

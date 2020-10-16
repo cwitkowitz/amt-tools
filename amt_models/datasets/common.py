@@ -16,7 +16,6 @@ import shutil
 import os
 
 # TODO - MusicNet
-# TODO - ComboDataset
 # TODO - Note splitting
 # TODO - other bells/whistles in OF/TabCNN
 # TODO - optionally download datasets in flac to save memory
