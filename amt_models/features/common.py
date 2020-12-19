@@ -7,7 +7,7 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
-# TODO - add expected dimensions to docs
+# TODO - add expected dimensions (num_channels) to docs and as helper function
 
 
 class FeatureModule(object):

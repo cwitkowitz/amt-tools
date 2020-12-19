@@ -3,8 +3,10 @@ from features.common import *
 
 # Regular imports
 from lhvqt.lhvqt_ds import LHVQT_DS as _LHVQT
+#from lhvqt.lhvqt import LHVQT as _LHVQT
 
 # TODO - different get_sample_range() behavior if padding vs. not padding for extra frame
+# TODO - abstract stack parameter for harmonic downsampler
 
 
 class LHVQT(FeatureModule):

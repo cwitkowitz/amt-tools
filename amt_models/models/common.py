@@ -63,9 +63,10 @@ class TranscriptionModel(nn.Module):
             # If the function is called without a device, use the current device
             device = self.device
 
-        # Create the appropriate device object
-        device = torch.device(f'cuda:{device}'
-                              if torch.cuda.is_available() else 'cpu')
+        if isinstance(device, int):
+            # If device is an integer, assume device represents GPU number
+            device = torch.device(f'cuda:{device}'
+                                  if torch.cuda.is_available() else 'cpu')
 
         # Change device field
         self.device = device

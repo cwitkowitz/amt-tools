@@ -148,6 +148,7 @@ def transcribe(model, track, profile, log_dir=None):
 
                 if log_dir is not None:
                     pitch_dir = os.path.join(log_dir, f'{track_id}', MULT_PITCH)
+                    # TODO - breaks for piano profile
                     write_pitch_multi(pitch_dir, pitch, times[:-1], profile.low, profile.tuning)
 
                 notes_multi = predict_multi(pitch, times, profile.low, onsets)

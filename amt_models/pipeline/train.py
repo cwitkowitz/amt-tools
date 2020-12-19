@@ -84,7 +84,8 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
 
 def train(model, train_loader, optimizer, iterations,
           checkpoints=0, log_dir='.', val_set=None,
-          scheduler=None, resume=True, single_batch=False):
+          scheduler=None, resume=True, single_batch=False,
+          vis_fnc=None):
     """
     Implements the training loop for an experiment.
 
@@ -112,6 +113,8 @@ def train(model, train_loader, optimizer, iterations,
       Start from most recently saved model and optimizer state
     single_batch : bool
       Only process the first batch within each validation loop
+    vis_fnc : function(model, i)
+      Function to perform any visualization steps during validation loop
 
     Returns
     ----------
@@ -214,6 +217,10 @@ def train(model, train_loader, optimizer, iterations,
             torch.save(model, os.path.join(log_dir, f'model-{global_iter + 1}.pt'))
             # Save the optimizer sate
             torch.save(optimizer.state_dict(), os.path.join(log_dir, f'opt-state-{global_iter + 1}.pt'))
+
+            # If visualization protocol was specified, follow it
+            if vis_fnc is not None:
+                vis_fnc(model, global_iter + 1)
 
             # If we are at a checkpoint, and a validation set is available
             if checkpoint and val_set is not None:

@@ -10,6 +10,7 @@ ROOT_DIR = os.path.dirname(os.path.join(SCPT_DIR))
 GENR_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'generated'))
 GEN_DATA_DIR = os.path.join(GENR_DIR, 'data')
 GEN_EXPR_DIR = os.path.join(GENR_DIR, 'experiments')
+GEN_VISL_DIR = os.path.join(GENR_DIR, 'visualization')
 
 # Dataset Keys
 TR_ID = 'track'

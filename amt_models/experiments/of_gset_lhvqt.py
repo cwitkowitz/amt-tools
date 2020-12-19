@@ -13,13 +13,29 @@ from features.lhvqt import *
 from features.combo import *
 from features.cqt import *
 from features.hcqt import *
+from features.hvqt import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
+EX_NAME = '_'.join([OnsetsFrames.model_name(),
+                    GuitarSet.dataset_name(),
+                    LHVQT.features_name(),
+                    'mid_lr'])
+
 ex = Experiment('Onsets & Frames w/ Learnable Filterbank on GuitarSet')
+
+def visualize(model, i=None):
+    vis_dir = os.path.join(GEN_VISL_DIR, EX_NAME)
+
+    if i is not None:
+        vis_dir = os.path.join(vis_dir, f'checkpoint-{i}')
+
+    model.feat_ext.fb.plot_time_weights(vis_dir)
+    model.feat_ext.fb.plot_freq_weights(vis_dir)
 
 @ex.config
 def config():
@@ -33,16 +49,16 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 3000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 40
+    checkpoints = 60
 
     # Number of samples to gather for a batch
-    batch_size = 30
+    batch_size = 20
 
     # The initial learning rate
-    learning_rate = 5e-4
+    learning_rate = 5e-5
 
     # The id of the gpu to use, if available
     gpu_id = 1
@@ -55,8 +71,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), FeatureCombo.features_name()])
-    root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
+    root_dir = os.path.join(GEN_EXPR_DIR, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -75,43 +90,42 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     profile = GuitarProfile()
 
     # Processing parameters
-    dim_in = 192#60 # by 8
-    model_complexity = 2
+    dim_in = 192*2
+    model_complexity = 3
 
+    from lhvqt.lvqt_hilb import LVQT as lower
+    from lhvqt.lhvqt import LHVQT as upper
     # Initialize learnable filterbank data processing module
-    #lhvqt = LHVQT(sample_rate=sample_rate,
-    #              hop_length=hop_length,
-    #              n_bins=dim_in,
-    #              bins_per_octave=24,
-    #              harmonics=[1],
-    #              random=False)
-
-    #lhvqt = LHVQT(sample_rate=sample_rate,
-    #              hop_length=hop_length,
-    #              n_bins=60,
-    #              bins_per_octave=60,
-    #              harmonics=[1, 2, 3, 4, 5, 6, 7, 8],
-    #              random=False,
-    #              gamma=2.5)
+    lhvqt = LHVQT(sample_rate=sample_rate,
+                  hop_length=hop_length,
+                  lhvqt=upper,
+                  lvqt=lower,
+                  n_bins=dim_in,
+                  bins_per_octave=48,
+                  harmonics=[1],
+                  random=True,
+                  gamma=1)
 
     # Initialize constant-Q transform data processing module
-    cqt = CQT(sample_rate=sample_rate,
-              hop_length=hop_length,
-              n_bins=dim_in,
-              bins_per_octave=24)
-    #hcqt = HCQT(sample_rate=sample_rate,
+    #cqt = CQT(sample_rate=sample_rate,
+    #          hop_length=hop_length,
+    #          n_bins=dim_in,
+    #          bins_per_octave=36)
+    #hvqt = HVQT(sample_rate=sample_rate,
     #            hop_length=hop_length,
-    #            n_bins=60,
-    #            bins_per_octave=60,
-    #            harmonics=[1, 2, 3, 4, 5, 6, 7, 8])
+    #            n_bins=dim_in,
+    #            bins_per_octave=24,
+    #            harmonics=[0.5, 1, 2, 3, 4, 5],
+    #            gamma=2.5)
 
-    mel = MelSpec(sample_rate=sample_rate,
-                  n_mels=dim_in,
-                  hop_length=hop_length)
+    #mel = MelSpec(sample_rate=sample_rate,
+    #              n_mels=dim_in,
+    #              hop_length=hop_length)
 
     # Create a combo feature extractor with fixed and learnable CQT filters
-    data_proc = FeatureCombo([cqt, mel])
-    #data_proc = lhvqt
+    data_proc = lhvqt
+    #data_proc = FeatureCombo([cqt, lhvqt])
+    #data_proc = hvqt
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -146,7 +160,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         train_loader = DataLoader(dataset=gset_train,
                                   batch_size=batch_size,
                                   shuffle=True,
-                                  num_workers=0,
+                                  num_workers=16,
                                   drop_last=True)
 
         print('Loading validation partition...')
@@ -173,7 +187,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, 16, model_complexity, gpu_id)
+        of1 = OnsetsFrames(dim_in, None, 1, model_complexity, gpu_id)
 
         # Exchange the logistic banks for group softmax layers
         of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
@@ -188,14 +202,24 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         of1.profile = profile
 
         # Append the filterbank learning module to the front of the model
-        #of1.feat_ext.add_module('fb', lhvqt.lhvqt)
-        #of1.feat_ext.add_module('rl', nn.ReLU())
+        of1.feat_ext.add_module('fb', lhvqt.lhvqt)
+        of1.feat_ext.add_module('rl', nn.ReLU())
+        #of1.feat_ext.add_module('dp', nn.Dropout())
 
         of1.change_device()
         of1.train()
 
+        params = list(of1.onsets.parameters()) + \
+                 list(of1.pianoroll.parameters()) + \
+                 list(of1.adjoin.parameters())
+
         # Initialize a new optimizer for the model parameters
-        optimizer = torch.optim.Adam(of1.parameters(), learning_rate)
+        optimizer = torch.optim.Adam([{'params': params, 'lr': learning_rate},
+                                      {'params': of1.feat_ext.parameters(),
+                                       'lr': learning_rate, 'weight_decay': 0.00001}])
+
+        # Decay the learning rate over the course of training
+        scheduler = StepLR(optimizer, iterations, 0.99)
 
         print('Training classifier...')
 
@@ -209,7 +233,9 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                     iterations=iterations,
                     checkpoints=checkpoints,
                     log_dir=model_dir,
-                    val_set=gset_val)
+                    val_set=gset_val,
+                    vis_fnc=visualize)
+                    #scheduler=scheduler)
 
         print('Transcribing and evaluating test partition...')
 

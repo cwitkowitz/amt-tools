@@ -121,7 +121,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    of2 = OnsetsFrames(dim_in, profile, model_complexity, gpu_id)
+    of2 = OnsetsFrames(dim_in, profile, 1, model_complexity, gpu_id)
     of2.change_device()
     of2.train()
 
