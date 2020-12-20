@@ -168,7 +168,6 @@ class FeatureCombo(FeatureModule):
         ----------
         hop_length : int or float
           Number of samples between feature frames
-        audio: ndarray
         """
 
         hop_length = [module.get_hop_length() for module in self.modules]
@@ -178,3 +177,17 @@ class FeatureCombo(FeatureModule):
         hop_length = hop_length[0]
 
         return hop_length
+
+    def get_num_channels(self):
+        """
+        Sum number of feature channels from inner modules.
+
+        Returns
+        ----------
+        num_channels : int
+          Number of independent feature channels
+        """
+
+        num_channels = sum([module.get_num_channels() for module in self.modules])
+
+        return num_channels

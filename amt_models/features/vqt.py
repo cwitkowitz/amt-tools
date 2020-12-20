@@ -31,7 +31,7 @@ class VQT(FeatureModule):
           Bandwidth offset for determining filter lengths
         """
 
-        super().__init__(sample_rate, hop_length, decibels)
+        super().__init__(sample_rate, hop_length, 1, decibels)
 
         # Default the lowest center frequency to the note C1
         if fmin is None:

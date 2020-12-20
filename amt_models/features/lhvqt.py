@@ -6,7 +6,6 @@ from lhvqt.lhvqt_ds import LHVQT_DS as _LHVQT
 #from lhvqt.lhvqt import LHVQT as _LHVQT
 
 # TODO - different get_sample_range() behavior if padding vs. not padding for extra frame
-# TODO - abstract stack parameter for harmonic downsampler
 
 
 class LHVQT(FeatureModule):
@@ -28,8 +27,6 @@ class LHVQT(FeatureModule):
           Class definition of chosen lower-level module
         """
 
-        super().__init__(sample_rate, hop_length, decibels)
-
         # Default the class definition for the harmonic-level
         if lhvqt is None:
             # Original LVQT module
@@ -38,8 +35,8 @@ class LHVQT(FeatureModule):
         self.lhvqt = lhvqt(fmin=fmin,
                            harmonics=harmonics,
                            lvqt=lvqt,
-                           fs=self.sample_rate,
-                           hop_length=self.hop_length,
+                           fs=sample_rate,
+                           hop_length=hop_length,
                            n_bins=n_bins,
                            bins_per_octave=bins_per_octave,
                            gamma=gamma,
@@ -47,6 +44,8 @@ class LHVQT(FeatureModule):
                            max_p=max_p,
                            to_db=decibels,
                            batch_norm=batch_norm)
+
+        super().__init__(sample_rate, hop_length, len(self.lhvqt.harmonics), decibels)
 
     def get_expected_frames(self, audio):
         """

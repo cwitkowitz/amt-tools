@@ -26,8 +26,6 @@ class HVQT(FeatureModule):
           Harmonics transforms to take, relative to transform at fmin
         """
 
-        super().__init__(sample_rate, hop_length, decibels)
-
         # Default the lowest center frequency to the note C1
         if fmin is None:
             # C1 by default
@@ -40,9 +38,11 @@ class HVQT(FeatureModule):
         harmonics.sort()
         self.harmonics = harmonics
 
+        super().__init__(sample_rate, hop_length, len(self.harmonics), decibels)
+
         modules = []
         # Construct a list of VQT modules for the harmonic transform
-        for h in harmonics:
+        for h in self.harmonics:
             # Center frequency for the harmonic
             fmin_h = h * fmin
             # Add a module for this harmonic's VQT

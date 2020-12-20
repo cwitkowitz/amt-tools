@@ -28,7 +28,7 @@ class MelSpec(FeatureModule):
           Whether to use HTK formula instead of Slaney
         """
 
-        super().__init__(sample_rate, hop_length, decibels)
+        super().__init__(sample_rate, hop_length, 1, decibels)
 
         self.n_mels = n_mels
         self.n_fft = n_fft

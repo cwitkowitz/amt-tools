@@ -10,10 +10,6 @@ from datasets.GuitarSet import *
 from tools.instrument import *
 
 from features.lhvqt import *
-from features.combo import *
-from features.cqt import *
-from features.hcqt import *
-from features.hvqt import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
@@ -23,10 +19,10 @@ from sacred import Experiment
 
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     GuitarSet.dataset_name(),
-                    LHVQT.features_name(),
-                    'mid_lr'])
+                    LHVQT.features_name()])
 
 ex = Experiment('Onsets & Frames w/ Learnable Filterbank on GuitarSet')
+
 
 def visualize(model, i=None):
     vis_dir = os.path.join(GEN_VISL_DIR, EX_NAME)
@@ -105,27 +101,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                   harmonics=[1],
                   random=True,
                   gamma=1)
-
-    # Initialize constant-Q transform data processing module
-    #cqt = CQT(sample_rate=sample_rate,
-    #          hop_length=hop_length,
-    #          n_bins=dim_in,
-    #          bins_per_octave=36)
-    #hvqt = HVQT(sample_rate=sample_rate,
-    #            hop_length=hop_length,
-    #            n_bins=dim_in,
-    #            bins_per_octave=24,
-    #            harmonics=[0.5, 1, 2, 3, 4, 5],
-    #            gamma=2.5)
-
-    #mel = MelSpec(sample_rate=sample_rate,
-    #              n_mels=dim_in,
-    #              hop_length=hop_length)
-
-    # Create a combo feature extractor with fixed and learnable CQT filters
     data_proc = lhvqt
-    #data_proc = FeatureCombo([cqt, lhvqt])
-    #data_proc = hvqt
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -187,7 +163,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, 1, model_complexity, gpu_id)
+        of1 = OnsetsFrames(dim_in, None, data_proc.get_num_channels(), model_complexity, gpu_id)
 
         # Exchange the logistic banks for group softmax layers
         of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
@@ -204,7 +180,6 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         # Append the filterbank learning module to the front of the model
         of1.feat_ext.add_module('fb', lhvqt.lhvqt)
         of1.feat_ext.add_module('rl', nn.ReLU())
-        #of1.feat_ext.add_module('dp', nn.Dropout())
 
         of1.change_device()
         of1.train()

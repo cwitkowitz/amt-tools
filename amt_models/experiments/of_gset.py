@@ -73,17 +73,13 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     profile = GuitarProfile()
 
     # Processing parameters
-    dim_in = 8*36 #229
+    dim_in = 229
     model_complexity = 3
 
     # Create the mel spectrogram data processing module
     data_proc = MelSpec(sample_rate=sample_rate,
                         n_mels=dim_in,
                         hop_length=hop_length)
-    data_proc = CQT(sample_rate=sample_rate,
-                    hop_length=hop_length,
-                    n_bins=dim_in,
-                    bins_per_octave=36)
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -124,11 +120,11 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Create a dataset corresponding to the validation partition
         gset_val = GuitarSet(splits=val_splits,
-                              hop_length=hop_length,
-                              sample_rate=sample_rate,
-                              data_proc=data_proc,
-                              profile=profile,
-                              store_data=True)
+                             hop_length=hop_length,
+                             sample_rate=sample_rate,
+                             data_proc=data_proc,
+                             profile=profile,
+                             store_data=True)
 
         print('Loading testing partition...')
 
@@ -143,7 +139,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, 1, model_complexity, gpu_id)
+        of1 = OnsetsFrames(dim_in, None, data_proc.get_num_channels(), model_complexity, gpu_id)
 
         # Exchange the logistic banks for group softmax layers
         of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')

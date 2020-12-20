@@ -154,7 +154,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, profile, 1, model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
     # Append the filterbank learning module to the front of the model
     onsetsframes.feat_ext.add_module('fb', lhvqt.lhvqt)
     onsetsframes.feat_ext.add_module('rl', nn.ReLU())
@@ -174,8 +174,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Create a log directory for the training experiment
     model_dir = os.path.join(root_dir, 'models')
-
-    #visualize(onsetsframes)
 
     # Train the model
     onsetsframes = train(model=onsetsframes,

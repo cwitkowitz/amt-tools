@@ -120,11 +120,11 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Create a dataset corresponding to the validation partition
         gset_val = GuitarSet(splits=val_splits,
-                              hop_length=hop_length,
-                              sample_rate=sample_rate,
-                              data_proc=data_proc,
-                              profile=profile,
-                              store_data=True)
+                             hop_length=hop_length,
+                             sample_rate=sample_rate,
+                             data_proc=data_proc,
+                             profile=profile,
+                             store_data=True)
 
         print('Loading testing partition...')
 
@@ -139,7 +139,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        tabcnn = TabCNN(dim_in, profile, 1, model_complexity, gpu_id)
+        tabcnn = TabCNN(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
         tabcnn.change_device()
         tabcnn.train()
 

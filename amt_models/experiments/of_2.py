@@ -33,7 +33,7 @@ def config():
     iterations = 3000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 53
+    checkpoints = 60
 
     # Number of samples to gather for a batch
     batch_size = 15
@@ -133,7 +133,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, profile, 1, model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 

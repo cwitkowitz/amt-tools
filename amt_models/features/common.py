@@ -7,15 +7,13 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
-# TODO - add expected dimensions (num_channels) to docs and as helper function
-
 
 class FeatureModule(object):
     """
     Implements a generic music feature extraction module wrapper.
     """
 
-    def __init__(self, sample_rate, hop_length, decibels=True):
+    def __init__(self, sample_rate, hop_length, num_channels=1, decibels=True):
         """
         Initialize parameters common to all feature extraction modules.
 
@@ -25,12 +23,15 @@ class FeatureModule(object):
           Presumed sampling rate for all audio
         hop_length : int or float
           Number of samples between feature frames
+        num_channels : int
+          Number of independent feature channels
         decibels : bool
           Convert features to decibel (dB) units
         """
 
         self.sample_rate = sample_rate
         self.hop_length = hop_length
+        self.num_channels = num_channels
         self.decibels = decibels
 
     def get_expected_frames(self, audio):
@@ -142,7 +143,7 @@ class FeatureModule(object):
             feats = feats / 80
             feats = feats + 1
         else:
-            # TODO - should anything be done here?
+            # TODO - should anything be done here? - would I ever not want decibels?
             pass
 
         # Add a channel dimension
@@ -205,6 +206,20 @@ class FeatureModule(object):
         hop_length = self.hop_length
 
         return hop_length
+
+    def get_num_channels(self):
+        """
+        Helper function to access number of feature channels.
+
+        Returns
+        ----------
+        num_channels : int
+          Number of independent feature channels
+        """
+
+        num_channels = self.num_channels
+
+        return num_channels
 
     @classmethod
     def features_name(cls):
