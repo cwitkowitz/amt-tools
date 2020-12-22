@@ -18,6 +18,7 @@ from sacred import Experiment
 
 ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAPS')
 
+
 @ex.config
 def config():
     # Number of samples per second of audio
@@ -42,7 +43,7 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to control whether sampled blocks of frames should avoid splitting notes
     split_notes = False
@@ -61,6 +62,7 @@ def config():
 
     # Add a file storage observer for the log directory
     ex.observers.append(FileStorageObserver(root_dir))
+
 
 @ex.automain
 def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoints,

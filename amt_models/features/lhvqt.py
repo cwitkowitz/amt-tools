@@ -2,8 +2,8 @@
 from features.common import *
 
 # Regular imports
-from lhvqt.lhvqt_ds import LHVQT_DS as _LHVQT
-#from lhvqt.lhvqt import LHVQT as _LHVQT
+from lhvqt.lhvqt_comb import LHVQT_COMB as lc_type
+from lhvqt.lhvqt import LHVQT as _LHVQT
 
 # TODO - different get_sample_range() behavior if padding vs. not padding for extra frame
 
@@ -45,7 +45,13 @@ class LHVQT(FeatureModule):
                            to_db=decibels,
                            batch_norm=batch_norm)
 
-        super().__init__(sample_rate, hop_length, len(self.lhvqt.harmonics), decibels)
+        # TODO - this is kinda sloppy
+        if isinstance(self.lhvqt, lc_type):
+            num_channels = 1
+        else:
+            num_channels = len(self.lhvqt.harmonics)
+
+        super().__init__(sample_rate, hop_length, num_channels, decibels)
 
     def get_expected_frames(self, audio):
         """
@@ -71,7 +77,7 @@ class LHVQT(FeatureModule):
     def process_audio(self, audio):
         """
         Return None to indicate that the audio are the true features
-        to be processed by this module within a transcription model.
+        to be processed by this module within an MIR model.
 
         Parameters
         ----------

@@ -84,7 +84,6 @@ class FeatureModule(object):
 
         return sample_range
 
-
     @abstractmethod
     def process_audio(self, audio):
         """

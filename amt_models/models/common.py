@@ -376,6 +376,9 @@ class SoftmaxGroups(OutputLayer):
 
         # Obtain the true batch size
         bs = get_batch_size(output)
+        # TODO - for debugging purposes - remove later
+        #output_ = output.view(bs, -1, self.num_dofs, self.num_poss).transpose(1, 2)
+        #reference_ = reference
         # Fold the degrees of freedom axis into the pseudo-batch axis
         output = output.view(-1, self.num_poss)
 
@@ -391,6 +394,9 @@ class SoftmaxGroups(OutputLayer):
         # Calculate the loss for the entire pseudo-batch
         loss = F.cross_entropy(output.float(), reference, reduction='none')
         loss = loss.view(bs, -1, self.num_dofs)
+        # TODO - for debugging purposes - remove later
+        #print(output_[0, 0, 199])
+        #print(f'GT: {reference_[0, 0, 199].item()}, loss: {loss[0, 199, 0].item()}')
         # Sum loss across degrees of freedom
         loss = torch.sum(loss, dim=-1)
         # Average loss across frames

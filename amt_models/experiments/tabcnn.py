@@ -18,6 +18,7 @@ from sacred import Experiment
 
 ex = Experiment('TabCNN w/ CQT on GuitarSet 6-fold Cross Validation')
 
+
 @ex.config
 def config():
     # Number of samples per second of audio
@@ -42,7 +43,7 @@ def config():
     learning_rate = 1.0
 
     # The id of the gpu to use, if available
-    gpu_id = 0
+    gpu_id = 1
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters

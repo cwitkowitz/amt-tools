@@ -86,20 +86,20 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     profile = GuitarProfile()
 
     # Processing parameters
-    dim_in = 192*2
+    dim_in = 144
     model_complexity = 3
 
     from lhvqt.lvqt_hilb import LVQT as lower
-    from lhvqt.lhvqt import LHVQT as upper
+    from lhvqt.lhvqt_comb import LHVQT_COMB as upper
     # Initialize learnable filterbank data processing module
     lhvqt = LHVQT(sample_rate=sample_rate,
                   hop_length=hop_length,
                   lhvqt=upper,
                   lvqt=lower,
                   n_bins=dim_in,
-                  bins_per_octave=48,
-                  harmonics=[1],
-                  random=True,
+                  bins_per_octave=24,
+                  harmonics=None,
+                  random=False,
                   gamma=1)
     data_proc = lhvqt
 
@@ -200,6 +200,8 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Create a log directory for the training experiment
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
+
+        visualize(of1, 0)
 
         # Train the model
         of1 = train(model=of1,

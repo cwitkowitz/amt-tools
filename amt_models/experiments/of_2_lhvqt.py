@@ -32,6 +32,7 @@ def visualize(model, i=None):
     model.feat_ext.fb.plot_time_weights(vis_dir)
     model.feat_ext.fb.plot_freq_weights(vis_dir)
 
+
 @ex.config
 def config():
     # Number of samples per second of audio
@@ -74,6 +75,7 @@ def config():
 
     # Add a file storage observer for the log directory
     ex.observers.append(FileStorageObserver(root_dir))
+
 
 @ex.automain
 def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoints,
