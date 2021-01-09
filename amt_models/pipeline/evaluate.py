@@ -1,9 +1,6 @@
 # My imports
-from pipeline.transcribe import *
-
-from tools.conversion import *
-from tools.utils import *
-from tools.io import *
+from .transcribe import *
+from ..tools import *
 
 # Regular imports
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes

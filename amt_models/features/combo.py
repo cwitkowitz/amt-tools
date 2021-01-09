@@ -1,5 +1,5 @@
 # My imports
-from features.common import *
+from .common import FeatureModule
 
 # Regular imports
 import numpy as np

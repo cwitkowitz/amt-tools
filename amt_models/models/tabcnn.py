@@ -1,9 +1,6 @@
 # My imports
-from models.common import *
-
-from tools.instrument import *
-from tools.conversion import *
-from tools.utils import *
+from .common import *
+from ..tools import *
 
 # Regular imports
 from torch import nn

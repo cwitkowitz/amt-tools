@@ -1,9 +1,6 @@
 # My imports
-from datasets.common import TranscriptionDataset
-
-from tools.instrument import *
-from tools.conversion import *
-from tools.io import *
+from .common import TranscriptionDataset
+from ..tools import *
 
 # Regular imports
 

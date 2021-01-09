@@ -1,9 +1,6 @@
 # My imports
-from features.melspec import *
-
-from tools.instrument import *
-from tools.conversion import *
-from tools.utils import *
+from ..features import *
+from ..tools import *
 
 # Regular imports
 from torch.utils.data import Dataset

@@ -1,22 +1,30 @@
 # My imports
-from pipeline.transcribe import *
-from pipeline.evaluate import *
-from pipeline.train import *
-
-from models.onsetsframes import *
-
-from tools.instrument import *
-
-from features.melspec import *
-
-from datasets.MAESTRO import *
+from pipeline import *
+from models import *
+from features import *
+from tools import *
+from datasets import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
+EX_NAME = '_'.join([OnsetsFrames.model_name(),
+                    MAESTRO_V2.dataset_name(),
+                    LHVQT.features_name()])
+
 ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAPS')
+
+
+def visualize(model, i=None):
+    vis_dir = os.path.join(GEN_VISL_DIR, EX_NAME)
+
+    if i is not None:
+        vis_dir = os.path.join(vis_dir, f'checkpoint-{i}')
+
+    model.feat_ext.fb.plot_time_weights(vis_dir)
+    model.feat_ext.fb.plot_freq_weights(vis_dir)
 
 
 @ex.config
@@ -31,10 +39,10 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 3000
+    iterations = 10000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 60
+    checkpoints = 200
 
     # Number of samples to gather for a batch
     batch_size = 15
@@ -43,7 +51,7 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 0
+    gpu_id = 1
 
     # Flag to control whether sampled blocks of frames should avoid splitting notes
     split_notes = False
@@ -56,8 +64,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), MAESTRO_V2.dataset_name(), MelSpec.features_name()])
-    root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
+    root_dir = os.path.join(GEN_EXPR_DIR, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -79,19 +86,27 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     profile = PianoProfile()
 
     # Processing parameters
-    dim_in = 229
+    dim_in = 8 * 24
     dim_out = profile.get_range_len()
     model_complexity = 3
 
-    # Create the mel spectrogram data processing module
-    data_proc = MelSpec(sample_rate=sample_rate,
-                        n_mels=dim_in,
-                        hop_length=hop_length,
-                        htk=True)
+    from lhvqt.lvqt_hilb import LVQT as lower
+    from lhvqt.lhvqt import LHVQT as upper
+    # Initialize learnable filterbank data processing module
+    lhvqt = LHVQT(sample_rate=sample_rate,
+                  hop_length=hop_length,
+                  lhvqt=upper,
+                  lvqt=lower,
+                  fmin=librosa.note_to_hz('A0'),
+                  n_bins=dim_in,
+                  bins_per_octave=24,
+                  harmonics=[1],
+                  random=True,
+                  gamma=0)
+    data_proc = lhvqt
 
     print('Loading training partition...')
 
-    # TODO - 119 MelSpec 2004 vs 120 gt 2004?
     # Create a dataset corresponding to the training partition
     mstro_train = MAESTRO_V2(splits=train_split,
                              hop_length=hop_length,
@@ -107,7 +122,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     train_loader = DataLoader(dataset=mstro_train,
                               batch_size=batch_size,
                               shuffle=True,
-                              num_workers=15,
+                              num_workers=0,
                               drop_last=True)
 
     print('Loading validation partition...')
@@ -136,11 +151,20 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Initialize a new instance of the model
     onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
+    # Append the filterbank learning module to the front of the model
+    onsetsframes.feat_ext.add_module('fb', lhvqt.lhvqt)
+    onsetsframes.feat_ext.add_module('rl', nn.ReLU())
     onsetsframes.change_device()
     onsetsframes.train()
 
+    params = list(onsetsframes.onsets.parameters()) + \
+             list(onsetsframes.pianoroll.parameters()) + \
+             list(onsetsframes.adjoin.parameters())
+
     # Initialize a new optimizer for the model parameters
-    optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
+    optimizer = torch.optim.Adam([{'params': params, 'lr': learning_rate},
+                                  {'params': onsetsframes.feat_ext.parameters(),
+                                   'lr': 1 * learning_rate, 'weight_decay': 0.0}])
 
     print('Training classifier...')
 
@@ -154,7 +178,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          iterations=iterations,
                          checkpoints=checkpoints,
                          log_dir=model_dir,
-                         val_set=mstro_val)
+                         val_set=mstro_val,
+                         vis_fnc=visualize)
 
     print('Transcribing and evaluating test partition...')
 

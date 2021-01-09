@@ -1,5 +1,5 @@
 # My imports
-from tools.constants import *
+# None of my imports used
 
 # Regular imports
 import numpy as np

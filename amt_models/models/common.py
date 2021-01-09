@@ -1,6 +1,5 @@
 # My imports
-from tools.instrument import *
-from tools.conversion import *
+from ..tools import *
 
 # Regular imports
 from abc import abstractmethod

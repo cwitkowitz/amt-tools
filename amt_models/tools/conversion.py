@@ -1,7 +1,6 @@
 # My imports
 #from tools.instrument import *
-from tools.constants import *
-from tools.utils import *
+from .utils import *
 
 # Regular imports
 from copy import deepcopy

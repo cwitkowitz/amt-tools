@@ -1,16 +1,9 @@
 # My imports
-from pipeline.transcribe import *
-from pipeline.evaluate import *
-from pipeline.train import *
-
-from models.onsetsframes import *
-
-from datasets.GuitarSet import *
-
-from tools.instrument import *
-
-from features.melspec import *
-from features.cqt import *
+from pipeline import *
+from models import *
+from features import *
+from tools import *
+from datasets import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
@@ -31,13 +24,13 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 3000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 20
+    checkpoints = 60
 
     # Number of samples to gather for a batch
-    batch_size = 30
+    batch_size = 20
 
     # The initial learning rate
     learning_rate = 5e-4
@@ -53,7 +46,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), CQT.features_name()])
+    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), VQT.features_name()])
     root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -73,13 +66,18 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     profile = GuitarProfile()
 
     # Processing parameters
-    dim_in = 229
+    #dim_in = 229
+    dim_in = 8 * 24
     model_complexity = 3
 
     # Create the mel spectrogram data processing module
-    data_proc = MelSpec(sample_rate=sample_rate,
-                        n_mels=dim_in,
-                        hop_length=hop_length)
+    #data_proc = MelSpec(sample_rate=sample_rate,
+    #                    n_mels=dim_in,
+    #                    hop_length=hop_length)
+    data_proc = VQT(sample_rate=sample_rate,
+                    hop_length=hop_length,
+                    n_bins=dim_in,
+                    bins_per_octave=24)
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -113,7 +111,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         train_loader = DataLoader(dataset=gset_train,
                                   batch_size=batch_size,
                                   shuffle=True,
-                                  num_workers=16,
+                                  num_workers=0,
                                   drop_last=True)
 
         print('Loading validation partition...')

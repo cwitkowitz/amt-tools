@@ -1,5 +1,5 @@
 # My imports
-from features.common import *
+from .common import *
 
 # Regular imports
 from lhvqt.lhvqt_comb import LHVQT_COMB as lc_type
@@ -13,7 +13,7 @@ class LHVQT(FeatureModule):
     Implements a Harmonic Variable-Q Transform wrapper.
     """
     def __init__(self, sample_rate=44100, hop_length=512, decibels=True, lhvqt=None, lvqt=None,
-                 fmin=None, harmonics=None, n_bins=84, bins_per_octave=12, gamma=0, random=False,
+                 fmin=None, harmonics=None, n_bins=84, bins_per_octave=12, gamma=None, random=False,
                  max_p=1, batch_norm=True):
         """
         Initialize parameters for the HVQT.
@@ -26,6 +26,12 @@ class LHVQT(FeatureModule):
         lvqt : type
           Class definition of chosen lower-level module
         """
+
+        # Default gamma using the procedure defined in
+        # librosa.filters.constant_q.vqt documentation
+        if gamma is None:
+            alpha = 2.0 ** (1.0 / bins_per_octave) - 1
+            gamma = 24.7 * alpha / 0.108
 
         # Default the class definition for the harmonic-level
         if lhvqt is None:

@@ -1,9 +1,6 @@
 # My imports
-from tools.conversion import *
-from tools.utils import *
-from tools.io import *
-
-from datasets.common import *
+from ..tools import *
+from ..datasets import *
 
 # Regular imports
 import numpy as np

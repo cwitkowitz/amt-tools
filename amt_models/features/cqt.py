@@ -1,5 +1,5 @@
 # My imports
-from features.vqt import *
+from .vqt import *
 
 # Regular imports
 # No imports used

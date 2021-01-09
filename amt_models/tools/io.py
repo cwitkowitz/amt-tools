@@ -1,6 +1,5 @@
 # My imports
-from tools.constants import *
-from tools.utils import *
+from .utils import *
 
 # Regular imports
 from tqdm import tqdm
@@ -12,6 +11,7 @@ import librosa
 import shutil
 import mido
 import jams
+import os
 
 
 def load_audio(wav_path, sample_rate=None):

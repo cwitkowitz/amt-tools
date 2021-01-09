@@ -1,6 +1,5 @@
 # My imports
-from features.common import *
-from features.vqt import *
+from .common import *
 
 # Regular imports
 import numpy as np

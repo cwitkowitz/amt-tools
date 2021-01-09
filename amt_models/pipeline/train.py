@@ -1,8 +1,6 @@
 # My imports
-from pipeline.transcribe import *
-from pipeline.evaluate import *
-
-from tools.utils import *
+from ..pipeline import *
+from ..tools import *
 
 # Regular imports
 from tensorboardX import SummaryWriter

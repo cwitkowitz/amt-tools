@@ -1,5 +1,5 @@
 # My imports
-from features.common import *
+from .common import *
 
 # Regular imports
 from librosa.core.constantq import __early_downsample_count as early_downsample_count

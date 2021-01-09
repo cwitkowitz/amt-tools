@@ -1,5 +1,5 @@
 # My imports
-from features.hvqt import *
+from .hvqt import *
 
 # Regular imports
 # No imports used
