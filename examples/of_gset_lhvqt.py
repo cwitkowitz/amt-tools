@@ -1,4 +1,6 @@
 # My imports
+# TODO - import specific things - this is too much
+# TODO - also, don't use relative imports - do amt_models.<sub-package>
 from amt_models import *
 
 # Regular imports
@@ -10,11 +12,11 @@ from sacred import Experiment
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     GuitarSet.dataset_name(),
                     LHVQT.features_name(),
-                    '1'])
+                    'no_nrm', '2'])
 
 ex = Experiment('Onsets & Frames w/ Learnable Filterbank on GuitarSet')
 
-desc = 'LHVQT with same parameters as VQT experiment, but with random init'
+desc = 'Same as other norm experiment with filterbank lr 1 order of magnitude higher'
 
 
 def visualize(model, i=None):
@@ -27,6 +29,7 @@ def visualize(model, i=None):
 
     model.feat_ext.fb.plot_time_weights(vis_dir)
     model.feat_ext.fb.plot_freq_weights(vis_dir)
+
 
 @ex.config
 def config():
@@ -43,7 +46,7 @@ def config():
     iterations = 3000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 60
+    checkpoints = 30
 
     # Number of samples to gather for a batch
     batch_size = 20
@@ -94,7 +97,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                   n_bins=dim_in,
                   bins_per_octave=24,
                   harmonics=[1],
-                  random=True)
+                  random=False)
     data_proc = lhvqt
 
     # Perform each fold of cross-validation
@@ -173,6 +176,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Append the filterbank learning module to the front of the model
         of1.feat_ext.add_module('fb', lhvqt.lhvqt)
+        #of1.feat_ext.add_module('vd', VariationalDropout())
         of1.feat_ext.add_module('rl', nn.ReLU())
 
         of1.change_device()
@@ -185,7 +189,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         # Initialize a new optimizer for the model parameters
         optimizer = torch.optim.Adam([{'params': params, 'lr': learning_rate},
                                       {'params': of1.feat_ext.parameters(),
-                                       'lr': learning_rate, 'weight_decay': 0.0}])
+                                       'lr': 10 * learning_rate, 'weight_decay': 0.0}])
 
         # Decay the learning rate over the course of training
         scheduler = StepLR(optimizer, iterations, 0.99)

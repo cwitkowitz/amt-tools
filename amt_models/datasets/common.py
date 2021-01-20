@@ -24,7 +24,7 @@ class TranscriptionDataset(Dataset):
     """
 
     def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, profile,
-                 num_frames, split_notes, reset_data, store_data, save_data, seed):
+                 num_frames, split_notes, reset_data, store_data, save_loc, seed):
         """
         Initialize parameters common to all datasets as fields and instantiate
         as a PyTorch Dataset.
@@ -51,8 +51,10 @@ class TranscriptionDataset(Dataset):
           Flag to reset extracted features and ground truth data if they already exists
         store_data : bool
           Flag to store data in RAM instead of loading ground truth and calculating features each time
-        save_data : bool
-          Flag to save data to memory after calculating once (always loaded afterwards)
+        save_loc : string
+          Doubles as:
+            Flag to save data to memory after calculating once (always loaded afterwards)
+            Location for saving and loading pre-organized ground-truth and calculated features
         seed : int
           The seed for random number generation
         """
@@ -97,6 +99,10 @@ class TranscriptionDataset(Dataset):
         # Set the number of frames for each sample
         self.num_frames = num_frames
 
+        # Set the storing and saving parameters
+        self.store_data = store_data
+        self.save_loc = save_loc
+
         self.reset_data = reset_data
         # Remove any saved ground-truth for the dataset if reset_data is selected
         if os.path.exists(self.get_gt_dir()) and self.reset_data:
@@ -109,10 +115,6 @@ class TranscriptionDataset(Dataset):
             shutil.rmtree(self.get_feats_dir())
         # Make sure the directory for saving and loading features exists
         os.makedirs(self.get_feats_dir(), exist_ok=True)
-
-        # Set the storing and saving parameters
-        self.store_data = store_data
-        self.save_data = save_data
 
         # Initialize a random number generator for the dataset
         self.rng = np.random.RandomState(seed)
@@ -214,7 +216,7 @@ class TranscriptionDataset(Dataset):
             fs = self.data_proc.get_sample_rate()
             hop_length = self.data_proc.get_hop_length()
 
-            if self.save_data:
+            if self.save_loc is not None:
                 # Save the features to memory
                 os.makedirs(os.path.dirname(feats_path), exist_ok=True)
                 np.savez(feats_path, feats=feats, fs=fs, hop_length=hop_length)
@@ -492,7 +494,7 @@ class TranscriptionDataset(Dataset):
         """
 
         # Get the path to the ground truth directory
-        path = os.path.join(GEN_DATA_DIR, self.dataset_name(), 'gt')
+        path = os.path.join(self.save_loc, self.dataset_name(), 'gt')
 
         # Add the track name and the .npz extension if a track was provided
         if track is not None:
@@ -516,7 +518,7 @@ class TranscriptionDataset(Dataset):
         """
 
         # Get the path to the features directory
-        path = os.path.join(GEN_DATA_DIR, self.dataset_name(), self.data_proc.features_name())
+        path = os.path.join(self.save_loc, self.dataset_name(), self.data_proc.features_name())
 
         # Add the track name and the .npz extension if a track was provided
         if track is not None:

@@ -16,7 +16,7 @@ class _MAESTRO(TranscriptionDataset):
     """
 
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None, profile=None,
-                 num_frames=None, split_notes=False, reset_data=False, store_data=False, save_data=True, seed=0):
+                 num_frames=None, split_notes=False, reset_data=False, store_data=False, save_loc=GEN_DATA_DIR, seed=0):
         """
         Initialize the dataset and establish parameter defaults in function signature.
 
@@ -26,7 +26,7 @@ class _MAESTRO(TranscriptionDataset):
         """
 
         super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile,
-                         num_frames, split_notes, reset_data, store_data, save_data, seed)
+                         num_frames, split_notes, reset_data, store_data, save_loc, seed)
 
     def get_tracks(self, split):
         """
@@ -113,7 +113,7 @@ class _MAESTRO(TranscriptionDataset):
             # Add the note array to the track data
             data['notes'] = notes
 
-            if self.save_data:
+            if self.save_loc is not None:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
                 # Create the year directory if it doesn't exist

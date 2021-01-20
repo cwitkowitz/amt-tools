@@ -1,5 +1,5 @@
 # My imports
-from ..tools import *
+from amt_models.tools import *
 
 # Regular imports
 from abc import abstractmethod
@@ -164,7 +164,7 @@ class TranscriptionModel(nn.Module):
         # Obtain the model output for the batch of features
         batch['preds'] = self(batch['feats'])
 
-        # Post-process batch,
+        # Post-process batch
         preds = self.post_proc(batch)
 
         return preds

@@ -1,6 +1,6 @@
 # My imports
 from .common import *
-from ..tools import *
+from amt_models.tools import *
 
 # Regular imports
 from torch import nn

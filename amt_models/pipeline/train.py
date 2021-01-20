@@ -152,10 +152,10 @@ def train(model, train_loader, optimizer, iterations,
 
             # Load the latest model
             model = torch.load(model_path)
-            # TODO - how to initialize learned filterbank weights into data_proc? - should be fixed (part of model), just test and verify
             # Replace the randomly initialized parameters with the saved parameters
             super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
             # Load the latest optimizer state
+            # TODO - how to load learnable filterbank optimizer state? - something breaks - num param groups mismatch
             optimizer.load_state_dict(torch.load(optimizer_path))
 
     # Make sure the model is in training mode

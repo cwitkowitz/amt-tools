@@ -138,6 +138,7 @@ class FeatureModule(object):
             # Convert to decibels (dB)
             feats = self.to_decibels(feats)
 
+            # TODO - make additional variable for 0/1 scaling
             # Assuming range of -80 to 0 dB, scale between 0 and 1
             feats = feats / 80
             feats = feats + 1

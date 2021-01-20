@@ -16,7 +16,7 @@ class GuitarSet(TranscriptionDataset):
     """
 
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100, data_proc=None, profile=None,
-                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_data=True, seed=0):
+                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_loc=GEN_DATA_DIR, seed=0):
         """
         Initialize the dataset and establish parameter defaults in function signature.
 
@@ -26,7 +26,7 @@ class GuitarSet(TranscriptionDataset):
         """
 
         super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile,
-                         num_frames, split_notes, reset_data, store_data, save_data, seed)
+                         num_frames, split_notes, reset_data, store_data, save_loc, seed)
 
     def get_tracks(self, split):
         """
@@ -114,7 +114,7 @@ class GuitarSet(TranscriptionDataset):
             # Add the frame-wise pitches to the track data
             data['pitch'] = pitch
 
-            if self.save_data:
+            if self.save_loc is not None:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
                 # Save the audio, sampling rate, frame-wise pitches, and notes
