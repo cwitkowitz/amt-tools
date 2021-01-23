@@ -1,14 +1,18 @@
 # My imports
-from pipeline import *
-from models import *
-from features import *
-from tools import *
-from datasets import *
+from amt_models.pipeline import train, validate
+from amt_models.models import TabCNN
+from amt_models.features import CQT
+from amt_models.tools import seed_everything, GuitarProfile
+from amt_models.datasets import GuitarSet
+from amt_models.tools.constants import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
+
+import torch
+import os
 
 ex = Experiment('TabCNN w/ CQT on GuitarSet 6-fold Cross Validation')
 
@@ -87,10 +91,10 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Remove the hold out splits to get the training partition
         train_splits = splits.copy()
-        #train_splits.remove(test_hold_out)
+        train_splits.remove(test_hold_out)
         train_splits.remove(val_hold_out)
 
-        #val_splits = [val_hold_out]
+        val_splits = [val_hold_out]
         test_splits = [test_hold_out]
 
         print('Loading training partition...')

@@ -94,7 +94,7 @@ def train(model, train_loader, optimizer, iterations,
     train_loader : DataLoader
       PyTorch Dataloader object for retrieving batches of data
     optimizer : Optimizer
-      PyTorch Optimizer for updating weights
+      PyTorch Optimizer for updating weights - expected to have only one parameter group
     iterations : int
       Number of loops through the dataset;
       Each loop may be comprised of multiple batches;
@@ -152,6 +152,8 @@ def train(model, train_loader, optimizer, iterations,
 
             # Load the latest model and replace the parameterized version
             model = torch.load(model_path)
+            # Replace the randomly initialized parameters with the saved parameters
+            super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
             # Load the latest optimizer state into the parameterized version
             optimizer.load_state_dict(torch.load(optimizer_path))
 

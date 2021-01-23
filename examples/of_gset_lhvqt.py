@@ -179,14 +179,8 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         of1.change_device()
         of1.train()
 
-        params = list(of1.onsets.parameters()) + \
-                 list(of1.pianoroll.parameters()) + \
-                 list(of1.adjoin.parameters())
-
         # Initialize a new optimizer for the model parameters
-        optimizer = torch.optim.Adam([{'params': params, 'lr': learning_rate},
-                                      {'params': of1.feat_ext.parameters(),
-                                       'lr': 1 * learning_rate, 'weight_decay': 0.0}])
+        optimizer = torch.optim.Adam(of1.parameters(), learning_rate)
 
         # Decay the learning rate over the course of training
         scheduler = StepLR(optimizer, iterations, 0.99)
