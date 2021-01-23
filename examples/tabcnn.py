@@ -87,10 +87,10 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Remove the hold out splits to get the training partition
         train_splits = splits.copy()
-        train_splits.remove(test_hold_out)
+        #train_splits.remove(test_hold_out)
         train_splits.remove(val_hold_out)
 
-        val_splits = [val_hold_out]
+        #val_splits = [val_hold_out]
         test_splits = [test_hold_out]
 
         print('Loading training partition...')

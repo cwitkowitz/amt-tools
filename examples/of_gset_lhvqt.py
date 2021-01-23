@@ -12,11 +12,11 @@ from sacred import Experiment
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     GuitarSet.dataset_name(),
                     LHVQT.features_name(),
-                    'no_nrm', '2'])
+                    'no_nrm'])
 
 ex = Experiment('Onsets & Frames w/ Learnable Filterbank on GuitarSet')
 
-desc = 'Same as other norm experiment with filterbank lr 1 order of magnitude higher'
+desc = 'No normalization of weights before insertion into 1d Conv, all other same as VQT experiment'
 
 
 def visualize(model, i=None):
@@ -46,7 +46,7 @@ def config():
     iterations = 3000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 30
+    checkpoints = 60
 
     # Number of samples to gather for a batch
     batch_size = 20
@@ -55,7 +55,7 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
@@ -87,19 +87,6 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     dim_in = 8 * 24
     model_complexity = 3
 
-    from lhvqt.lvqt_hilb import LVQT as lower
-    from lhvqt.lhvqt import LHVQT as upper
-    # Initialize learnable filterbank data processing module
-    lhvqt = LHVQT(sample_rate=sample_rate,
-                  hop_length=hop_length,
-                  lhvqt=upper,
-                  lvqt=lower,
-                  n_bins=dim_in,
-                  bins_per_octave=24,
-                  harmonics=[1],
-                  random=False)
-    data_proc = lhvqt
-
     # Perform each fold of cross-validation
     for k in range(6):
         # Determine the name of the split being removed
@@ -117,6 +104,19 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         val_splits = [val_hold_out]
         test_splits = [test_hold_out]
 
+        from lhvqt.lvqt_hilb import LVQT as lower
+        from lhvqt.lhvqt import LHVQT as upper
+        # Initialize learnable filterbank data processing module
+        lhvqt = LHVQT(sample_rate=sample_rate,
+                      hop_length=hop_length,
+                      lhvqt=upper,
+                      lvqt=lower,
+                      n_bins=dim_in,
+                      bins_per_octave=24,
+                      harmonics=[1],
+                      random=False)
+        data_proc = lhvqt
+
         print('Loading training partition...')
 
         # Create a dataset corresponding to the training partition
@@ -126,8 +126,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                                data_proc=data_proc,
                                profile=profile,
                                num_frames=num_frames,
-                               reset_data=reset_data,
-                               save_data=True)
+                               reset_data=reset_data)
 
         # Create a PyTorch data loader for the dataset
         train_loader = DataLoader(dataset=gset_train,
@@ -143,8 +142,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                              hop_length=hop_length,
                              sample_rate=sample_rate,
                              data_proc=data_proc,
-                             profile=profile,
-                             save_data=True)
+                             profile=profile)
 
         print('Loading testing partition...')
 
@@ -154,8 +152,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                               sample_rate=sample_rate,
                               data_proc=data_proc,
                               profile=profile,
-                              store_data=False,
-                              save_data=True)
+                              store_data=False)
 
         print('Initializing model...')
 
@@ -189,7 +186,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         # Initialize a new optimizer for the model parameters
         optimizer = torch.optim.Adam([{'params': params, 'lr': learning_rate},
                                       {'params': of1.feat_ext.parameters(),
-                                       'lr': 10 * learning_rate, 'weight_decay': 0.0}])
+                                       'lr': 1 * learning_rate, 'weight_decay': 0.0}])
 
         # Decay the learning rate over the course of training
         scheduler = StepLR(optimizer, iterations, 0.99)

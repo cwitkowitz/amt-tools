@@ -150,19 +150,13 @@ def train(model, train_loader, optimizer, iterations,
             # Make sure these iterations match
             assert start_iter == optimizer_iter
 
-            # Load the latest model
+            # Load the latest model and replace the parameterized version
             model = torch.load(model_path)
-            # Replace the randomly initialized parameters with the saved parameters
-            super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
-            # Load the latest optimizer state
-            # TODO - how to load learnable filterbank optimizer state? - something breaks - num param groups mismatch
+            # Load the latest optimizer state into the parameterized version
             optimizer.load_state_dict(torch.load(optimizer_path))
 
     # Make sure the model is in training mode
     model.train()
-
-    # How many new iterations to run
-    new_iters = iterations - start_iter
 
     for global_iter in tqdm(range(start_iter, iterations)):
         # List of losses for each batch in the loop
@@ -204,7 +198,7 @@ def train(model, train_loader, optimizer, iterations,
         if checkpoints == 0:
             checkpoint = False
         else:
-            checkpoint = (local_iter + 1) % (new_iters // checkpoints) == 0
+            checkpoint = (local_iter + 1) % (iterations // checkpoints) == 0
 
         # Boolean representing whether training has been completed
         done_training = (global_iter + 1) == iterations
