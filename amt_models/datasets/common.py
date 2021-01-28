@@ -567,4 +567,4 @@ class TranscriptionDataset(Dataset):
             shutil.rmtree(save_dir)
 
         # Create the base directory
-        os.mkdir(save_dir)
+        os.makedirs(save_dir)
