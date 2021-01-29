@@ -1,5 +1,5 @@
 # My imports
-from amt_models.features import FeatureModule
+from amt_models.features.common import FeatureModule
 
 # Regular imports
 from librosa.core.constantq import __early_downsample_count as early_downsample_count

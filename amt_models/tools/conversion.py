@@ -1,5 +1,5 @@
 # My imports
-from amt_models.tools import valid_notes, valid_tabs, valid_multi, valid_single
+from amt_models.tools.utils import valid_notes, valid_tabs, valid_multi, valid_single
 
 # Regular imports
 from copy import deepcopy

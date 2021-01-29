@@ -1,9 +1,10 @@
 # My imports
-from amt_models.pipeline import train, validate
-from amt_models.models import OnsetsFrames
-from amt_models.features import MelSpec
-from amt_models.tools import seed_everything, PianoProfile
-from amt_models.datasets import MAPS
+from amt_models.pipeline.train import train, validate
+from amt_models.models.onsetsframes import OnsetsFrames
+from amt_models.features.melspec import MelSpec
+from amt_models.tools.utils import seed_everything
+from amt_models.tools.instrument import PianoProfile
+from amt_models.datasets.MAPS import MAPS
 from amt_models.tools.constants import *
 
 # Regular imports

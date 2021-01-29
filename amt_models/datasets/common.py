@@ -1,6 +1,8 @@
 # My imports
-from amt_models.features import MelSpec
-from amt_models.tools import track_to_dtype, arr_to_note_groups, valid_activations, valid_notes, PianoProfile
+from amt_models.features.melspec import MelSpec
+from amt_models.tools.conversion import track_to_dtype, arr_to_note_groups
+from amt_models.tools.utils import valid_activations, valid_notes
+from amt_models.tools.instrument import PianoProfile
 from amt_models.tools.constants import *
 
 # Regular imports

@@ -1,6 +1,7 @@
 # My imports
-from amt_models.pipeline import predict_multi
-from amt_models.tools import pianoroll_to_pitchlist, to_single, arr_to_note_groups, to_multi, write_results
+from amt_models.pipeline.transcribe import predict_multi
+from amt_models.tools.conversion import pianoroll_to_pitchlist, to_single, arr_to_note_groups, to_multi
+from amt_models.tools.io import write_results
 from amt_models.tools.constants import *
 
 # Regular imports
@@ -14,6 +15,7 @@ import sys
 import os
 
 eps = sys.float_info.epsilon
+
 
 def framewise_multi(t_ref, p_ref, t_est, p_est, low):
     multi_num = p_est.shape[0]
@@ -31,6 +33,7 @@ def framewise_multi(t_ref, p_ref, t_est, p_est, low):
 
     return metrics
 
+
 def framewise(t_ref, f_ref, t_est, f_est):
     # Compare the ground-truth to the predictions to get the frame-wise metrics
     frame_metrics = evaluate_frames(t_ref, f_ref, t_est, f_est)
@@ -47,6 +50,7 @@ def framewise(t_ref, f_ref, t_est, f_est):
 
     return metrics
 
+
 def notewise_multi(ref, est, offset_ratio=None):
     multi_num = len(est)
 
@@ -62,6 +66,7 @@ def notewise_multi(ref, est, offset_ratio=None):
     metrics = average_results(metrics)
 
     return metrics
+
 
 def notewise(i_ref, p_ref, i_est, p_est, offset_ratio=None):
     # Calculate frame-wise precision, recall, and f1 score with or without offset

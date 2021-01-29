@@ -1,9 +1,11 @@
 # My imports
-from amt_models.pipeline import train, validate
-from amt_models.models import OnsetsFrames, SoftmaxGroups, LanguageModel
-from amt_models.features import VQT
-from amt_models.tools import seed_everything, GuitarProfile
-from amt_models.datasets import GuitarSet
+from amt_models.pipeline.train import train, validate
+from amt_models.models.onsetsframes import OnsetsFrames, LanguageModel
+from amt_models.models.common import SoftmaxGroups
+from amt_models.features.vqt import VQT
+from amt_models.tools.utils import seed_everything
+from amt_models.tools.instrument import GuitarProfile
+from amt_models.datasets.GuitarSet import GuitarSet
 from amt_models.tools.constants import *
 
 # Regular imports

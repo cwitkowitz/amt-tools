@@ -1,5 +1,6 @@
 # My imports
-from amt_models.pipeline import transcribe, evaluate, append_results, average_results
+from amt_models.pipeline.evaluate import evaluate, append_results, average_results
+from amt_models.pipeline.transcribe import transcribe
 from amt_models.tools import log_results
 
 # Regular imports

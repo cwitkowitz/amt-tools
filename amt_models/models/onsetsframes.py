@@ -1,6 +1,6 @@
 # My imports
-from amt_models.models import TranscriptionModel, LogisticBank
-from amt_models.tools import get_onsets
+from amt_models.models.common import TranscriptionModel, LogisticBank
+from amt_models.tools.conversion import get_onsets
 
 # Regular imports
 from torch import nn

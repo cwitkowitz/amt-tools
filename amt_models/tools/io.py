@@ -1,5 +1,5 @@
 # My imports
-from amt_models.tools import rms_norm
+from amt_models.tools.utils import rms_norm
 
 # Regular imports
 from tqdm import tqdm

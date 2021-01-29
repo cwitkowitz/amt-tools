@@ -1,5 +1,7 @@
 # My imports
-from amt_models.tools import track_to_device, GuitarProfile, get_batch_size, PianoProfile, threshold_arr
+from amt_models.tools.utils import get_batch_size, threshold_arr
+from amt_models.tools.instrument import GuitarProfile, PianoProfile
+from amt_models.tools.conversion import track_to_device
 
 # Regular imports
 from abc import abstractmethod

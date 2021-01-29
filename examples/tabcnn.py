@@ -1,9 +1,10 @@
 # My imports
-from amt_models.pipeline import train, validate
-from amt_models.models import TabCNN
-from amt_models.features import CQT
-from amt_models.tools import seed_everything, GuitarProfile
-from amt_models.datasets import GuitarSet
+from amt_models.pipeline.train import train, validate
+from amt_models.models.tabcnn import TabCNN
+from amt_models.features.cqt import CQT
+from amt_models.tools.utils import seed_everything
+from amt_models.tools.instrument import GuitarProfile
+from amt_models.datasets.GuitarSet import GuitarSet
 from amt_models.tools.constants import *
 
 # Regular imports

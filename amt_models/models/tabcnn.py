@@ -1,11 +1,11 @@
 # My imports
-from amt_models.models import TranscriptionModel, SoftmaxGroups
-from amt_models.tools import framify_tfr, get_batch_size
+from amt_models.models.common import TranscriptionModel, SoftmaxGroups
+from amt_models.tools.utils import framify_tfr, get_batch_size
 
 # Regular imports
 from torch import nn
 
-# TODO - different file naming scheme? - don't remember why I put this here
+# TODO - different file naming scheme? - don't remember why I put this here (probably bc same name as example)
 
 
 class TabCNN(TranscriptionModel):

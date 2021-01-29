@@ -1,5 +1,6 @@
 # My imports
-from amt_models.tools import to_multi, to_single, GuitarProfile
+from amt_models.tools.conversion import to_multi, to_single
+from amt_models.tools.instrument import GuitarProfile
 from amt_models.tools.constants import *
 
 from amt_models.pipeline.visualize import plot_pianoroll

@@ -1,5 +1,7 @@
 # My imports
-from amt_models.tools import note_groups_to_arr, arr_to_note_groups, get_pianoroll_onsets, track_to_batch, track_to_cpu, valid_activations, to_multi, valid_multi, write_pitch_multi, write_notes_multi, to_single, valid_single, write_pitch, write_notes
+from amt_models.tools.conversion import note_groups_to_arr, arr_to_note_groups, get_pianoroll_onsets, track_to_batch, track_to_cpu, to_multi, to_single
+from amt_models.tools.utils import valid_activations, valid_single, valid_multi
+from amt_models.tools.io import write_pitch, write_notes, write_pitch_multi, write_notes_multi
 from amt_models.tools.constants import *
 
 # Regular imports

@@ -1,6 +1,8 @@
 # My imports
-from amt_models.datasets import TranscriptionDataset
-from amt_models.tools import load_audio, load_jams_guitar_notes, note_groups_to_arr, GuitarProfile, load_jams_guitar_tabs, PianoProfile, midi_groups_to_pianoroll
+from amt_models.datasets.common import TranscriptionDataset
+from amt_models.tools.io import load_audio, load_jams_guitar_notes, load_jams_guitar_tabs
+from amt_models.tools.conversion import note_groups_to_arr, midi_groups_to_pianoroll
+from amt_models.tools.instrument import GuitarProfile, PianoProfile
 from amt_models.tools.constants import *
 
 # Regular imports
