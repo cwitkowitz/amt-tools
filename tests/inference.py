@@ -9,7 +9,6 @@ from amt_models.features import VQT
 # Regular imports
 import numpy as np
 import torch
-import math
 import os
 
 model_path = os.path.join(GEN_EXPR_DIR, 'OnsetsFrames_GuitarSet_VQT', 'models', 'fold-2', 'model-3000.pt')

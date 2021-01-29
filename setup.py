@@ -1,5 +1,7 @@
 from setuptools import setup, find_packages
 
+# TODO - install_requires, python_requires='>=3.6', extras_require
+
 setup(
     name = 'amt_models',
     url = 'https://github.com/cwitkowitz/transcription-models',
