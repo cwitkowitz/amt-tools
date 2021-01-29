@@ -1,9 +1,11 @@
 # My imports
-from .common import *
-from amt_models.tools import *
+from amt_models.models import TranscriptionModel, LogisticBank
+from amt_models.tools import get_onsets
 
 # Regular imports
 from torch import nn
+
+import torch
 
 
 class OnsetsFrames(TranscriptionModel):
@@ -204,10 +206,11 @@ class LanguageModel(nn.Module):
     def __init__(self, dim_in, dim_out, inf_len=512):
         super().__init__()
         self.dim_in = dim_in
-        self.dim_hd = dim_out // 2
-        self.dim_out = dim_out
+        # TODO - If bidirectional ... - better naming convention for dim out
+        self.dim_out = dim_out // 2
+        #self.dim_out = dim_out
         self.inf_len = inf_len
-        self.rnn = nn.LSTM(self.dim_in, self.dim_hd, batch_first=True, bidirectional=True)
+        self.rnn = nn.LSTM(self.dim_in, self.dim_out, batch_first=True, bidirectional=True)
 
     def forward(self, feats):
         if self.training:
@@ -219,9 +222,9 @@ class LanguageModel(nn.Module):
 
             assert self.dim_in == feats.size(2)
 
-            h = torch.zeros(2, batch_size, self.dim_hd).to(feats.device)
-            c = torch.zeros(2, batch_size, self.dim_hd).to(feats.device)
-            output = torch.zeros(batch_size, seq_length, 2 * self.dim_hd).to(feats.device)
+            h = torch.zeros(2, batch_size, self.dim_out).to(feats.device)
+            c = torch.zeros(2, batch_size, self.dim_out).to(feats.device)
+            output = torch.zeros(batch_size, seq_length, 2 * self.dim_out).to(feats.device)
 
             # Forward
             slices = range(0, seq_length, self.inf_len)
@@ -236,6 +239,6 @@ class LanguageModel(nn.Module):
             for start in reversed(slices):
                 end = start + self.inf_len
                 result, (h, c) = self.rnn(feats[:, start : end, :], (h, c))
-                output[:, start : end, self.dim_hd:] = result[:, :, self.dim_hd:]
+                output[:, start : end, self.dim_out:] = result[:, :, self.dim_out:]
 
             return output

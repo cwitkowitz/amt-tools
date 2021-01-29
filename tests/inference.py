@@ -1,9 +1,8 @@
 # My imports
-from amt_models.tools.conversion import *
-from amt_models.tools.instrument import *
+from amt_models.tools import to_multi, to_single, GuitarProfile
 from amt_models.tools.constants import *
 
-from amt_models.pipeline.visualize import *
+from amt_models.pipeline.visualize import plot_pianoroll
 
 from amt_models.features import VQT
 

@@ -1,5 +1,5 @@
 # My imports
-from amt_models.tools.instrument import *
+from amt_models.tools.instrument import GuitarProfile
 
 # Regular imports
 import matplotlib.lines as mlines
@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import librosa
 
+# TODO - this is mostly trash for now - I've yet to make an effort to reestablish this
 # TODO - see earlier commits to get started
 
 profile = GuitarProfile()

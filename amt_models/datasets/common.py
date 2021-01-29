@@ -1,6 +1,7 @@
 # My imports
-from ..features import *
-from ..tools import *
+from amt_models.features import MelSpec
+from amt_models.tools import track_to_dtype, arr_to_note_groups, valid_activations, valid_notes, PianoProfile
+from amt_models.tools.constants import *
 
 # Regular imports
 from torch.utils.data import Dataset

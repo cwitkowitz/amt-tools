@@ -1,5 +1,5 @@
 # My imports
-from .common import *
+from amt_models.features import FeatureModule, VQT
 
 # Regular imports
 import numpy as np

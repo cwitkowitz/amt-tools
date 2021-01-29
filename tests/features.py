@@ -1,10 +1,11 @@
 # My imports
-from amt_models import *
+from amt_models.features import CQT, VQT, MelSpec
 
 # Regular imports
 from librosa.display import specshow
 
 import matplotlib.pyplot as plt
+import numpy as np
 import librosa
 
 y, sr = librosa.load(librosa.util.example_audio_file())

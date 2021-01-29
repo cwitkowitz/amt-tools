@@ -1,12 +1,13 @@
 # My imports
-from .common import TranscriptionDataset
-from ..tools import *
+from amt_models.datasets import TranscriptionDataset
+from amt_models.tools import load_audio, load_jams_guitar_notes, note_groups_to_arr, GuitarProfile, load_jams_guitar_tabs, PianoProfile, midi_groups_to_pianoroll
+from amt_models.tools.constants import *
 
 # Regular imports
+from mirdata.datasets import guitarset
+
 import numpy as np
 import librosa
-import mirdata
-import shutil
 import os
 
 
@@ -159,4 +160,4 @@ class GuitarSet(TranscriptionDataset):
 
         # TODO - can download directly from https://zenodo.org/record/3371780#.X2dWA3VKgk8
         # Download GuitarSet
-        mirdata.guitarset.download(data_home=save_dir)
+        guitarset.Dataset(data_home=save_dir).download(force_overwrite=True, cleanup=True)

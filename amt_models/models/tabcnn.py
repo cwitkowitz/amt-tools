@@ -1,6 +1,6 @@
 # My imports
-from .common import *
-from amt_models.tools import *
+from amt_models.models import TranscriptionModel, SoftmaxGroups
+from amt_models.tools import framify_tfr, get_batch_size
 
 # Regular imports
 from torch import nn

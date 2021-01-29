@@ -1,6 +1,7 @@
 # My imports
-from .transcribe import *
-from ..tools import *
+from amt_models.pipeline import predict_multi
+from amt_models.tools import pianoroll_to_pitchlist, to_single, arr_to_note_groups, to_multi, write_results
+from amt_models.tools.constants import *
 
 # Regular imports
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes

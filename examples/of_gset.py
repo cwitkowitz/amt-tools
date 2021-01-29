@@ -1,14 +1,18 @@
 # My imports
-from pipeline import *
-from models import *
-from features import *
-from tools import *
-from datasets import *
+from amt_models.pipeline import train, validate
+from amt_models.models import OnsetsFrames, SoftmaxGroups, LanguageModel
+from amt_models.features import VQT
+from amt_models.tools import seed_everything, GuitarProfile
+from amt_models.datasets import GuitarSet
+from amt_models.tools.constants import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
+
+import torch.nn as nn
+import torch
 
 ex = Experiment('Onsets & Frames w/ Mel Spectrogram on GuitarSet')
 

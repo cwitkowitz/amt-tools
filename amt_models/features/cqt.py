@@ -1,5 +1,5 @@
 # My imports
-from .vqt import *
+from amt_models.features import VQT
 
 # Regular imports
 # No imports used

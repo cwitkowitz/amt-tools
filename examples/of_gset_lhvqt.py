@@ -1,13 +1,19 @@
 # My imports
-# TODO - import specific things - this is too much
-# TODO - also, don't use relative imports - do amt_models.<sub-package>
-from amt_models import *
+from amt_models.pipeline import train, validate
+from amt_models.models import OnsetsFrames, SoftmaxGroups, LanguageModel
+from amt_models.features import LHVQT
+from amt_models.tools import seed_everything, GuitarProfile
+from amt_models.datasets import GuitarSet
+from amt_models.tools.constants import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from sacred import Experiment
+
+import torch.nn as nn
+import torch
 
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     GuitarSet.dataset_name(),

@@ -1,14 +1,19 @@
 # My imports
-from pipeline import *
-from models import *
-from features import *
-from tools import *
-from datasets import *
+from amt_models.pipeline import train, validate
+from amt_models.models import OnsetsFrames
+from amt_models.features import LHVQT
+from amt_models.tools import seed_everything, PianoProfile
+from amt_models.datasets import MAESTRO_V2
+from amt_models.tools.constants import *
 
 # Regular imports
 from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
+
+import torch.nn as nn
+import librosa
+import torch
 
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     MAESTRO_V2.dataset_name(),
