@@ -7,6 +7,7 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
+# TODO - turn this into classes.py and add estimator + evaluator?
 # TODO - tablature profile
 
 
@@ -77,3 +78,5 @@ class GuitarProfile(InstrumentProfile):
         semitones = np.arange(0, self.num_frets + 1)
         multi_range = multi_range + semitones
         return multi_range
+
+# TODO - combo for multiple instrument transcription

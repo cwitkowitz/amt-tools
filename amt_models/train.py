@@ -1,7 +1,5 @@
 # My imports
-from amt_models.pipeline.evaluate import evaluate, append_results, average_results
-from amt_models.pipeline.transcribe import transcribe
-from amt_models.tools import log_results
+import amt_models.tools as tools
 
 # Regular imports
 from tensorboardX import SummaryWriter
@@ -35,7 +33,7 @@ def file_sort(file_name):
     return sort_name
 
 
-def validate(model, dataset, estim_dir=None, results_dir=None):
+def validate(model, dataset, evaluator, estimator=None):
     """
     Implements the validation or evaluation loop for a model and dataset partition.
     Optionally save predictions and log results.
@@ -46,10 +44,10 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
       Model to validate or evalaute
     dataset : TranscriptionDataset
       Dataset (partition) to use for validation or evaluation
-    estim_dir : str or None (optional)
-      Path to the directory to save predictions
-    results_dir : str or None (optional)
-      Path to the directory to log results
+    estimator : Estimator
+      TODO
+    evaluator : Evaluator
+      TODO
 
     Returns
     ----------
@@ -60,19 +58,21 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
     # Make sure the model is in evaluation mode
     model.eval()
 
-    # Create a dictionary to hold the results
-    results = {}
-
     # Turn off gradient computation
     with torch.no_grad():
         # Loop through the validation track ids
         for track_id in dataset.tracks:
             # Obtain the track data
             track = dataset.get_track_data(track_id)
-            # Transcribe the track
-            predictions = transcribe(model, track, dataset.profile, estim_dir)
+            if estimator is not None:
+                # Transcribe the track
+                predictions = estimator.estimate(model, track)
+            else:
+                batch = track_to_batch(track)
+                predictions = model.run_on_batch(batch)
+                predictions = track_to_cpu(predictions)
             # Evaluate the predictions
-            track_results = evaluate(predictions, track, dataset.profile, results_dir)
+            track_results = evaluator.evaluate(predictions, track)
             # Add the results to the dictionary
             results = append_results(results, track_results)
 
@@ -82,10 +82,8 @@ def validate(model, dataset, estim_dir=None, results_dir=None):
     return results
 
 
-def train(model, train_loader, optimizer, iterations,
-          checkpoints=0, log_dir='.', val_set=None,
-          scheduler=None, resume=True, single_batch=False,
-          vis_fnc=None):
+def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.', scheduler=None,
+          resume=True, single_batch=False, val_set=None, estimator=None, evaluator=None, vis_fnc=None):
     """
     Implements the training loop for an experiment.
 
@@ -105,14 +103,21 @@ def train(model, train_loader, optimizer, iterations,
       Number of equally spaced save/validation checkpoints - 0 to disable
     log_dir : str
       Path to directory for saving model, optimizer state, and events
-    val_set : TranscriptionDataset or None (optional)
-      Dataset to use for validation loops
     scheduler : Scheduler or None (optional)
       PyTorch Scheduler used to update learning rate
     resume : bool
       Start from most recently saved model and optimizer state
     single_batch : bool
       Only process the first batch within each validation loop
+    val_set : TranscriptionDataset or None (optional)
+      Dataset to use for validation loops
+    estimator : Estimator
+      TODO
+    evaluator : Evaluator
+      TODO
+    patterns : None or list of str
+      String patterns for logging - only results with names containing these patterns will be logged
+      If None, all results are logged
     vis_fnc : function(model, i)
       Function to perform any visualization steps during validation loop
 
@@ -121,9 +126,12 @@ def train(model, train_loader, optimizer, iterations,
     model : TranscriptionModel
       Trained model
     """
-    # TODO - multi_gpu - DataParallel removes ability to call .run_on_batch()
 
-    # Initialize a writer to log training loss and validation loss/results
+    # TODO - multi_gpu - DataParallel removes ability to call .run_on_batch()
+    #                  - Can DataParallel be hooked into TranscriptionModel to
+    #                    only call the forward() function?
+
+    # Initialize a writer to log any reported results
     writer = SummaryWriter(log_dir)
 
     # Start at iteration 0 by default
@@ -155,6 +163,7 @@ def train(model, train_loader, optimizer, iterations,
             # Load the latest model and replace the parameterized version
             model = torch.load(model_path)
             # Replace the randomly initialized parameters with the saved parameters
+            # TODO - allow for saving/loading of optimizer with multiple parameter groups
             super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
             # Load the latest optimizer state into the parameterized version
             optimizer.load_state_dict(torch.load(optimizer_path))
@@ -218,13 +227,11 @@ def train(model, train_loader, optimizer, iterations,
             if vis_fnc is not None:
                 vis_fnc(model, global_iter + 1)
 
-            # If we are at a checkpoint, and a validation set is available
-            if checkpoint and val_set is not None:
+            # If we are at a checkpoint, and a validation set with an estimator is available
+            if checkpoint and val_set is not None and evaluator is not None:
                 # Validate the current model weights
-                val_results = validate(model, val_set)
+                validate(model, val_set, evaluator, estimator)
                 # Make sure the model is back in training mode
                 model.train()
-                # Log the results with patterns containing 'loss' and 'f1-score'
-                log_results(val_results, writer, global_iter + 1, ['loss', 'f1-score'])
 
     return model

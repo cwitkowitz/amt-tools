@@ -1,5 +1,5 @@
 # My imports
-from amt_models.datasets.common import TranscriptionDataset
+from .common import TranscriptionDataset
 
 # Regular imports
 import numpy as np

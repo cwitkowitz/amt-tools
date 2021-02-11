@@ -1,9 +1,7 @@
-# My importsfrom amt_models.datasets import TranscriptionDataset
-from amt_models.datasets import TranscriptionDataset
-from amt_models.tools.io import load_audio, load_midi_notes
-from amt_models.tools.conversion import arr_to_note_groups, midi_groups_to_pianoroll
-from amt_models.tools.instrument import PianoProfile
-from amt_models.tools.constants import *
+# My imports
+from .common import TranscriptionDataset
+
+import amt_models.tools as tools
 
 # Regular imports
 import numpy as np
@@ -22,7 +20,7 @@ class MAPS(TranscriptionDataset):
     """
 
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None, profile=None,
-                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_loc=GEN_DATA_DIR, seed=0):
+                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_loc=tools.GEN_DATA_DIR, seed=0):
         """
         Initialize the dataset and establish parameter defaults in function signature.
 

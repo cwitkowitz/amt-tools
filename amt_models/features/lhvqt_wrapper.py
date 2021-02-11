@@ -1,5 +1,5 @@
 # My imports
-from amt_models.features import FeatureModule
+from .common import FeatureModule
 
 # Regular imports
 from lhvqt.lhvqt_comb import LHVQT_COMB as lc_type

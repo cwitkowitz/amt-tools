@@ -1,5 +1,6 @@
 # My imports
-from amt_models.tools.utils import rms_norm
+from .utils import rms_norm, sort_notes
+from .constants import *
 
 # Regular imports
 from tqdm import tqdm
@@ -17,10 +18,105 @@ import os
 def load_audio(wav_path, sample_rate=None):
     audio, fs = librosa.load(wav_path, sr=sample_rate)
 
+    # TODO - reassess usefulness of this function
     #audio = librosa.util.normalize(audio)# <- infinity norm
     audio = rms_norm(audio)
 
     return audio, fs
+
+
+def load_stacked_notes_jams(jams_path, to_hz=True):
+    """
+    Load MIDI notes spread across slices (e.g. guitar strings) from JAMS file into a stack.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    to_hz : bool
+      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    """
+
+    # Load the metadata from the jams file
+    jam = jams.load(jams_path)
+
+    # Extract all of the midi note annotations
+    note_data_slices = jam.annotations[JAMS_NOTE_MIDI]
+
+    # Obtain the number of annotations
+    stack_size = len(note_data_slices)
+
+    # Initialize a dictionary to hold the notes
+    stacked_notes = dict()
+
+    # Loop through the slices of the stack
+    for slice in range(stack_size):
+        # Extract the notes pertaining to this slice
+        slice_notes = note_data_slices[slice]
+
+        # Initialize lists to hold the pitches and intervals
+        pitches, intervals = list(), list()
+
+        # Loop through the notes pertaining to this slice
+        for note in slice_notes:
+            # Append the note pitch and interval to the respective list
+            pitches.append(note.value)
+            intervals.append([note.time, note.time + note.duration])
+
+        # Convert the pitch and interval lists to arrays
+        pitches, intervals = np.array(pitches), np.array(intervals)
+
+        # Convert pitch to Hertz if specified or leave as MIDI
+        if to_hz:
+            pitches = librosa.midi_to_hz(pitches)
+
+        # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
+        stacked_notes[slice] = sort_notes(pitches, intervals)
+
+    # TODO - validation check?
+
+    return stacked_notes
+
+
+def load_notes_jams(jams_path, to_hz=True):
+    """
+    Load all MIDI notes within a JAMS file.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    to_hz : bool
+      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
+
+    Returns
+    ----------
+    pitches : ndarray
+      Array of pitches corresponding to notes
+    intervals : ndarray
+      Array of onset-offset time pairs corresponding to notes
+    """
+
+    # First, load the notes into a stack
+    stacked_notes = load_stacked_notes_jams(jams_path=jams_path, to_hz=to_hz)
+
+    # Obtain the note pairs from the dictionary values
+    note_pairs = list(stacked_notes.values())
+
+    # Extract the pitches and intervals respectively
+    pitches = [pair[0] for pair in note_pairs]
+    intervals = [pair[1] for pair in note_pairs]
+
+    pitches, intervals = sort_notes(pitches, intervals)
+
+    # TODO - validation check?
+
+    return pitches, intervals
 
 
 # TODO - clean up or simplify?
@@ -61,35 +157,6 @@ def load_jams_guitar_tabs(jams_path, times, tuning):
     tabs = tabs.astype('int')
 
     return tabs
-
-
-def load_jams_guitar_notes(jams_path, hz=True):
-    jam = jams.load(jams_path)
-
-    note_data = jam.annotations['note_midi']
-    num_strings = len(note_data)
-
-    intervals = []
-    pitches = []
-
-    for s in range(num_strings):
-        string_notes = note_data[s]
-
-        for note in string_notes:
-            pitches += [note.value]
-            intervals += [[note.time, note.time + note.duration]]
-
-    # Obtain an array of time intervals for all note occurrences
-    intervals = np.array(intervals)
-
-    # TODO - validate intervals
-
-    pitches = np.array(pitches)
-
-    if hz:
-        pitches = librosa.midi_to_hz(pitches)
-
-    return pitches, intervals
 
 
 def load_midi_notes(midi_path):
@@ -225,32 +292,6 @@ def write_notes_multi(log_dir, notes_multi, labels=None, places=3):
         pitches, intervals = notes_multi[i]
         write_notes(path, pitches, intervals, places)
 
-
-def write_results(results, path, verbose=False):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    # Open the file with writing permissions
-    results_file = open(path, 'w')
-    for type in results.keys():
-        write_and_print(results_file, f'-----{type}-----\n', verbose)
-        if isinstance(results[type], dict):
-            for metric in results[type].keys():
-                write_and_print(results_file, f' {metric} : {results[type][metric]}\n', verbose)
-        else:
-            write_and_print(results_file, f' {type} : {results[type]}\n', verbose)
-        write_and_print(results_file, '', verbose, '\n')
-    # Close the results file
-    results_file.close()
-
-
-def log_results(results, writer, step=0, metrics=None):
-    for type in results.keys():
-        if isinstance(results[type], dict):
-            for metric in results[type].keys():
-                if metrics is None or metric in metrics:
-                    writer.add_scalar(f'val/{type}/{metric}', results[type][metric], global_step=step)
-        else:
-            if metrics is None or type in metrics:
-                writer.add_scalar(f'val/{type}', results[type], global_step=step)
 
 def stream_url_resource(url, save_path, chunk_size=1024):
     """

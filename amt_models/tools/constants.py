@@ -2,29 +2,33 @@ import os
 
 # TODO - add extensions, folder names, dictionary keys, etc.
 
-# Directory Structure
 HOME = os.path.expanduser('~')
+
+# Directory Structure
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
 SCPT_DIR = os.path.dirname(os.path.join(TOOL_DIR))
 ROOT_DIR = os.path.dirname(os.path.join(SCPT_DIR))
+
+# Default Paths
 # TODO - make these parameterizable
 GENR_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'generated'))
 GEN_DATA_DIR = os.path.join(GENR_DIR, 'data')
 GEN_EXPR_DIR = os.path.join(GENR_DIR, 'experiments')
 GEN_VISL_DIR = os.path.join(GENR_DIR, 'visualization')
 
-# Dataset Keys
-TR_ID = 'track'
-PITCH = 'pitch'
-ONSET = 'onsets'
-TIMES = 'times'
-NOTES = 'notes'
+# Ground-Truth & Prediction Keys
+KEY_AUDIO = 'audio'
+KEY_FS = 'fs'
+KEY_TRACK = 'track'
+KEY_MULTIPITCH = 'pitch'
+KEY_TABLATURE = 'tabs'
+KEY_ONSET = 'onsets'
+KEY_TIMES = 'times'
+KEY_NOTES = 'notes'
+# TODO - stacked multipitch, stacked notes, and continuous multipitch
 
-# Transcription Keys
-SOLO_PITCH = 'pitch_single'
-SOLO_NOTES = 'notes_single'
-MULT_PITCH = 'pitch_multi'
-MULT_NOTES = 'notes_multi'
+# JAMS Attributes
+JAMS_NOTE_MIDI = 'note_midi'
 
 # Evaluation Keys
 PR_KEY = 'precision'

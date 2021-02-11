@@ -1,5 +1,7 @@
 # My imports
 from amt_models.pipeline.train import train, validate
+from amt_models.pipeline.transcribe import Estimator
+from amt_models.pipeline.evaluate import MultipitchEvaluator
 from amt_models.models.onsetsframes import OnsetsFrames, LanguageModel
 from amt_models.models.common import SoftmaxGroups
 from amt_models.features.vqt import VQT
@@ -13,10 +15,81 @@ from sacred.observers import FileStorageObserver
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
+import numpy as np
 import torch.nn as nn
 import torch
 
-ex = Experiment('Onsets & Frames w/ Mel Spectrogram on GuitarSet')
+ex = Experiment('Onsets & Frames w/ VQT on GuitarSet')
+
+
+class OnsetsFramesExperimental(OnsetsFrames):
+    def __init__(self, dim_in, profile, in_channels, model_complexity=2, device='cpu'):
+        super().__init__(dim_in, profile, in_channels, model_complexity, device)
+
+        """
+        self.onsets[-1] = SoftmaxGroups(self.dim_lm, profile, 'onsets')
+        self.pianoroll[-1] = SoftmaxGroups(self.dim_am, profile)
+        self.dim_aj = self.onsets[-1].dim_out + self.pianoroll[-1].dim_out
+        """
+
+        # Exchange the final logistic bank (multipitch) for group softmax layer
+        self.adjoin = nn.Sequential(
+            LanguageModel(self.dim_aj, self.dim_lm),
+            SoftmaxGroups(self.dim_lm, profile, 'pitch')
+        )
+
+    def forward(self, feats):
+        multipitch_label = self.pianoroll[-1].tag
+        preds = self.pianoroll(feats)
+        multipitch = preds[multipitch_label]
+
+        onsets_label = self.onsets[-1].tag
+        preds.update(self.onsets(feats))
+        onsets = preds[onsets_label]
+
+        joint = torch.cat((onsets, multipitch), -1)
+        preds.update(self.adjoin(joint))
+
+        return preds
+
+    def post_proc(self, batch):
+        preds = batch['preds']
+
+        onsets_layer = self.onsets[-1]
+        # TODO - can reuse everything and just add tablature stuff if I take multipitch from end of adjoin
+        multipitch_layer = self.pianoroll[-1]
+        tablature_layer = self.adjoin[-1]
+
+        onsets_label = onsets_layer.tag
+        multipitch_label = multipitch_layer.tag
+        tablature_label = tablature_layer.tag
+
+        onsets = preds[onsets_label]
+        multipitch = preds[multipitch_label]
+        tablature = preds[tablature_label]
+
+        loss = None
+
+        reference_tablature = batch[tablature_label]
+        reference_multipitch = np.max(tabs_to_multi_pianoroll(reference_tablature.cpu().detach().numpy(), self.profile), axis=-3)
+        reference_multipitch = torch.Tensor(reference_multipitch).to(self.device)
+        reference_onsets = get_onsets(reference_multipitch, self.profile)
+
+        onsets_loss = onsets_layer.get_loss(onsets, reference_onsets)
+        multipitch_loss = multipitch_layer.get_loss(multipitch, reference_multipitch)
+        tablature_loss = tablature_layer.get_loss(tablature, reference_tablature)
+
+        loss = onsets_loss + multipitch_loss + tablature_loss
+
+        preds.update({
+            'loss': loss
+        })
+
+        preds[onsets_label] = onsets_layer.finalize_output(onsets)
+        preds[multipitch_label] = multipitch_layer.finalize_output(multipitch)
+        preds[tablature_label] = tablature_layer.finalize_output(tablature)
+
+        return preds
 
 @ex.config
 def config():
@@ -30,10 +103,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 3000
+    iterations = 10000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 60
+    checkpoints = 200
 
     # Number of samples to gather for a batch
     batch_size = 20
@@ -52,7 +125,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), VQT.features_name()])
+    root_dir = '_'.join([OnsetsFrames.model_name(), GuitarSet.dataset_name(), VQT.features_name(), 'multipitch'])
     root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -72,18 +145,19 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     profile = GuitarProfile()
 
     # Processing parameters
-    #dim_in = 229
     dim_in = 8 * 24
     model_complexity = 3
 
     # Create the mel spectrogram data processing module
-    #data_proc = MelSpec(sample_rate=sample_rate,
-    #                    n_mels=dim_in,
-    #                    hop_length=hop_length)
     data_proc = VQT(sample_rate=sample_rate,
                     hop_length=hop_length,
                     n_bins=dim_in,
                     bins_per_octave=24)
+
+    # Patterns for score logging
+    patterns = ['loss', 'f1-score']
+    val_eval = MultipitchEvaluator(profile=profile)
+    test_eval = MultipitchEvaluator(profile=profile)
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -143,25 +217,12 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, data_proc.get_num_channels(), model_complexity, gpu_id)
-
-        # Exchange the logistic banks for group softmax layers
-        of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
-        of1.pianoroll[-1] = SoftmaxGroups(of1.dim_am, profile)
-        of1.dim_lm2 = of1.onsets[-1].dim_out + of1.pianoroll[-1].dim_out
-        of1.adjoin = nn.Sequential(
-            LanguageModel(of1.dim_lm2, of1.dim_lm2),
-            SoftmaxGroups(of1.dim_lm2, profile, 'pitch')
-        )
-
-        # Set the new model profile
-        of1.profile = profile
-
-        of1.change_device()
-        of1.train()
+        model = OnsetsFramesExperimental(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
+        model.change_device()
+        model.train()
 
         # Initialize a new optimizer for the model parameters
-        optimizer = torch.optim.Adam(of1.parameters(), learning_rate)
+        optimizer = torch.optim.Adam(model.parameters(), learning_rate)
 
         print('Training classifier...')
 
@@ -169,13 +230,14 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
 
         # Train the model
-        of1 = train(model=of1,
-                    train_loader=train_loader,
-                    optimizer=optimizer,
-                    iterations=iterations,
-                    checkpoints=checkpoints,
-                    log_dir=model_dir,
-                    val_set=gset_val)
+        model = train(model=model,
+                      train_loader=train_loader,
+                      optimizer=optimizer,
+                      iterations=iterations,
+                      checkpoints=checkpoints,
+                      log_dir=model_dir,
+                      val_set=gset_val,
+                      evaluator=val_eval)
 
         print('Transcribing and evaluating test partition...')
 
@@ -183,7 +245,10 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         results_dir = os.path.join(root_dir, 'results')
 
         # Get the average results for the fold
-        fold_results = validate(of1, gset_test, estim_dir, results_dir)
+        fold_results = validate(model, gset_test,
+                                evaluator=test_eval)
 
         # Log the average results for the fold in metrics.json
         ex.log_scalar('fold_results', fold_results, k)
+
+    # TODO - average metrics in metrics.json

@@ -1,9 +1,7 @@
 # My imports
-from amt_models.features.melspec import MelSpec
-from amt_models.tools.conversion import track_to_dtype, arr_to_note_groups
-from amt_models.tools.utils import valid_activations, valid_notes
-from amt_models.tools.instrument import PianoProfile
-from amt_models.tools.constants import *
+from amt_models.features import MelSpec
+
+import amt_models.tools as tools
 
 # Regular imports
 from torch.utils.data import Dataset
@@ -19,6 +17,7 @@ import os
 # TODO - Note splitting
 # TODO - other bells/whistles in OF/TabCNN
 # TODO - optionally download datasets in flac to save memory
+# TODO - possible integration with mirdata
 
 
 class TranscriptionDataset(Dataset):
@@ -64,7 +63,7 @@ class TranscriptionDataset(Dataset):
 
         # Select a default base directory path if none was provided
         if base_dir is None:
-            base_dir = os.path.join(HOME, 'Desktop', 'Datasets', self.dataset_name())
+            base_dir = os.path.join(tools.HOME, 'Desktop', 'Datasets', self.dataset_name())
         self.base_dir = base_dir
 
         # Check if the dataset exists in memory
@@ -417,7 +416,7 @@ class TranscriptionDataset(Dataset):
 
         if 'notes' in keys:
             # Convert the presumed array into standard representation
-            pitches, intervals = arr_to_note_groups(data['notes'])
+            pitches, intervals = batched_notes_to_notes(data['notes'])
             # Make sure the notes are valid
             valid = valid and valid_notes(pitches, intervals)
 

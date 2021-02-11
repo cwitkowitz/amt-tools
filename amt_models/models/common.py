@@ -1,7 +1,5 @@
 # My imports
-from amt_models.tools.utils import get_batch_size, threshold_arr
-from amt_models.tools.instrument import GuitarProfile, PianoProfile
-from amt_models.tools.conversion import track_to_device
+import amt_models.tools as tools
 
 # Regular imports
 from abc import abstractmethod
@@ -286,7 +284,7 @@ class SoftmaxGroups(OutputLayer):
     across the possibilities (the string's fretting).
     """
 
-    def __init__(self, dim_in, profile=None, tag='tabs'):
+    def __init__(self, dim_in, profile=None, tag=tools.KEY_TABLATURE):
         """
         Initialize fields of the multi-label softmax layer.
 
@@ -393,7 +391,7 @@ class SoftmaxGroups(OutputLayer):
         loss = F.cross_entropy(output.float(), reference, reduction='none')
         loss = loss.view(bs, -1, self.num_dofs)
         # Sum loss across degrees of freedom
-        loss = torch.sum(loss, dim=-1)
+        loss = torch.mean(loss, dim=-1)
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
         # Average the loss across the batch
@@ -449,7 +447,7 @@ class LogisticBank(OutputLayer):
     or not the key is active.
     """
 
-    def __init__(self, dim_in, profile=None, tag='keys'):
+    def __init__(self, dim_in, profile=None, tag=tools.KEY_MULTIPITCH):
         """
         Initialize fields of the multi-label logistic layer.
 

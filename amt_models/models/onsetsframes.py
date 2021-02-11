@@ -1,6 +1,7 @@
 # My imports
-from amt_models.models.common import TranscriptionModel, LogisticBank
-from amt_models.tools.conversion import get_onsets
+from .common import TranscriptionModel, LogisticBank
+
+import amt_models.tools as tools
 
 # Regular imports
 from torch import nn
@@ -17,12 +18,12 @@ class OnsetsFrames(TranscriptionModel):
         self.dim_am = 256 * self.model_complexity
 
         # Number of output neurons for the language models
-        self.dim_lm1 = 128 * self.model_complexity
+        self.dim_lm = 256 * (self.model_complexity - 1)
 
         self.onsets = nn.Sequential(
             AcousticModel(self.dim_in, self.dim_am, self.in_channels, self.model_complexity),
-            LanguageModel(self.dim_am, self.dim_lm1),
-            LogisticBank(self.dim_lm1, self.profile, 'onsets')
+            LanguageModel(self.dim_am, self.dim_lm),
+            LogisticBank(self.dim_lm, self.profile, 'onsets')
         )
 
         self.pianoroll = nn.Sequential(
@@ -30,11 +31,11 @@ class OnsetsFrames(TranscriptionModel):
             LogisticBank(self.dim_am, self.profile)
         )
 
-        self.dim_lm2 = self.onsets[-1].dim_out + self.pianoroll[-1].dim_out
+        self.dim_aj = self.onsets[-1].dim_out + self.pianoroll[-1].dim_out
 
         self.adjoin = nn.Sequential(
-            LanguageModel(self.dim_lm2, self.dim_lm2),
-            LogisticBank(self.dim_lm2, self.profile, 'pitch')
+            LanguageModel(self.dim_aj, self.dim_lm),
+            LogisticBank(self.dim_lm, self.profile, 'pitch')
         )
 
     def pre_proc(self, batch):
@@ -59,6 +60,7 @@ class OnsetsFrames(TranscriptionModel):
 
         return preds
 
+    # TODO - break this into helper functions get_onsets_loss(), get_pitch_loss(), get_loss()
     def post_proc(self, batch):
         preds = batch['preds']
 
@@ -73,6 +75,7 @@ class OnsetsFrames(TranscriptionModel):
 
         loss = None
 
+        # TODO - separate function for calculate loss so it can be overridden?
         # Check to see if ground-truth is available
         if pianoroll_label in batch.keys():
             reference_pianoroll = batch[pianoroll_label]
@@ -84,6 +87,7 @@ class OnsetsFrames(TranscriptionModel):
 
             onsets_loss = onsets_layer.get_loss(onsets, reference_onsets)
             pianoroll_loss = pianoroll_layer.get_loss(pianoroll, reference_pianoroll)
+
             loss = onsets_loss + pianoroll_loss
 
         preds.update({
@@ -96,8 +100,9 @@ class OnsetsFrames(TranscriptionModel):
         return preds
 
     def special_steps(self):
-        # TODO - parameterize
+        # TODO - parameterize with kwargs
         nn.utils.clip_grad_norm_(self.parameters(), 3)
+
 
 class OnsetsFrames2(OnsetsFrames):
     def __init__(self, dim_in, dim_out, model_complexity=3, device='cpu'):
@@ -116,6 +121,7 @@ class OnsetsFrames2(OnsetsFrames):
         loss = None
 
         return preds, loss
+
 
 class AcousticModel(nn.Module):
     def __init__(self, dim_in, dim_out, in_channels=1, model_complexity=2):

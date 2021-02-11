@@ -1,12 +1,12 @@
 # My imports
-from amt_models.pipeline.transcribe import predict_multi
-from amt_models.tools.conversion import pianoroll_to_pitchlist, to_single, arr_to_note_groups, to_multi
-from amt_models.tools.io import write_results
-from amt_models.tools.constants import *
+from .transcribe import predict_multi
+
+import amt_models.tools as tools
 
 # Regular imports
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes
 from mir_eval.multipitch import evaluate as evaluate_frames
+from abc import abstractmethod
 from scipy.stats import hmean
 from copy import deepcopy
 
@@ -81,29 +81,6 @@ def notewise(i_ref, p_ref, i_est, p_est, offset_ratio=None):
     return metrics
 
 
-def average_results(d):
-    d_avg = deepcopy(d)
-    for key in d_avg.keys():
-        if isinstance(d_avg[key], dict):
-            d_avg[key] = average_results(d_avg[key])
-        else:
-            # Take the average of all entries and convert to float (necessary for logger)
-            d_avg[key] = float(np.mean(d_avg[key]))
-    return d_avg
-
-
-def append_results(d1, d2):
-    d3 = deepcopy(d1)
-    for key in d2.keys():
-        if key not in d3.keys():
-            d3[key] = d2[key]
-        elif isinstance(d2[key], dict):
-            d3[key] = append_results(d3[key], d2[key])
-        else:
-            d3[key] = np.append(d3[key], d2[key])
-    return d3
-
-
 def evaluate(prediction, reference, profile, log_dir=None, verbose=False):
     results = {}
 
@@ -172,3 +149,107 @@ def evaluate(prediction, reference, profile, log_dir=None, verbose=False):
         print()
 
     return results
+
+
+class ComboEvaluator(object):
+    def __init__(self):
+        pass
+
+
+class Evaluator(object):
+    """
+    Implements a generic music information retrieval estimator.
+    """
+
+    def __init__(self, patterns, results_dir):
+        self.patterns = patterns
+        self.results_dir = results_dir
+
+        self.results = None
+        self.reset_results()
+
+    def reset_results(self):
+        self.results = {}
+
+    @staticmethod
+    def average_results(d):
+        d_avg = deepcopy(d)
+        for key in d_avg.keys():
+            if isinstance(d_avg[key], dict):
+                # TODO - __class__ instead?
+                d_avg[key] = Evaluator.average_results(d_avg[key])
+            else:
+                # Take the average of all entries and convert to float (necessary for logger)
+                d_avg[key] = float(np.mean(d_avg[key]))
+        return d_avg
+
+    @staticmethod
+    def append_results(d1, d2):
+        d3 = deepcopy(d1)
+        for key in d2.keys():
+            if key not in d3.keys():
+                d3[key] = d2[key]
+            elif isinstance(d2[key], dict):
+                d3[key] = Evaluator.append_results(d3[key], d2[key])
+            else:
+                d3[key] = np.append(d3[key], d2[key])
+        return d3
+
+    def log_results(self, results, writer, step=0, metrics=None):
+        for type in results.keys():
+            if isinstance(results[type], dict):
+                for metric in results[type].keys():
+                    if metrics is None or metric in metrics:
+                        writer.add_scalar(f'val/{type}/{metric}', results[type][metric], global_step=step)
+            else:
+                if metrics is None or type in metrics:
+                    writer.add_scalar(f'val/{type}', results[type], global_step=step)
+
+    def write_results(self, results, path, verbose=False):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Open the file with writing permissions
+        results_file = open(path, 'w')
+        for type in results.keys():
+            write_and_print(results_file, f'-----{type}-----\n', verbose)
+            if isinstance(results[type], dict):
+                for metric in results[type].keys():
+                    write_and_print(results_file, f' {metric} : {results[type][metric]}\n', verbose)
+            else:
+                write_and_print(results_file, f' {type} : {results[type]}\n', verbose)
+            write_and_print(results_file, '', verbose, '\n')
+        # Close the results file
+        results_file.close()
+
+    @abstractmethod
+    def evaluate(self):
+        pass
+
+class StackedNoteEvaluator(Evaluator):
+    def __init__(self, patterns=None, results_dir=None):
+        super().__init__(results_dir)
+
+
+class NoteEvaluator(StackedNoteEvaluator):
+    def __init__(self, patterns=None, results_dir=None):
+        super().__init__(results_dir)
+
+
+class StackedMultipitchEvaluator(Evaluator):
+    def __init__(self, profile=None, labels=None, patterns=None, results_dir=None):
+        super().__init__(patterns=patterns, results_dir=results_dir)
+
+    def evaluate(self, predictions, reference):
+        # TODO - grab the correct dictionary elements - preferably using a key defined with constants
+        # TODO - convert both to multi with to_multi()
+        # TODO - do the dot product thing along the last two dimensions
+        # TODO - append result to the overall results
+        # TODO - write result if results dir was specified
+        # TODO - return results
+
+        to_multi()
+
+
+# TODO - option to evaluate based on continuous measurements
+class MultipitchEvaluator(StackedMultipitchEvaluator):
+    def __init__(self, profile=None, patterns=None, results_dir=None):
+        super().__init__(profile=profile, patterns=patterns, results_dir=results_dir)

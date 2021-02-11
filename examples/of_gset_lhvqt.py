@@ -20,11 +20,39 @@ import torch
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     GuitarSet.dataset_name(),
                     LHVQT.features_name(),
-                    'no_nrm'])
+                    'vd_test'])
 
 ex = Experiment('Onsets & Frames w/ Learnable Filterbank on GuitarSet')
 
-desc = 'No normalization of weights before insertion into 1d Conv, all other same as VQT experiment'
+desc = 'Same parameters as baseline experiment with variational dropout conv1d in hilbert variant'
+
+
+class OnsetsFramesLHVQTVariationalDropout(OnsetsFrames):
+    # TODO - split into Softmax, LHVQT, and Var Drop variant?
+    def __init__(self, dim_in, profile, in_channels, lhvqt, model_complexity=2, device='cpu'):
+        super().__init__(dim_in, profile, in_channels, model_complexity, device)
+
+        # Exchange the logistic banks for group softmax layers
+        self.onsets[-1] = SoftmaxGroups(self.dim_lm, profile, 'onsets')
+        self.pianoroll[-1] = SoftmaxGroups(self.dim_am, profile)
+        self.dim_aj = self.onsets[-1].dim_out + self.pianoroll[-1].dim_out
+        self.adjoin = nn.Sequential(
+            LanguageModel(self.dim_aj, self.dim_lm),
+            SoftmaxGroups(self.dim_lm, profile, 'pitch')
+        )
+
+        # Append the filterbank learning module to the front of the model
+        self.feat_ext.add_module('fb', lhvqt.lhvqt)
+        self.feat_ext.add_module('rl', nn.ReLU())
+
+    def post_proc(self, batch):
+        preds = super().post_proc(batch)
+
+        if 'loss' in preds.keys():
+            fb_module = torch.nn.Sequential(*list(self.feat_ext.fb.tfs.children()))[0].time_conv
+            preds['loss'] = preds['loss'] + fb_module.kld(fb_module.log_alpha)
+
+        return preds
 
 
 def visualize(model, i=None):
@@ -51,10 +79,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 3000
+    iterations = 10000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 60
+    checkpoints = 200
 
     # Number of samples to gather for a batch
     batch_size = 20
@@ -78,6 +106,7 @@ def config():
 
     # Add a file storage observer for the log directory
     ex.observers.append(FileStorageObserver(root_dir))
+
 
 @ex.automain
 def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoints,
@@ -122,7 +151,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                       n_bins=dim_in,
                       bins_per_octave=24,
                       harmonics=[1],
-                      random=False)
+                      random=True)
         data_proc = lhvqt
 
         print('Loading training partition...')
@@ -165,25 +194,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         print('Initializing model...')
 
         # Initialize a new instance of the model
-        of1 = OnsetsFrames(dim_in, None, data_proc.get_num_channels(), model_complexity, gpu_id)
-
-        # Exchange the logistic banks for group softmax layers
-        of1.onsets[-1] = SoftmaxGroups(of1.dim_lm1, profile, 'onsets')
-        of1.pianoroll[-1] = SoftmaxGroups(of1.dim_am, profile)
-        of1.dim_lm2 = of1.onsets[-1].dim_out + of1.pianoroll[-1].dim_out
-        of1.adjoin = nn.Sequential(
-            LanguageModel(of1.dim_lm2, of1.dim_lm2),
-            SoftmaxGroups(of1.dim_lm2, profile, 'pitch')
-        )
-
-        # Set the new model profile
-        of1.profile = profile
-
-        # Append the filterbank learning module to the front of the model
-        of1.feat_ext.add_module('fb', lhvqt.lhvqt)
-        #of1.feat_ext.add_module('vd', VariationalDropout())
-        of1.feat_ext.add_module('rl', nn.ReLU())
-
+        of1 = OnsetsFramesLHVQTVariationalDropout(dim_in, profile, data_proc.get_num_channels(), lhvqt, model_complexity, gpu_id)
         of1.change_device()
         of1.train()
 

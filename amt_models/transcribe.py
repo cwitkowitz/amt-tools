@@ -1,8 +1,5 @@
 # My imports
-from amt_models.tools.conversion import note_groups_to_arr, arr_to_note_groups, get_pianoroll_onsets, track_to_batch, track_to_cpu, to_multi, to_single
-from amt_models.tools.utils import valid_activations, valid_single, valid_multi
-from amt_models.tools.io import write_pitch, write_notes, write_pitch_multi, write_notes_multi
-from amt_models.tools.constants import *
+import amt_models.tools as tools
 
 # Regular imports
 import numpy as np
@@ -179,3 +176,27 @@ def transcribe(model, track, profile, log_dir=None):
         # TODO - option to redo pianoroll from note predictions
 
     return preds
+
+
+class ComboEstimator(object):
+    def __init__(self):
+        pass
+
+
+class Estimator(object):
+    """
+    Implements a generic music information retrieval estimator.
+    """
+
+    def __init__(self, profile, estim_dir):
+        pass
+
+
+class StackedNoteTranscriber(Estimator):
+    def __init__(self, estim_dir=None):
+        super().init(estim_dir)
+
+
+class NoteTranscriber(StackedNoteTranscriber):
+    def __init__(self, estim_dir=None):
+        super().init(estim_dir)

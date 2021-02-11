@@ -1,5 +1,5 @@
 # My imports
-from amt_models.features.hvqt import HVQT
+from .hvqt import HVQT
 
 # Regular imports
 # No imports used
