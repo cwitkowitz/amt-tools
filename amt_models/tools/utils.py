@@ -40,6 +40,8 @@ def stacked_notes_to_notes(stacked_notes):
     # Sort the notes by onset
     pitches, intervals = sort_notes(pitches, intervals)
 
+    # TODO - validation check?
+
     return pitches, intervals
 
 
@@ -69,6 +71,8 @@ def notes_to_stacked_notes(pitches, intervals, i=0):
 
     # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
     stacked_notes[i] = sort_notes(pitches, intervals)
+
+    # TODO - validation check?
 
     return stacked_notes
 
@@ -316,7 +320,7 @@ def sort_pitch_list(times, pitch_list):
 
 def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
     """
-    Convert a dictionary of note groups into a stack of multi pitch arrays.
+    Convert a dictionary of MIDI note groups into a stack of multi pitch arrays.
 
     Parameters
     ----------
@@ -355,7 +359,7 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
 
 def notes_to_multi_pitch(pitches, intervals, times, profile):
     """
-    Convert loose note groups into a multi pitch array.
+    Convert loose MIDI note groups into a multi pitch array.
 
     Parameters
     ----------
@@ -381,7 +385,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
 
     # Determine the dimensionality of the multi pitch array
     num_pitches = profile.get_range_len()
-    num_frames = len(times) - 1
+    num_frames = len(times)
 
     # Initialize an empty multi pitch array
     multi_pitch = np.zeros((num_pitches, num_frames))
@@ -396,6 +400,10 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     onsets = np.argmin((times <= intervals[..., :1]), axis=1) - 1
     offsets = np.argmin((times < intervals[..., 1:]), axis=1) - 1
 
+    # Clip all offsets at last frame - they will end up at -1 from
+    # previous operation if they occurred beyond last frame time
+    offsets[offsets == -1] = num_frames - 1
+
     # Loop through each note
     for i in range(len(pitches)):
         # Populate the multi pitch array with activations for the note
@@ -406,7 +414,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
 
 def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
     """
-    Convert a stacked pitch list into a stack of multi pitch arrays.
+    Convert a stacked MIDI pitch list into a stack of multi pitch arrays.
 
     Parameters
     ----------
@@ -442,7 +450,7 @@ def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
 
 def pitch_list_to_multi_pitch(times, pitch_list, profile, tolerance=0.5):
     """
-    Convert a pitch list into a dictionary of stacked pitch lists.
+    Convert a MIDI pitch list into a dictionary of stacked pitch lists.
 
     Parameters
     ----------

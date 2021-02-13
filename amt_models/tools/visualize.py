@@ -7,10 +7,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 import librosa
 
+profile = GuitarProfile()
+
+
+def visualize_pitch_list(times, pitch_list, save_path=None):
+    plt.figure()
+
+    times = np.concatenate([[times[i]] * len(pitch_list[i]) for i in range(len(pitch_list))])
+    pitches = np.concatenate(pitch_list)
+
+    plt.scatter(times, pitches, s=5, c='k')
+
+    plt.xlabel('Time (s)')
+    plt.ylabel('Pitch')
+    plt.xlim(0, 25)
+
+    plt.tight_layout()
+
+    plt.savefig(save_path) if save_path else plt.show()
+
+    return plt
+
 # TODO - this is mostly trash for now - I've yet to make an effort to reestablish this
 # TODO - see earlier commits to get started
-
-profile = GuitarProfile()
 
 
 def pianoroll(track_name, i_est, p_est, i_ref, p_ref, t_bounds, save_path=None):

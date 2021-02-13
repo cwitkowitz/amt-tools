@@ -83,22 +83,23 @@ class GuitarSet(TranscriptionDataset):
         # If the track data is being instantiated, it will not have the 'audio' key
         if tools.KEY_AUDIO not in data.keys():
             # Construct the path to the track's audio
-            wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic' + tools.WAV_EXT)
+            wav_path = self.get_wav_path(track)
             # Load and normalize the audio along with the sampling rate
             data[tools.KEY_AUDIO], data[tools.KEY_FS] = tools.load_normalize_audio(wav_path, self.sample_rate)
 
             # Construct the path to the track's JAMS data
-            jams_path = os.path.join(self.base_dir, 'annotation', track + tools.JAMS_EXT)
-            # Extract the notes from the track's JAMS file and make them batch-friendly
-            # TODO - probably don't need to store notes in the batch - can just read them in when evaluating
-            data[tools.KEY_NOTES] = tools.notes_to_batched_notes(*tools.load_notes_jams(jams_path))
+            jams_path = self.get_jams_path(track)
 
             # We need the frame times for the tablature
             times = self.data_proc.get_times(data[tools.KEY_AUDIO])
 
             # Load the frame-wise pitches as tablature from the track's JAMS file
-            # TODO - times is weird - there is an extra frame - how do I deal with it? - which functions should expect +1?
-            data[tools.KEY_TABLATURE] = tools.load_jams_guitar_tablature(jams_path, times, self.profile)
+            data[tools.KEY_TABLATURE] = tools.load_tablature_jams(jams_path, times, self.profile)
+
+            pitch_list = tools.load_pitch_list_jams(jams_path, times)
+            notes = tools.notes_to_batched_notes(*tools.load_notes_jams(jams_path))
+            tablature = tools.load_tablature_jams(jams_path, times, self.profile)
+            multi_pitch = tools.load_multi_pitch_jams(jams_path, times, self.profile)
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
@@ -113,9 +114,49 @@ class GuitarSet(TranscriptionDataset):
                         tools.KEY_AUDIO,
                         tools.KEY_TABLATURE,
                         tools.KEY_NOTES)
-                np.savez(gt_path, tools.KEY_FS=data[tools.KEY_FS])
+                np.savez(gt_path)
 
         return data
+
+    def get_wav_path(self, track):
+        """
+        Get the path to the audio of a track.
+
+        Parameters
+        ----------
+        track : string
+          GuitarSet track name
+
+        Returns
+        ----------
+        wav_path : string
+          Path to the audio of the specified track
+        """
+
+        # Get the path to the audio
+        wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic' + tools.WAV_EXT)
+
+        return wav_path
+
+    def get_jams_path(self, track):
+        """
+        Get the path to the annotations of a track.
+
+        Parameters
+        ----------
+        track : string
+          GuitarSet track name
+
+        Returns
+        ----------
+        jams_path : string
+          Path to the JAMS file of the specified track
+        """
+
+        # Get the path to the audio
+        jams_path = os.path.join(self.base_dir, 'annotation', track + tools.JAMS_EXT)
+
+        return jams_path
 
     @staticmethod
     def available_splits():

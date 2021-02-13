@@ -187,11 +187,11 @@ def load_stacked_pitch_list_jams(jams_path, times=None, to_hz=True):
         # Loop through the pitch observations pertaining to this slice
         for pitch in slice_pitches:
             # Extract the pitch
-            freq = pitch.value['frequency']
+            freq = np.array([pitch.value['frequency']])
 
             # Don't keep track of zero-frequencies
-            if freq == 0:
-                continue
+            if np.sum(freq) == 0:
+                freq = np.empty(0)
 
             # Convert to the desired format
             if not to_hz:
@@ -200,13 +200,15 @@ def load_stacked_pitch_list_jams(jams_path, times=None, to_hz=True):
             # Append the observation time
             entry_times = np.append(entry_times, pitch.time)
             # Append the frequency
-            slice_pitch_list.append(np.array([freq]))
+            slice_pitch_list.append(freq)
 
         if times is not None:
+            # Sort the pitch list before resampling just in case it is not already sorted
+            entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
+
             # Resample the observation times if new times are specified
-            # TODO - verify this by visualizing
-            # TODO - sort here just to be safe?
-            slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)
+            gap_tolerance = 2 * np.min(times[1:] - times[:-1])
+            slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times, gap_tolerance)
             # Overwrite the entry times with the specified times
             entry_times = times
 
@@ -244,9 +246,10 @@ def load_pitch_list_jams(jams_path, times, to_hz=True):
       N - number of pitch observations (frames), sorted by time
     """
 
-    # First, load the pitch lists into a stack
+    # Load the pitch lists into a stack
     stacked_pitch_list = load_stacked_pitch_list_jams(jams_path, times, to_hz)
 
+    # Convert them to a single pitch list
     times, pitch_list = utils.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
 
     # TODO - validation check?
@@ -297,12 +300,43 @@ def load_stacked_multi_pitch_jams(jams_path, times, profile, mode=0):
     return stacked_multi_pitch
 
 
-def load_multi_pitch_jams():
-    # TODO
-    pass
+def load_multi_pitch_jams(jams_path, times, profile, mode=0):
+    """
+    Load single multi pitch representation from JAMS file.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    times : ndarray or None (optional) (N)
+      Time in seconds of beginning of each frame
+      N - number of times samples
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    mode : int
+      How to obtain the multi pitch data
+      0 - note_midi | 1 - pitch_contour
+
+    Returns
+    ----------
+    multi_pitch : ndarray (F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Load stacked multi pitch arrays
+    stacked_multi_pitch = load_stacked_multi_pitch_jams(jams_path, times, profile, mode)
+
+    # Collapse the stacked arrays into one using the max operation
+    multi_pitch = np.max(stacked_multi_pitch, axis=-3)
+
+    # TODO - validation check?
+
+    return multi_pitch
 
 
-def load_jams_guitar_tablature(jams_path, times, profile, mode=0):
+def load_tablature_jams(jams_path, times, profile, mode=0):
     """
     Load tablature representation from JAMS file.
 
@@ -362,6 +396,8 @@ def load_jams_guitar_tablature(jams_path, times, profile, mode=0):
 
     # Collapse the list to get the final tablature
     tablature = np.concatenate(tablature)
+
+    # TODO - validation check?
 
     return tablature
 

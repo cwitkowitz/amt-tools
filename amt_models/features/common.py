@@ -171,7 +171,7 @@ class FeatureModule(object):
         # Determine the number of frames we will get
         num_frames = self.get_expected_frames(audio)
 
-        frame_idcs = np.arange(num_frames + 1)
+        frame_idcs = np.arange(num_frames)
         # Obtain the time of the first sample of each frame
         times = librosa.frames_to_time(frames=frame_idcs,
                                        sr=self.sample_rate,
