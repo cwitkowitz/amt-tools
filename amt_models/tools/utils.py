@@ -1,5 +1,5 @@
 # My imports
-# None of my imports used
+import amt_models.tools.constants as constants
 
 # Regular imports
 from copy import deepcopy
@@ -11,29 +11,96 @@ import random
 import torch
 
 
+def stacked_notes_to_notes(stacked_notes):
+    """
+    Convert a dictionary of stacked notes into a single representation.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    """
+
+    # Obtain the note pairs from the dictionary values
+    note_pairs = list(stacked_notes.values())
+
+    # Extract the pitches and intervals respectively
+    pitches = np.concatenate([pair[0] for pair in note_pairs])
+    intervals = np.concatenate([pair[1] for pair in note_pairs])
+
+    # Sort the notes by onset
+    pitches, intervals = sort_notes(pitches, intervals)
+
+    return pitches, intervals
+
+
+def notes_to_stacked_notes(pitches, intervals, i=0):
+    """
+    Convert a collection of notes into a dictionary of stacked notes.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    i : int
+      Slice key to use
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    """
+
+    # Initialize a dictionary to hold the notes
+    stacked_notes = dict()
+
+    # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
+    stacked_notes[i] = sort_notes(pitches, intervals)
+
+    return stacked_notes
+
+
 def notes_to_batched_notes(pitches, intervals):
     """
     Convert loose note groups into batch-friendly storage.
 
     Parameters
     ----------
-    pitches : ndarray
+    pitches : ndarray (N)
       Array of pitches corresponding to notes
-    intervals : ndarray
+      N - number of notes
+    intervals : ndarray (N x 2)
       Array of onset-offset time pairs corresponding to notes
+      N - number of notes
 
     Returns
     ----------
-    batched_notes : ndarray
+    batched_notes : ndarray (N x 3)
       Array of note pitches and intervals by row
+      N - number of notes
     """
 
     # Default the batched notes to an empty array of the correct shape
-    batched_notes = np.array([[], [], []]).T
+    batched_notes = np.empty([0, 3])
 
     if len(pitches) > 0:
+        # Add an extra dimension to the pitches to match dimensionality of intervals
+        pitches = np.expand_dims(pitches, axis=-1)
         # Concatenate the loose arrays to obtain ndarray([[onset, offset, pitch]])
-        batched_notes = np.concatenate((intervals, np.array([pitches]).T), axis=-1)
+        batched_notes = np.concatenate((intervals, pitches), axis=-1)
 
     # TODO - validation check?
 
@@ -46,15 +113,18 @@ def batched_notes_to_notes(batched_notes):
 
     Parameters
     ----------
-    batched_notes : ndarray
+    batched_notes : ndarray (N x 3)
       Array of note pitches and intervals by row
+      N - number of notes
 
     Returns
     ----------
-    pitches : ndarray
+    pitches : ndarray (N)
       Array of pitches corresponding to notes
-    intervals : ndarray
+      N - number of notes
+    intervals : ndarray (N x 2)
       Array of onset-offset time pairs corresponding to notes
+      N - number of notes
     """
 
     # Split along the final dimension into the loose groups
@@ -65,24 +135,360 @@ def batched_notes_to_notes(batched_notes):
     return pitches, intervals
 
 
+def sort_batched_notes(batched_notes, by=0):
+    """
+    Sort an array of batch-friendly notes by the specified attribute.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note pitches and intervals by row
+      N - number of notes
+    by : int
+      Index to sort notes by
+      0 - onset | 1 - offset | 2 - pitch
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note pitches and intervals by row, sorted by selected attribute
+      N - number of notes
+    """
+
+    # Define the attributes that can be used to sort the notes
+    attributes = ['onset', 'offset', 'pitch']
+
+    # Obtain the dtype of the batch-friendly notes before any manipulation
+    dtype = batched_notes.dtype
+    # Set a temporary dtype for sorting purposes
+    batched_notes.dtype = [(attributes[0], float), (attributes[1], float), (attributes[2], float)]
+    # Sort the notes along the row axis by the selected attribute
+    batched_notes = np.sort(batched_notes, axis=0, order=attributes[by])
+    # Reset the dtype of the batch-friendly notes
+    batched_notes.dtype = dtype
+
+    return batched_notes
+
+
+def sort_notes(pitches, intervals, by=0):
+    """
+    Sort a collection of notes by the specified attribute.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes, sorted by selected attribute
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes, sorted by selected attribute
+      N - number of notes
+    by : int
+      Index to sort notes by
+      0 - onset | 1 - offset | 2 - pitch
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    """
+
+    # Convert to batched notes for easy sorting
+    batched_notes = notes_to_batched_notes(pitches, intervals)
+    # Sort the batched notes
+    batched_notes = sort_batched_notes(batched_notes, by)
+    # Convert back to loose note groups
+    pitches, intervals = batched_notes_to_notes(batched_notes)
+
+    return pitches, intervals
+
+
+def stacked_pitch_list_to_pitch_list(stacked_pitch_list):
+    """
+    Convert a dictionary of stacked pitch lists into a single representation.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+
+    Returns
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames)
+    """
+
+    # Obtain the time-pitch list pairs from the dictionary values
+    pitch_list_pairs = list(stacked_pitch_list.values())
+
+    # Collapse the times from each pitch_list into one array
+    times = np.unique(np.concatenate([pair[0] for pair in pitch_list_pairs]))
+
+    # Initialize empty pitch arrays for each time entry
+    pitch_list = [np.empty(0)] * times.size
+
+    # Loop through each pitch list
+    for slice_times, slice_pitch_arrays in pitch_list_pairs:
+        # Loop through the pitch list entries
+        for entry in range(len(slice_pitch_arrays)):
+            # Determine where this entry belongs in the new pitch list
+            idx = np.where(times == slice_times[entry])[0].item()
+            # Insert the frequencies at the corresponding time
+            pitch_list[idx] = np.append(pitch_list[idx], slice_pitch_arrays[entry])
+
+    # Sort the time-pitch array pairs by time
+    times, pitch_list = sort_pitch_list(times, pitch_list)
+
+    return times, pitch_list
+
+
+def pitch_list_to_stacked_pitch_list(times, pitch_list, i=0):
+    """
+    Convert a pitch list into a dictionary of stacked pitch lists.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames)
+    i : int
+      Slice key to use
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Initialize a dictionary to hold the pitch_list
+    stacked_pitch_list = dict()
+
+    # Add the time-pitch array pairs to the stacked notes dictionary under the slice key
+    stacked_pitch_list[i] = sort_pitch_list(times, pitch_list)
+
+    return stacked_pitch_list
+
+
+def sort_pitch_list(times, pitch_list):
+    """
+    Sort a pitch list by frame time.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames)
+
+    Returns
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame, sorted by time
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames), sorted by time
+    """
+
+    # Obtain the indices corresponding to the sorted times
+    sort_order = list(np.argsort(times))
+
+    # Sort the times
+    times = np.sort(times)
+
+    # Sort the pitch list
+    pitch_list = [pitch_list[i] for i in sort_order]
+
+    return times, pitch_list
+
+
+def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
+    """
+    Convert a dictionary of note groups into a stack of multi pitch arrays.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Initialize an empty list to hold the multi pitch arrays
+    stacked_multi_pitch = list()
+
+    # Loop through the slices of notes
+    for slc in range(len(stacked_notes)):
+        # Get the pitches and intervals from the slice
+        pitches, intervals = stacked_notes[slc]
+        multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile)
+        stacked_multi_pitch.append(np.expand_dims(multi_pitch, axis=0))
+
+    # Collapse the list into an array
+    stacked_multi_pitch = np.concatenate(stacked_multi_pitch)
+
+    return stacked_multi_pitch
+
+
+def notes_to_multi_pitch(pitches, intervals, times, profile):
+    """
+    Convert loose note groups into a multi pitch array.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes in MIDI format
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    multi_pitch : ndarray (F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Determine the dimensionality of the multi pitch array
+    num_pitches = profile.get_range_len()
+    num_frames = len(times) - 1
+
+    # Initialize an empty multi pitch array
+    multi_pitch = np.zeros((num_pitches, num_frames))
+
+    # Convert the pitches to number of semitones from lowest note
+    pitches = np.round(pitches - profile.low).astype('uint')
+
+    # Duplicate the array of times for each note and stack along a new axis
+    times = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
+
+    # Determine the frame where each note begins and ends
+    onsets = np.argmin((times <= intervals[..., :1]), axis=1) - 1
+    offsets = np.argmin((times < intervals[..., 1:]), axis=1) - 1
+
+    # Loop through each note
+    for i in range(len(pitches)):
+        # Populate the multi pitch array with activations for the note
+        multi_pitch[pitches[i], onsets[i] : offsets[i] + 1] = 1
+
+    return multi_pitch
+
+
+def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
+    """
+    Convert a stacked pitch list into a stack of multi pitch arrays.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Initialize an empty list to hold the multi pitch arrays
+    stacked_multi_pitch = list()
+
+    # Loop through the slices of notes
+    for slc in range(len(stacked_pitch_list)):
+        # Get the pitches and intervals from the slice
+        times, pitch_list = stacked_pitch_list[slc]
+        multi_pitch = pitch_list_to_multi_pitch(times, pitch_list, profile)
+        stacked_multi_pitch.append(np.expand_dims(multi_pitch, axis=0))
+
+    # Collapse the list into an array
+    stacked_multi_pitch = np.concatenate(stacked_multi_pitch)
+
+    return stacked_multi_pitch
+
+
+def pitch_list_to_multi_pitch(times, pitch_list, profile, tolerance=0.5):
+    """
+    Convert a pitch list into a dictionary of stacked pitch lists.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    tolerance : float
+      Amount of semitone deviation allowed
+
+    Returns
+    ----------
+    multi_pitch : ndarray (F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Determine the dimensionality of the multi pitch array
+    num_pitches = profile.get_range_len()
+    num_frames = len(times)
+
+    # Initialize an empty multi pitch array
+    multi_pitch = np.zeros((num_pitches, num_frames))
+
+    # Loop through each note
+    for i in range(len(pitch_list)):
+        # Calculate the pitch semitone difference from the lowest note
+        difference = pitch_list[i] - profile.low
+        # Determine the amount of semitone deviation for each pitch
+        deviation = difference % 1
+        deviation[deviation > 0.5] -= 1
+        deviation = np.abs(deviation)
+        # Convert the pitches to number of semitones from lowest note
+        pitches = np.round(difference[deviation < tolerance]).astype('uint')
+        # Populate the multi pitch array with activations
+        multi_pitch[pitches, i] = 1
+
+    return multi_pitch
+
+
 # TODO - major cleanup needed for all of these functions
-
-def midi_groups_to_pianoroll(pitches, intervals, times, note_range):
-    num_frames = times.size - 1
-    num_notes = pitches.size
-    pianoroll = np.zeros((note_range.size, num_frames))
-
-    pitches = np.round(pitches - note_range[0]).astype('uint')
-    times = np.tile(np.expand_dims(times, axis=0), (num_notes, 1))
-
-    onsets = np.argmin((times <= intervals[:, :1]), axis=1) - 1
-    offsets = np.argmin((times < intervals[:, 1:]), axis=1) - 1
-
-    # TODO - might be able to vectorize this
-    for i in range(pitches.size):
-        pianoroll[pitches[i], onsets[i] : offsets[i] + 1] = 1
-
-    return pianoroll
 
 
 def tabs_to_multi_pianoroll(tabs, profile):
@@ -315,11 +721,29 @@ def seed_everything(seed):
 
 
 def rms_norm(audio):
+    """
+    Perform root-mean-square normalization.
+
+    Parameters
+    ----------
+    audio : ndarray (N)
+      Mono-channel audio to normalize
+      N - number of samples in audio
+
+    Returns
+    ----------
+    audio : ndarray (N)
+      Normalized mono-channel audio
+      N - number of samples in audio
+    """
+
+    # Calculate the square root of the squared mean
     rms = np.sqrt(np.mean(audio ** 2))
 
-    assert rms != 0
-
-    audio = audio / rms
+    # If root-mean-square is zero (audio is all zeros), do nothing
+    if rms > 0:
+        # Divide the audio by the root-mean-square
+        audio = audio / rms
 
     return audio
 
@@ -369,48 +793,6 @@ def infer_lowest_note(pianoroll):
         # Something went awry
         return None
 """
-
-
-def sort_batched_notes(batched_notes, by=0):
-    """
-    TODO
-
-    Parameters
-    ----------
-    batched_notes
-    by
-
-    Returns
-    -------
-
-    """
-    print()
-    return
-
-
-def sort_notes(pitches, intervals, by=0):
-    """
-    TODO
-
-    Parameters
-    ----------
-    pitches
-    intervals
-    by
-
-    Returns
-    -------
-
-    """
-
-    # Convert to batched notes for easy sorting
-    batched_notes = notes_to_batched_notes(pitches, intervals)
-    # Sort the batched notes
-    batched_notes = sort_batched_notes(batched_notes, by)
-    # Convert back to loose note groups
-    pitches, intervals = batched_notes_to_notes(batched_notes)
-
-    return pitches, intervals
 
 
 def threshold_arr(arr, thr):

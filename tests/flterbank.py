@@ -1,5 +1,5 @@
 # My imports
-from amt_models.tools.constants import *
+import amt_models.tools as tools
 
 # Regular imports
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ import os
 
 
 def visualize(model, i=None):
-    vis_dir = os.path.join(GEN_VISL_DIR, 'OnsetsFrames_GuitarSet_LHVQT_4')
+    vis_dir = os.path.join(tools.DEFAULT_VISUALIZATION_DIR, 'OnsetsFrames_GuitarSet_LHVQT_4')
 
     # TODO - overwrites fold-wise
 
@@ -20,7 +20,7 @@ def visualize(model, i=None):
     model.feat_ext.fb.plot_freq_weights(vis_dir)
 
 
-model_path = os.path.join(GEN_EXPR_DIR, 'OnsetsFrames_GuitarSet_LHVQT_4', 'models', 'fold-5', 'model-3000.pt')
+model_path = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR, 'OnsetsFrames_GuitarSet_LHVQT_4', 'models', 'fold-5', 'model-3000.pt')
 model = torch.load(model_path)
 
 visualize(model, 3000)

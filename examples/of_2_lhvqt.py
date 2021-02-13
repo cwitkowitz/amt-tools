@@ -1,11 +1,10 @@
 # My imports
-from amt_models.pipeline.train import train, validate
-from amt_models.models.onsetsframes import OnsetsFrames
-from amt_models.features.lhvqt_wrapper import LHVQT
-from amt_models.tools.utils import seed_everything
-from amt_models.tools.instrument import PianoProfile
-from amt_models.datasets.MAESTRO import MAESTRO_V2
-from amt_models.tools.constants import *
+from amt_models.datasets import MAESTRO_V2
+from amt_models.models import OnsetsFrames
+from amt_models.features import LHVQT
+from amt_models import train, validate
+
+import amt_models.tools as tools
 
 # Regular imports
 from sacred.observers import FileStorageObserver
@@ -15,6 +14,7 @@ from sacred import Experiment
 import torch.nn as nn
 import librosa
 import torch
+import os
 
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     MAESTRO_V2.dataset_name(),
@@ -24,7 +24,7 @@ ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAPS')
 
 
 def visualize(model, i=None):
-    vis_dir = os.path.join(GEN_VISL_DIR, EX_NAME)
+    vis_dir = os.path.join(tools.DEFAULT_VISUALIZATION_DIR, EX_NAME)
 
     if i is not None:
         vis_dir = os.path.join(vis_dir, f'checkpoint-{i}')
@@ -70,7 +70,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = os.path.join(GEN_EXPR_DIR, EX_NAME)
+    root_dir = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory

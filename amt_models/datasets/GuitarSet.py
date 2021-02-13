@@ -16,8 +16,9 @@ class GuitarSet(TranscriptionDataset):
     Implements the GuitarSet guitar transcription dataset (https://guitarset.weebly.com/).
     """
 
-    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100, data_proc=None, profile=None,
-                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_loc=tools.GEN_DATA_DIR, seed=0):
+    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=44100, data_proc=None,
+                 profile=None, num_frames=None, split_notes=False, reset_data=False, store_data=True,
+                 save_data=True, save_loc=None, seed=0):
         """
         Initialize the dataset and establish parameter defaults in function signature.
 
@@ -27,7 +28,7 @@ class GuitarSet(TranscriptionDataset):
         """
 
         super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile,
-                         num_frames, split_notes, reset_data, store_data, save_loc, seed)
+                         num_frames, split_notes, reset_data, store_data, save_data, save_loc, seed)
 
     def get_tracks(self, split):
         """
@@ -80,40 +81,39 @@ class GuitarSet(TranscriptionDataset):
         data = super().load(track)
 
         # If the track data is being instantiated, it will not have the 'audio' key
-        if KEY_AUDIO not in data.keys():
+        if tools.KEY_AUDIO not in data.keys():
             # Construct the path to the track's audio
-            wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic.wav')
-            # Load and normalize the audio
-            audio, fs = load_audio(wav_path, self.sample_rate)
-            # Add the audio and sampling rate to the track data
-            data[KEY_AUDIO], data[KEY_FS] = audio, fs
+            wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic' + tools.WAV_EXT)
+            # Load and normalize the audio along with the sampling rate
+            data[tools.KEY_AUDIO], data[tools.KEY_FS] = tools.load_normalize_audio(wav_path, self.sample_rate)
 
             # Construct the path to the track's JAMS data
-            jams_path = os.path.join(self.base_dir, 'annotation', track + '.jams')
-            # Extract the notes from the track's JAMS file
-            pitches, intervals = load_notes_jams(jams_path)
-            # Convert the note lists to a note array
-            notes = note_groups_to_arr(pitches, intervals)
-            # Add the note array to the track data
-            data[KEY_NOTES] = notes
+            jams_path = os.path.join(self.base_dir, 'annotation', track + tools.JAMS_EXT)
+            # Extract the notes from the track's JAMS file and make them batch-friendly
+            # TODO - probably don't need to store notes in the batch - can just read them in when evaluating
+            data[tools.KEY_NOTES] = tools.notes_to_batched_notes(*tools.load_notes_jams(jams_path))
 
-            # We need the frame times to convert from notes to frames
-            times = self.data_proc.get_times(data[KEY_AUDIO])
+            # We need the frame times for the tablature
+            times = self.data_proc.get_times(data[tools.KEY_AUDIO])
 
             # Load the frame-wise pitches as tablature from the track's JAMS file
-            tablature = load_jams_guitar_tabs(jams_path, times, self.profile.tuning)
+            # TODO - times is weird - there is an extra frame - how do I deal with it? - which functions should expect +1?
+            data[tools.KEY_TABLATURE] = tools.load_jams_guitar_tablature(jams_path, times, self.profile)
 
-            # Add the frame-wise pitches to the track data
-            data[KEY_TABLATURE] = tablature
-
-            if self.save_loc is not None:
+            if self.save_data:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
 
                 # Save the audio, sampling rate, frame-wise pitches, and notes
-                args = (fs, audio, tablature, notes)
-                kwds = (KEY_FS, KEY_AUDIO, KEY_TABLATURE, KEY_NOTES)
-                np.savez(gt_path, args, kwds)
+                args = (data[tools.KEY_FS],
+                        data[tools.KEY_AUDIO],
+                        data[tools.KEY_TABLATURE],
+                        data[tools.KEY_NOTES])
+                kwds = (tools.KEY_FS,
+                        tools.KEY_AUDIO,
+                        tools.KEY_TABLATURE,
+                        tools.KEY_NOTES)
+                np.savez(gt_path, tools.KEY_FS=data[tools.KEY_FS])
 
         return data
 

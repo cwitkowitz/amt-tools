@@ -9,6 +9,10 @@ import amt_models.datasets as d
 d.GuitarSet()
 d.MAESTRO_V2()
 ------------------------------------------------------------
+from amt_models.datasets import *
+GuitarSet()
+MAESTRO_V2()
+------------------------------------------------------------
 from amt_models.datasets import GuitarSet
 GuitarSet()
 ------------------------------------------------------------

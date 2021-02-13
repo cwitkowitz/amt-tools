@@ -1,6 +1,5 @@
 # My imports
-from amt_models.tools.instrument import GuitarProfile
-from amt_models.tools.constants import *
+import amt_models.tools as tools
 
 from tools.visualize import plot_pianoroll
 
@@ -11,10 +10,14 @@ import numpy as np
 import torch
 import os
 
-model_path = os.path.join(GEN_EXPR_DIR, 'OnsetsFrames_GuitarSet_VQT', 'models', 'fold-2', 'model-3000.pt')
+model_path = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR,
+                          'OnsetsFrames_GuitarSet_VQT',
+                          'models', 'fold-2', 'model-3000.pt')
 model = torch.load(model_path)
 
-sample_path = os.path.join(GEN_DATA_DIR, 'GuitarSet', 'gt', '02_BN1-129-Eb_comp.npz')
+sample_path = os.path.join(tools.DEFAULT_FEATURES_GT_DIR,
+                           'GuitarSet', 'gt',
+                           '02_BN1-129-Eb_comp.npz')
 sample_data = dict(np.load(sample_path))
 
 fs = sample_data['fs'].item()
@@ -28,10 +31,10 @@ vqt_ = VQT(sample_rate=fs,
 vqt = vqt_.process_audio(audio)
 
 # Initialize the default guitar profile
-profile = GuitarProfile()
+profile = tools.GuitarProfile()
 
-multipitch_ref = to_multi(tabs_ref, profile)
-pianoroll_ref = to_single(multipitch_ref, profile)
+multipitch_ref = tools.to_multi(tabs_ref, profile)
+pianoroll_ref = tools.to_single(multipitch_ref, profile)
 
 vqt = torch.Tensor(vqt).to(model.device)
 vqt = vqt.unsqueeze(0)
@@ -41,7 +44,7 @@ results = model(vqt)
 results = model.post_proc({'preds' : results})
 
 tabs_est = results['pitch'][0].cpu().detach().numpy()
-multipitch_est = to_multi(tabs_est, profile)
-pianoroll_est = to_single(multipitch_est, profile)
+multipitch_est = tools.to_multi(tabs_est, profile)
+pianoroll_est = tools.to_single(multipitch_est, profile)
 
 ax = plot_pianoroll(pianoroll_ref)

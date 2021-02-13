@@ -1,11 +1,10 @@
 # My imports
-from amt_models.pipeline.train import train, validate
-from amt_models.models.onsetsframes import OnsetsFrames
-from amt_models.features.melspec import MelSpec
-from amt_models.tools.utils import seed_everything
-from amt_models.tools.instrument import PianoProfile
-from amt_models.datasets.MAPS import MAPS
-from amt_models.tools.constants import *
+from amt_models.datasets import MAPS
+from amt_models.models import OnsetsFrames
+from amt_models.features import MelSpec
+from amt_models import train, validate
+
+import amt_models.tools as tools
 
 # Regular imports
 from sacred.observers import FileStorageObserver
@@ -14,8 +13,14 @@ from torch.utils.data import DataLoader
 from sacred import Experiment
 
 import torch
+import os
+
+EX_NAME = '_'.join([OnsetsFrames.model_name(),
+                    MAPS.dataset_name(),
+                    MelSpec.features_name()])
 
 ex = Experiment('Onsets & Frames 1 w/ Mel Spectrogram on MAPS')
+
 
 @ex.config
 def config():
@@ -54,8 +59,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = '_'.join([OnsetsFrames.model_name(), MAPS.dataset_name(), MelSpec.features_name()])
-    root_dir = os.path.join(GEN_EXPR_DIR, root_dir)
+    root_dir = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -65,13 +69,13 @@ def config():
 def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoints,
                       batch_size, learning_rate, gpu_id, split_notes, reset_data, seed, root_dir):
     # Seed everything with the same seed
-    seed_everything(seed)
+    tools.seed_everything(seed)
 
     # Get a list of the MAPS splits
     splits = MAPS.available_splits()
 
     # Initialize the default piano profile
-    profile = PianoProfile()
+    profile = tools.PianoProfile()
 
     # Initialize the testing splits as the real piano data
     test_splits = ['ENSTDkAm', 'ENSTDkCl']
@@ -112,7 +116,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                               num_workers=16,
                               drop_last=True)
 
-    # TODO - validation using overlapping tracks which were removed
+    # TODO - validate using overlapping tracks which were removed
 
     print('Loading testing partition...')
 

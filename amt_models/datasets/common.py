@@ -25,8 +25,8 @@ class TranscriptionDataset(Dataset):
     Implements a generic music transcription dataset.
     """
 
-    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, profile,
-                 num_frames, split_notes, reset_data, store_data, save_loc, seed):
+    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, profile, num_frames,
+                 split_notes, reset_data, store_data, save_data, save_loc, seed):
         """
         Initialize parameters common to all datasets as fields and instantiate
         as a PyTorch Dataset.
@@ -34,7 +34,7 @@ class TranscriptionDataset(Dataset):
         Parameters
         ----------
         base_dir : string
-          Path to the directory containing the dataset, e.g. '~/Desktop/Dataset'
+          Path to the directory containing the dataset, e.g. '~/Desktop/Datasets/Dataset'
         splits : list of strings
           Names of tracks to include in this partition
         hop_length : int
@@ -53,17 +53,17 @@ class TranscriptionDataset(Dataset):
           Flag to reset extracted features and ground truth data if they already exists
         store_data : bool
           Flag to store data in RAM instead of loading ground truth and calculating features each time
+        save_data : bool
+          Flag to save ground-truth and features to memory after calculating once (always loaded afterwards)
         save_loc : string
-          Doubles as:
-            Flag to save data to memory after calculating once (always loaded afterwards)
-            Location for saving and loading pre-organized ground-truth and calculated features
+          Location for saving and loading pre-organized ground-truth and calculated features
         seed : int
           The seed for random number generation
         """
 
         # Select a default base directory path if none was provided
         if base_dir is None:
-            base_dir = os.path.join(tools.HOME, 'Desktop', 'Datasets', self.dataset_name())
+            base_dir = os.path.join(tools.DEFAULT_DATASETS_DIR, self.dataset_name())
         self.base_dir = base_dir
 
         # Check if the dataset exists in memory
@@ -78,6 +78,7 @@ class TranscriptionDataset(Dataset):
 
         # Keep track of hop length and sampling rate
         self.hop_length = hop_length
+        # TODO - None sampling rate -> fs extracted from load()?
         self.sample_rate = sample_rate
 
         # Default the feature extraction to a plain Mel Spectrogram if none was provided
@@ -88,7 +89,7 @@ class TranscriptionDataset(Dataset):
 
         # Default the instrument profile to a standard piano if none was provided
         if profile is None:
-            profile = PianoProfile()
+            profile = tools.PianoProfile()
         self.profile = profile
 
         # Determine the number of samples per data point (seq_length)
@@ -103,6 +104,9 @@ class TranscriptionDataset(Dataset):
 
         # Set the storing and saving parameters
         self.store_data = store_data
+        self.save_data = save_data
+        if save_loc is None:
+            save_loc = tools.DEFAULT_FEATURES_GT_DIR
         self.save_loc = save_loc
 
         self.reset_data = reset_data
@@ -218,7 +222,7 @@ class TranscriptionDataset(Dataset):
             fs = self.data_proc.get_sample_rate()
             hop_length = self.data_proc.get_hop_length()
 
-            if self.save_loc is not None:
+            if self.save_data:
                 # Save the features to memory
                 os.makedirs(os.path.dirname(feats_path), exist_ok=True)
                 np.savez(feats_path, feats=feats, fs=fs, hop_length=hop_length)
@@ -299,7 +303,7 @@ class TranscriptionDataset(Dataset):
             # Otherwise, we assume the whole track is desired and perform no further actions
             else:
                 # Convert all numpy arrays in the data dictionary to float32
-                data = track_to_dtype(data, dtype='float32')
+                data = tools.track_to_dtype(data, dtype='float32')
                 # Validate all of the track data before returning
                 assert self.validate_track(data, self.profile)
                 return data
@@ -365,7 +369,7 @@ class TranscriptionDataset(Dataset):
 
         # TODO - repeat code of returning whole track above
         # Convert all numpy arrays in the data dictionary to float32
-        data = track_to_dtype(data, dtype='float32')
+        data = tools.track_to_dtype(data, dtype='float32')
         # Validate all of the track data before returning
         assert self.validate_track(data, self.profile)
 
@@ -401,7 +405,7 @@ class TranscriptionDataset(Dataset):
 
         if 'pitch' in keys:
             # Make sure the pitch data follows a supported format
-            valid = valid and valid_activations(data['pitch'], profile)
+            valid = valid and tools.valid_activations(data['pitch'], profile)
 
         if 'feats' in keys:
             # Make sure features have channel, num_feats, and num_frames dimension (3-D)
@@ -416,9 +420,9 @@ class TranscriptionDataset(Dataset):
 
         if 'notes' in keys:
             # Convert the presumed array into standard representation
-            pitches, intervals = batched_notes_to_notes(data['notes'])
+            pitches, intervals = tools.batched_notes_to_notes(data['notes'])
             # Make sure the notes are valid
-            valid = valid and valid_notes(pitches, intervals)
+            valid = valid and tools.valid_notes(pitches, intervals)
 
         # Make sure all NumPy arrays consist of 32-bit floats
         for entry in data.values():

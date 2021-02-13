@@ -1,7 +1,5 @@
 # My imports
-from amt_models.features.cqt import CQT
-from amt_models.features.vqt import VQT
-from amt_models.features.melspec import MelSpec
+from amt_models.features import CQT, VQT, MelSpec
 
 # Regular imports
 from librosa.display import specshow

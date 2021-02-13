@@ -1,8 +1,9 @@
 # My imports
-from .utils import rms_norm, sort_notes
-from .constants import *
+import amt_models.tools.utils as utils
+import amt_models.tools.constants as constants
 
 # Regular imports
+from mir_eval.multipitch import resample_multipitch
 from tqdm import tqdm
 
 import numpy as np
@@ -15,19 +16,48 @@ import jams
 import os
 
 
-def load_audio(wav_path, sample_rate=None):
-    audio, fs = librosa.load(wav_path, sr=sample_rate)
+def load_normalize_audio(wav_path, fs=None, norm=-1):
+    """
+    Load audio from a file and normalize it.
 
-    # TODO - reassess usefulness of this function
-    #audio = librosa.util.normalize(audio)# <- infinity norm
-    audio = rms_norm(audio)
+    Parameters
+    ----------
+    wav_path : string
+      Path to audio file to read
+    fs : int or float or None (optional)
+      Desired sampling rate
+    norm : float
+      Type of normalization to perform
+      -1 - root-mean-square
+      other - see librosa
+
+    Returns
+    ----------
+    audio : ndarray (N)
+      Mono-channel audio read from file
+      N - number of samples in audio
+    fs : int
+      Audio sampling rate
+    """
+
+    # Load the audio using librosa
+    audio, fs = librosa.load(wav_path, sr=fs, mono=True)
+
+    if norm == -1:
+        # Perform root-mean-square normalization
+        audio = utils.rms_norm(audio)
+    else:
+        # Normalize the audio using librosa
+        audio = librosa.util.normalize(audio, norm)
+
+    # TODO - validation check?
 
     return audio, fs
 
 
 def load_stacked_notes_jams(jams_path, to_hz=True):
     """
-    Load MIDI notes spread across slices (e.g. guitar strings) from JAMS file into a stack.
+    Load MIDI notes spread across slices (e.g. guitar strings) from JAMS file into a dictionary.
 
     Parameters
     ----------
@@ -46,7 +76,7 @@ def load_stacked_notes_jams(jams_path, to_hz=True):
     jam = jams.load(jams_path)
 
     # Extract all of the midi note annotations
-    note_data_slices = jam.annotations[JAMS_NOTE_MIDI]
+    note_data_slices = jam.annotations[constants.JAMS_NOTE_MIDI]
 
     # Obtain the number of annotations
     stack_size = len(note_data_slices)
@@ -55,9 +85,9 @@ def load_stacked_notes_jams(jams_path, to_hz=True):
     stacked_notes = dict()
 
     # Loop through the slices of the stack
-    for slice in range(stack_size):
+    for slc in range(stack_size):
         # Extract the notes pertaining to this slice
-        slice_notes = note_data_slices[slice]
+        slice_notes = note_data_slices[slc]
 
         # Initialize lists to hold the pitches and intervals
         pitches, intervals = list(), list()
@@ -76,7 +106,7 @@ def load_stacked_notes_jams(jams_path, to_hz=True):
             pitches = librosa.midi_to_hz(pitches)
 
         # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
-        stacked_notes[slice] = sort_notes(pitches, intervals)
+        stacked_notes.update(utils.notes_to_stacked_notes(pitches, intervals, slc))
 
     # TODO - validation check?
 
@@ -96,67 +126,244 @@ def load_notes_jams(jams_path, to_hz=True):
 
     Returns
     ----------
-    pitches : ndarray
+    pitches : ndarray (N)
       Array of pitches corresponding to notes
-    intervals : ndarray
+      N - number of notes
+    intervals : ndarray (N x 2)
       Array of onset-offset time pairs corresponding to notes
+      N - number of notes
     """
 
     # First, load the notes into a stack
     stacked_notes = load_stacked_notes_jams(jams_path=jams_path, to_hz=to_hz)
 
-    # Obtain the note pairs from the dictionary values
-    note_pairs = list(stacked_notes.values())
-
-    # Extract the pitches and intervals respectively
-    pitches = [pair[0] for pair in note_pairs]
-    intervals = [pair[1] for pair in note_pairs]
-
-    pitches, intervals = sort_notes(pitches, intervals)
+    pitches, intervals = utils.stacked_notes_to_notes(stacked_notes)
 
     # TODO - validation check?
 
     return pitches, intervals
 
 
-# TODO - clean up or simplify?
-def load_jams_guitar_tabs(jams_path, times, tuning):
+def load_stacked_pitch_list_jams(jams_path, times=None, to_hz=True):
+    """
+    Load pitch lists spread across slices (e.g. guitar strings) from JAMS file into a dictionary.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    times : ndarray or None (optional) (N)
+      Time in seconds of beginning of each frame
+      N - number of times samples
+    to_hz : bool
+      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Load the metadata from the jams file
     jam = jams.load(jams_path)
 
-    # TODO - duration fails at 00_Jazz3-150-C_comp bc of an even division
-    # duration = jam.file_metadata['duration']
+    # Extract all of the pitch annotations
+    pitch_data_slices = jam.annotations[constants.JAMS_PITCH_HZ]
 
-    note_data = jam.annotations['note_midi']
+    # Obtain the number of annotations
+    stack_size = len(pitch_data_slices)
 
-    num_frames = times.size - 1
-    num_strings = len(note_data)
-    assert num_strings == len(tuning)
-    tabs = np.zeros((num_strings, num_frames))
+    # Initialize a dictionary to hold the pitch lists
+    stacked_pitch_list = dict()
 
-    for s in range(num_strings):
-        string_notes = note_data[s]
-        frame_string_pitch = string_notes.to_samples(times[:-1])
+    # Loop through the slices of the stack
+    for slc in range(stack_size):
+        # Extract the pitch list pertaining to this slice
+        slice_pitches = pitch_data_slices[slc]
 
-        silent = np.array([pitch == [] for pitch in frame_string_pitch])
+        # Initialize an array/list to hold the times/frequencies associated with each observation
+        entry_times, slice_pitch_list = np.empty(0), list()
 
-        frame_string_pitch = np.array(frame_string_pitch)
+        # Loop through the pitch observations pertaining to this slice
+        for pitch in slice_pitches:
+            # Extract the pitch
+            freq = pitch.value['frequency']
 
-        frame_string_pitch[silent] = 0
+            # Don't keep track of zero-frequencies
+            if freq == 0:
+                continue
 
-        active_pitches = frame_string_pitch[np.logical_not(silent)].tolist()
-        frame_string_pitch[np.logical_not(silent)] = np.array(active_pitches).squeeze()
-        frame_string_pitch = frame_string_pitch.astype('float')
+            # Convert to the desired format
+            if not to_hz:
+                freq = librosa.hz_to_midi(freq)
 
-        open_string_midi_val = librosa.note_to_midi(tuning[s])
-        frets = frame_string_pitch[np.logical_not(silent)] - open_string_midi_val
-        frets = np.round(frets)
+            # Append the observation time
+            entry_times = np.append(entry_times, pitch.time)
+            # Append the frequency
+            slice_pitch_list.append(np.array([freq]))
 
-        tabs[s, silent] = -1
-        tabs[s, np.logical_not(silent)] = frets
+        if times is not None:
+            # Resample the observation times if new times are specified
+            # TODO - verify this by visualizing
+            # TODO - sort here just to be safe?
+            slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)
+            # Overwrite the entry times with the specified times
+            entry_times = times
 
-    tabs = tabs.astype('int')
+        # Add the pitch list to the stacked pitch list dictionary under the slice key
+        stacked_pitch_list.update(utils.pitch_list_to_stacked_pitch_list(entry_times,
+                                                                         slice_pitch_list,
+                                                                         slc))
 
-    return tabs
+    # TODO - validation check?
+
+    return stacked_pitch_list
+
+
+def load_pitch_list_jams(jams_path, times, to_hz=True):
+    """
+    Load pitch list from JAMS file.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    times : ndarray or None (optional) (N)
+      Time in seconds of beginning of each frame
+      N - number of times samples
+    to_hz : bool
+      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
+
+    Returns
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame, sorted by time
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames), sorted by time
+    """
+
+    # First, load the pitch lists into a stack
+    stacked_pitch_list = load_stacked_pitch_list_jams(jams_path, times, to_hz)
+
+    times, pitch_list = utils.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
+
+    # TODO - validation check?
+
+    return times, pitch_list
+
+
+def load_stacked_multi_pitch_jams(jams_path, times, profile, mode=0):
+    """
+    Load multi pitch arrays spread across slices (e.g. guitar strings) from JAMS file.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    times : ndarray or None (optional) (N)
+      Time in seconds of beginning of each frame
+      N - number of times samples
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    mode : int
+      How to obtain the multi pitch data
+      0 - note_midi | 1 - pitch_contour
+
+    Returns
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # TODO - mode affects output slightly (onsets/offsets) due to resampling
+    if mode == 0:
+        # Load the stacked MIDI notes
+        stacked_notes = load_stacked_notes_jams(jams_path, to_hz=False)
+        # Convert the stacked MIDI notes to a stacked multi pitch array
+        stacked_multi_pitch = utils.stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile)
+    else:
+        # Load the stacked pitch lists
+        stacked_pitch_list = load_stacked_pitch_list_jams(jams_path, times, to_hz=False)
+        # Convert the stacked pitch lists to a stacked multi pitch array
+        stacked_multi_pitch = utils.stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile)
+
+    # TODO - validation check?
+
+    return stacked_multi_pitch
+
+
+def load_multi_pitch_jams():
+    # TODO
+    pass
+
+
+def load_jams_guitar_tablature(jams_path, times, profile, mode=0):
+    """
+    Load tablature representation from JAMS file.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    times : ndarray or None (optional) (N)
+      Time in seconds of beginning of each frame
+      N - number of times samples
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    mode : int
+      How to obtain the multi pitch data
+      0 - note_midi | 1 - pitch_contour
+
+    Returns
+    ----------
+    tablature : ndarray (S x T)
+      Array of class membership for multiple degrees of freedom (e.g. strings)
+      S - number of strings or degrees of freedom
+      T - number of frames
+    """
+
+    # Load multi pitch arrays for multiple degrees of freedom
+    stacked_multi_pitch = load_stacked_multi_pitch_jams(jams_path, times, profile, mode)
+
+    # Obtain the tuning for the tablature (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Initialize an empty list to hold the tablature
+    tablature = list()
+
+    # Loop through the multi pitch arrays
+    for dof in range(len(stacked_multi_pitch)):
+        # Obtain the multi pitch array for the degree of freedom
+        multi_pitch = stacked_multi_pitch[dof]
+
+        # Determine which frames have no note activations
+        silent_frames = np.sum(multi_pitch, axis=0) == 0
+
+        # Lower and upper pitch boundary for this degree of freedom
+        lower_bound = tuning[dof] - profile.low
+        upper_bound = lower_bound + profile.num_frets + 1
+
+        # Bound the multi pitch array by the support of the degree of freedom
+        multi_pitch = multi_pitch[lower_bound : upper_bound]
+
+        # Determine which class has the highest activation across each frame
+        highest_class = np.argmax(multi_pitch, axis=0)
+
+        # Overwrite the highest class for the silent frames
+        highest_class[silent_frames] = -1
+
+        # Add the class membership to the tablature
+        tablature += [np.expand_dims(highest_class, axis=0)]
+
+    # Collapse the list to get the final tablature
+    tablature = np.concatenate(tablature)
+
+    return tablature
 
 
 def load_midi_notes(midi_path):
@@ -210,7 +417,7 @@ def write_and_print(file, text, verbose = True, end=''):
             print(text, end=end)
 
 
-# TODO - make sure it works for NoneType or empty
+# TODO - make sure it works for empty
 def write_pitch(path, pitch, times, low, places=3):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     # Open a file at the path with writing permissions

@@ -1,5 +1,5 @@
 # My imports
-# None of my imports used
+import amt_models.tools.constants as constants
 
 # Regular imports
 from abc import abstractmethod
@@ -45,7 +45,13 @@ class InstrumentProfile(object):
 
 
 class PianoProfile(InstrumentProfile):
-    def __init__(self, low=21, high=108):
+    def __init__(self, low=None, high=None):
+        if low is None:
+            low = constants.DEFAULT_PIANO_LOWEST_PITCH
+
+        if high is None:
+            high = constants.DEFAULT_PIANO_HIGHEST_PITCH
+
         super().__init__(low, high)
 
     def get_multi_range(self):
@@ -54,9 +60,12 @@ class PianoProfile(InstrumentProfile):
 
 
 class GuitarProfile(InstrumentProfile):
-    def __init__(self, tuning=None, num_frets=19):
+    def __init__(self, tuning=None, num_frets=None):
         if tuning is None:
-            tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4']
+            tuning = constants.DEFAULT_GUITAR_TUNING
+
+        if num_frets is None:
+            num_frets = constants.DEFAULT_GUITAR_NUM_FRETS
 
         self.tuning = tuning
         self.num_frets = num_frets
@@ -69,7 +78,7 @@ class GuitarProfile(InstrumentProfile):
         super().__init__(low, high)
 
     def get_midi_tuning(self):
-        midi_tuning = np.array([librosa.note_to_midi(self.tuning)]).T
+        midi_tuning = librosa.note_to_midi(self.tuning)
         return midi_tuning
 
     def get_multi_range(self):

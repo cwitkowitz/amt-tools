@@ -19,8 +19,9 @@ class MAPS(TranscriptionDataset):
     maps-database-a-piano-database-for-multipitch-estimation-and-automatic-transcription-of-music/).
     """
 
-    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None, profile=None,
-                 num_frames=None, split_notes=False, reset_data=False, store_data=True, save_loc=tools.GEN_DATA_DIR, seed=0):
+    def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None,
+                 profile=None, num_frames=None, split_notes=False, reset_data=False, store_data=True,
+                 save_data=True, save_loc=None, seed=0):
         """
         Initialize the dataset and establish parameter defaults in function signature.
 
@@ -30,7 +31,7 @@ class MAPS(TranscriptionDataset):
         """
 
         super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile,
-                         num_frames, split_notes, reset_data, store_data, save_loc, seed)
+                         num_frames, split_notes, reset_data, store_data, save_data, save_loc, seed)
 
     def get_tracks(self, split):
         """
@@ -89,24 +90,24 @@ class MAPS(TranscriptionDataset):
             # Construct the path to the track's audio
             wav_path = os.path.join(track_dir, track + '.wav')
             # Load and normalize the audio
-            audio, fs = load_audio(wav_path, self.sample_rate)
+            audio, fs = tools.load_audio(wav_path, self.sample_rate)
             # Add the audio and sampling rate to the track data
             data['audio'], data['fs'] = audio, fs
 
             # Construct the path to the track's MIDI data
             midi_path = os.path.join(track_dir, track + '.mid')
             # Load the notes from the MIDI data and remove the velocity
-            notes = load_midi_notes(midi_path)[:, :-1]
+            notes = tools.load_midi_notes(midi_path)[:, :-1]
             # Convert the note lists to a note array
-            pitches, intervals = arr_to_note_groups(notes)
+            pitches, intervals = tools.arr_to_note_groups(notes)
 
             # We need the frame times to convert from notes to frames
             times = self.data_proc.get_times(data['audio'])
 
             # Check which instrument profile is used
-            if isinstance(self.profile, PianoProfile):
+            if isinstance(self.profile, tools.PianoProfile):
                 # Decode the notes into pianoroll to obtain the frame-wise pitches
-                pitch = midi_groups_to_pianoroll(pitches, intervals, times, self.profile.get_midi_range())
+                pitch = tools.midi_groups_to_pianoroll(pitches, intervals, times, self.profile.get_midi_range())
             else:
                 raise AssertionError('Provided InstrumentProfile not supported...')
 
@@ -118,7 +119,7 @@ class MAPS(TranscriptionDataset):
             # Add the note array to the track data
             data['notes'] = notes
 
-            if self.save_loc is not None:
+            if self.save_data:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
                 # Save the audio, sampling rate, frame-wise pitches, and notes

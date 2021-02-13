@@ -11,6 +11,11 @@ m.TranscriptionModel()
 m.LogisticBank()
 m.OnsetsFrames()
 ------------------------------------------------------------
+from amt_models.models import *
+TranscriptionModel()
+LogisticBank()
+OnsetsFrames()
+------------------------------------------------------------
 from amt_models.models import OnsetsFrames
 OnsetsFrames()
 ------------------------------------------------------------

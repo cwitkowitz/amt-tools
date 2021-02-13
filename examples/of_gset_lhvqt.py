@@ -1,12 +1,10 @@
 # My imports
-from amt_models.pipeline.train import train, validate
-from amt_models.models.onsetsframes import OnsetsFrames, LanguageModel
-from amt_models.models.common import SoftmaxGroups
-from amt_models.features.lhvqt_wrapper import LHVQT
-from amt_models.tools.utils import seed_everything
-from amt_models.tools.instrument import GuitarProfile
-from amt_models.datasets.GuitarSet import GuitarSet
-from amt_models.tools.constants import *
+from amt_models.models import OnsetsFrames, LanguageModel, SoftmaxGroups
+from amt_models.datasets import GuitarSet
+from amt_models.features import LHVQT
+from amt_models import train, validate
+
+import amt_models.tools as tools
 
 # Regular imports
 from sacred.observers import FileStorageObserver
@@ -16,6 +14,7 @@ from sacred import Experiment
 
 import torch.nn as nn
 import torch
+import os
 
 EX_NAME = '_'.join([OnsetsFrames.model_name(),
                     GuitarSet.dataset_name(),
@@ -56,7 +55,7 @@ class OnsetsFramesLHVQTVariationalDropout(OnsetsFrames):
 
 
 def visualize(model, i=None):
-    vis_dir = os.path.join(GEN_VISL_DIR, EX_NAME)
+    vis_dir = os.path.join(tools.DEFAULT_VISUALIZATION_DIR, EX_NAME)
 
     # TODO - overwrites fold-wise
 
@@ -101,7 +100,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = os.path.join(GEN_EXPR_DIR, EX_NAME)
+    root_dir = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -112,13 +111,13 @@ def config():
 def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoints,
                      batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
     # Seed everything with the same seed
-    seed_everything(seed)
+    tools.seed_everything(seed)
 
     # Get a list of the GuitarSet splits
     splits = GuitarSet.available_splits()
 
     # Initialize the default guitar profile
-    profile = GuitarProfile()
+    profile = tools.GuitarProfile()
 
     # Processing parameters
     dim_in = 8 * 24

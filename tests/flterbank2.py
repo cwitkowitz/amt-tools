@@ -1,5 +1,5 @@
 # My imports
-#from amt_models.tools.constants import *
+import amt_models.tools as tools
 
 # Regular imports
 import matplotlib.pyplot as plt
@@ -11,8 +11,9 @@ import os
 device = 1
 device = device = torch.device(f'cuda:{device}'if torch.cuda.is_available() else 'cpu')
 
-gen_expr_dir = os.path.join(os.path.expanduser('~'), 'Desktop', 'amt_models', 'generated', 'experiments')
-model_path = os.path.join(gen_expr_dir, 'OnsetsFrames_GuitarSet_LHVQT_vd_new_params', 'models', 'fold-0', 'model-2500.pt')
+model_path = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR,
+                          'OnsetsFrames_GuitarSet_LHVQT_vd_new_params',
+                          'models', 'fold-0', 'model-2500.pt')
 model = torch.load(model_path, map_location=device)
 
 # Extract the filterbank from the model

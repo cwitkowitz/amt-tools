@@ -9,6 +9,10 @@ import amt_models.features as f
 f.VQT()
 f.MelSpec()
 ------------------------------------------------------------
+from amt_models.features import *
+VQT()
+MelSpec()
+------------------------------------------------------------
 from amt_models.features import VQT
 VQT()
 ------------------------------------------------------------
