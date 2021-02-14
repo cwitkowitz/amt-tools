@@ -82,42 +82,22 @@ class MAPS(TranscriptionDataset):
 
         # If the track data is being instantiated, it will not have the 'audio' key
         if 'audio' not in data.keys():
-            # Determine the piano used for the track (last part of track name)
-            piano = track.split('_')[-1]
-            # Construct a path to the directory containing pieces played on the piano
-            track_dir = os.path.join(self.base_dir, piano, 'MUS')
-
             # Construct the path to the track's audio
-            wav_path = os.path.join(track_dir, track + '.wav')
-            # Load and normalize the audio
-            audio, fs = tools.load_audio(wav_path, self.sample_rate)
-            # Add the audio and sampling rate to the track data
-            data['audio'], data['fs'] = audio, fs
+            wav_path = self.get_wav_path(track)
+            # Load and normalize the audio along with the sampling rate
+            data[tools.KEY_AUDIO], data[tools.KEY_FS] = tools.load_normalize_audio(wav_path, self.sample_rate)
 
             # Construct the path to the track's MIDI data
-            midi_path = os.path.join(track_dir, track + '.mid')
-            # Load the notes from the MIDI data and remove the velocity
-            notes = tools.load_midi_notes(midi_path)[:, :-1]
-            # Convert the note lists to a note array
-            pitches, intervals = tools.arr_to_note_groups(notes)
+            midi_path = self.get_midi_path(track)
+            # Load the batch-friendly notes from the MIDI data and remove the velocity
+            batched_notes = tools.load_notes_midi(midi_path)[..., :-1]
+            # Convert the batch-friendly notes to notes
+            pitches, intervals = tools.batched_notes_to_notes(batched_notes)
 
-            # We need the frame times to convert from notes to frames
-            times = self.data_proc.get_times(data['audio'])
+            # We need the frame times for the multi pitch array
+            times = self.data_proc.get_times(data[tools.KEY_AUDIO])
 
-            # Check which instrument profile is used
-            if isinstance(self.profile, tools.PianoProfile):
-                # Decode the notes into pianoroll to obtain the frame-wise pitches
-                pitch = tools.midi_groups_to_pianoroll(pitches, intervals, times, self.profile.get_midi_range())
-            else:
-                raise AssertionError('Provided InstrumentProfile not supported...')
-
-            # Add the frame-wise pitches to the track data
-            data['pitch'] = pitch
-
-            # Convert the note pitches to hertz
-            notes[:, -1] = librosa.midi_to_hz(notes[:, -1])
-            # Add the note array to the track data
-            data['notes'] = notes
+            data[tools.KEY_MULTIPITCH] = tools.notes_to_multi_pitch(pitches, intervals, times, self.profile)
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
@@ -159,6 +139,68 @@ class MAPS(TranscriptionDataset):
                 # exists, remove the ground-truth entry as well
                 if key not in self.tracks:
                     self.data.pop(key)
+
+    def get_track_dir(self, track):
+        """
+        Get the parent directory (piano) where the track is located.
+
+        Parameters
+        ----------
+        track : string
+          MAPS track name
+
+        Returns
+        ----------
+        track_dir : string
+          Path to the parent directory of the specified track
+        """
+
+        # Determine the piano used for the track (last part of track name)
+        piano = track.split('_')[-1]
+        # Construct a path to the directory containing pieces played on the piano
+        track_dir = os.path.join(self.base_dir, piano, 'MUS')
+
+        return track_dir
+
+    def get_wav_path(self, track):
+        """
+        Get the path to the audio of a track.
+
+        Parameters
+        ----------
+        track : string
+          MAPS track name
+
+        Returns
+        ----------
+        wav_path : string
+          Path to the audio of the specified track
+        """
+
+        # Get the path to the audio
+        wav_path = os.path.join(self.get_track_dir(track), track + '.wav')
+
+        return wav_path
+
+    def get_midi_path(self, track):
+        """
+        Get the path to the annotations of a track.
+
+        Parameters
+        ----------
+        track : string
+          MAPS track name
+
+        Returns
+        ----------
+        midi_path : string
+          Path to the MIDI file of the specified track
+        """
+
+        # Get the path to the annotations
+        midi_path = os.path.join(self.get_track_dir(track), track + '.mid')
+
+        return midi_path
 
     @staticmethod
     def available_splits():

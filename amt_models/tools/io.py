@@ -16,6 +16,11 @@ import jams
 import os
 
 
+##################################################
+# INPUT                                          #
+##################################################
+
+
 def load_normalize_audio(wav_path, fs=None, norm=-1):
     """
     Load audio from a file and normalize it.
@@ -257,153 +262,22 @@ def load_pitch_list_jams(jams_path, times, to_hz=True):
     return times, pitch_list
 
 
-def load_stacked_multi_pitch_jams(jams_path, times, profile, mode=0):
+def load_notes_midi(midi_path):
     """
-    Load multi pitch arrays spread across slices (e.g. guitar strings) from JAMS file.
+    Load all MIDI notes from a MIDI file.
 
     Parameters
     ----------
-    jams_path : string
-      Path to JAMS file to read
-    times : ndarray or None (optional) (N)
-      Time in seconds of beginning of each frame
-      N - number of times samples
-    profile : InstrumentProfile (instrument.py)
-      Instrument profile detailing experimental setup
-    mode : int
-      How to obtain the multi pitch data
-      0 - note_midi | 1 - pitch_contour
+    midi_path : string
+      Path to MIDI file to read
 
     Returns
     ----------
-    stacked_multi_pitch : ndarray (S x F x T)
-      Array of multiple discrete pitch activation maps
-      S - number of slices in stack
-      F - number of discrete pitches
-      T - number of frames
+    batched_notes : ndarray (N x 4)
+      Array of note pitches, intervals, and velocities by row
+      N - number of notes
     """
 
-    # TODO - mode affects output slightly (onsets/offsets) due to resampling
-    if mode == 0:
-        # Load the stacked MIDI notes
-        stacked_notes = load_stacked_notes_jams(jams_path, to_hz=False)
-        # Convert the stacked MIDI notes to a stacked multi pitch array
-        stacked_multi_pitch = utils.stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile)
-    else:
-        # Load the stacked pitch lists
-        stacked_pitch_list = load_stacked_pitch_list_jams(jams_path, times, to_hz=False)
-        # Convert the stacked pitch lists to a stacked multi pitch array
-        stacked_multi_pitch = utils.stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile)
-
-    # TODO - validation check?
-
-    return stacked_multi_pitch
-
-
-def load_multi_pitch_jams(jams_path, times, profile, mode=0):
-    """
-    Load single multi pitch representation from JAMS file.
-
-    Parameters
-    ----------
-    jams_path : string
-      Path to JAMS file to read
-    times : ndarray or None (optional) (N)
-      Time in seconds of beginning of each frame
-      N - number of times samples
-    profile : InstrumentProfile (instrument.py)
-      Instrument profile detailing experimental setup
-    mode : int
-      How to obtain the multi pitch data
-      0 - note_midi | 1 - pitch_contour
-
-    Returns
-    ----------
-    multi_pitch : ndarray (F x T)
-      Discrete pitch activation map
-      F - number of discrete pitches
-      T - number of frames
-    """
-
-    # Load stacked multi pitch arrays
-    stacked_multi_pitch = load_stacked_multi_pitch_jams(jams_path, times, profile, mode)
-
-    # Collapse the stacked arrays into one using the max operation
-    multi_pitch = np.max(stacked_multi_pitch, axis=-3)
-
-    # TODO - validation check?
-
-    return multi_pitch
-
-
-def load_tablature_jams(jams_path, times, profile, mode=0):
-    """
-    Load tablature representation from JAMS file.
-
-    Parameters
-    ----------
-    jams_path : string
-      Path to JAMS file to read
-    times : ndarray or None (optional) (N)
-      Time in seconds of beginning of each frame
-      N - number of times samples
-    profile : InstrumentProfile (instrument.py)
-      Instrument profile detailing experimental setup
-    mode : int
-      How to obtain the multi pitch data
-      0 - note_midi | 1 - pitch_contour
-
-    Returns
-    ----------
-    tablature : ndarray (S x T)
-      Array of class membership for multiple degrees of freedom (e.g. strings)
-      S - number of strings or degrees of freedom
-      T - number of frames
-    """
-
-    # Load multi pitch arrays for multiple degrees of freedom
-    stacked_multi_pitch = load_stacked_multi_pitch_jams(jams_path, times, profile, mode)
-
-    # Obtain the tuning for the tablature (lowest note for each degree of freedom)
-    tuning = profile.get_midi_tuning()
-
-    # Initialize an empty list to hold the tablature
-    tablature = list()
-
-    # Loop through the multi pitch arrays
-    for dof in range(len(stacked_multi_pitch)):
-        # Obtain the multi pitch array for the degree of freedom
-        multi_pitch = stacked_multi_pitch[dof]
-
-        # Determine which frames have no note activations
-        silent_frames = np.sum(multi_pitch, axis=0) == 0
-
-        # Lower and upper pitch boundary for this degree of freedom
-        lower_bound = tuning[dof] - profile.low
-        upper_bound = lower_bound + profile.num_frets + 1
-
-        # Bound the multi pitch array by the support of the degree of freedom
-        multi_pitch = multi_pitch[lower_bound : upper_bound]
-
-        # Determine which class has the highest activation across each frame
-        highest_class = np.argmax(multi_pitch, axis=0)
-
-        # Overwrite the highest class for the silent frames
-        highest_class[silent_frames] = -1
-
-        # Add the class membership to the tablature
-        tablature += [np.expand_dims(highest_class, axis=0)]
-
-    # Collapse the list to get the final tablature
-    tablature = np.concatenate(tablature)
-
-    # TODO - validation check?
-
-    return tablature
-
-
-def load_midi_notes(midi_path):
-    """open midi file and return np.array of (onset, offset, note, velocity) rows"""
     midi = mido.MidiFile(midi_path)
 
     time = 0
@@ -441,6 +315,11 @@ def load_midi_notes(midi_path):
         notes.append(note)
 
     return np.array(notes)
+
+
+##################################################
+# OUTPUT                                         #
+##################################################
 
 
 def write_and_print(file, text, verbose = True, end=''):
@@ -534,6 +413,11 @@ def write_notes_multi(log_dir, notes_multi, labels=None, places=3):
 
         pitches, intervals = notes_multi[i]
         write_notes(path, pitches, intervals, places)
+
+
+##################################################
+# USEFUL FILE MANAGEMENT                         #
+##################################################
 
 
 def stream_url_resource(url, save_path, chunk_size=1024):

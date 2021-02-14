@@ -7,7 +7,6 @@ import amt_models.tools as tools
 from mirdata.datasets import guitarset
 
 import numpy as np
-import librosa
 import os
 
 
@@ -90,16 +89,29 @@ class GuitarSet(TranscriptionDataset):
             # Construct the path to the track's JAMS data
             jams_path = self.get_jams_path(track)
 
+            # Load the notes by string from the JAMS file
+            stacked_notes = tools.load_stacked_notes_jams(jams_path, False)
+
             # We need the frame times for the tablature
             times = self.data_proc.get_times(data[tools.KEY_AUDIO])
 
-            # Load the frame-wise pitches as tablature from the track's JAMS file
-            data[tools.KEY_TABLATURE] = tools.load_tablature_jams(jams_path, times, self.profile)
+            # Convert the string-wise notes into a stacked multi pitch array
+            stacked_multi_pitch = tools.stacked_notes_to_stacked_multi_pitch(stacked_notes, times, self.profile)
 
-            pitch_list = tools.load_pitch_list_jams(jams_path, times)
-            notes = tools.notes_to_batched_notes(*tools.load_notes_jams(jams_path))
-            tablature = tools.load_tablature_jams(jams_path, times, self.profile)
-            multi_pitch = tools.load_multi_pitch_jams(jams_path, times, self.profile)
+            # Convert the stacked multi pitch array into tablature
+            data[tools.KEY_TABLATURE] = tools.stacked_multi_pitch_to_tablature(stacked_multi_pitch, self.profile)
+
+            # Convert the stacked notes into notes
+            pitches, intervals = tools.stacked_notes_to_notes(stacked_notes)
+
+            # Consider the length of a hop as the ambiguity for onsets/offsets
+            ambiguity = self.hop_length / self.sample_rate
+
+            # Obtain note onsets from the notes
+            data[tools.KEY_ONSET] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
+
+            # Obtain note offsets from the notes
+            data[tools.KEY_OFFSET] = tools.notes_to_offsets(pitches, intervals, times, self.profile, ambiguity)
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
@@ -153,7 +165,7 @@ class GuitarSet(TranscriptionDataset):
           Path to the JAMS file of the specified track
         """
 
-        # Get the path to the audio
+        # Get the path to the annotations
         jams_path = os.path.join(self.base_dir, 'annotation', track + tools.JAMS_EXT)
 
         return jams_path
