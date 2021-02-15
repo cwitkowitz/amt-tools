@@ -1,16 +1,15 @@
 # My imports
 from .common import TranscriptionDataset
+from .MAPS import MAPS
 
 import amt_models.tools as tools
 
 # Regular imports
 import pandas as pd
-import numpy as np
-import librosa
 import os
 
 
-class _MAESTRO(TranscriptionDataset):
+class _MAESTRO(MAPS):
     """
     Implements either version of the MAESTRO piano transcription dataset
     (https://magenta.tensorflow.org/datasets/maestro).
@@ -63,72 +62,6 @@ class _MAESTRO(TranscriptionDataset):
 
         return tracks
 
-    def load(self, track):
-        """
-        Load the ground-truth from memory or generate it from scratch.
-
-        Parameters
-        ----------
-        track : string
-          Name of the track to load, including the year directory
-
-        Returns
-        ----------
-        data : dict
-          Dictionary with ground-truth for the track
-        """
-
-        # Load the track data if it exists in memory, otherwise instantiate track data
-        data = super().load(track)
-
-        # If the track data is being instantiated, it will not have the 'audio' key
-        if 'audio' not in data.keys():
-            # Construct the path to the track's audio
-            wav_path = os.path.join(self.base_dir, track + '.wav')
-            # Load and normalize the audio
-            audio, fs = tools.load_audio(wav_path, self.sample_rate)
-            # Add the audio and sampling rate to the track data
-            data['audio'], data['fs'] = audio, fs
-
-            # Construct the path to the track's MIDI data
-            midi_path = os.path.join(self.base_dir, track + '.midi')
-            # Load the notes from the MIDI data and remove the velocity
-            notes = tools.load_midi_notes(midi_path)[:, :-1]
-            # Convert the note lists to a note array
-            pitches, intervals = tools.arr_to_note_groups(notes)
-
-            # We need the frame times to convert from notes to frames
-            times = self.data_proc.get_times(data['audio'])
-
-            # Check which instrument profile is used
-            if isinstance(self.profile, tools.PianoProfile):
-                # Decode the notes into pianoroll to obtain the frame-wise pitches
-                pitch = tools.midi_groups_to_pianoroll(pitches, intervals, times, self.profile.get_midi_range())
-            else:
-                raise AssertionError('Provided InstrumentProfile not supported...')
-
-            # Add the frame-wise pitches to the track data
-            data['pitch'] = pitch
-
-            # Convert the note pitches to hertz
-            notes[:, -1] = librosa.midi_to_hz(notes[:, -1])
-            # Add the note array to the track data
-            data['notes'] = notes
-
-            if self.save_data:
-                # Get the appropriate path for saving the track data
-                gt_path = self.get_gt_dir(track)
-                # Create the year directory if it doesn't exist
-                os.makedirs(os.path.dirname(gt_path), exist_ok=True)
-                # Save the audio, sampling rate, frame-wise pitches, and notes
-                np.savez(gt_path,
-                         fs=fs,
-                         audio=audio,
-                         pitch=pitch,
-                         notes=notes)
-
-        return data
-
     def remove_overlapping(self, splits):
         """
         Remove any tracks contained in the given splits from
@@ -141,7 +74,61 @@ class _MAESTRO(TranscriptionDataset):
         """
 
         # TODO
-        pass
+        return NotImplementedError
+
+    def get_track_dir(self, track):
+        """
+        Parent class MAPS has and uses this method. It is overridden here
+        to squash the MAPS functionality if the function were called from
+        a MAESTRO instantiation - which there is no need to do anyway.
+
+        Parameters
+        ----------
+        track : string
+          MAESRO track name
+        """
+
+        return NotImplementedError
+
+    def get_wav_path(self, track):
+        """
+        Get the path to the audio of a track.
+
+        Parameters
+        ----------
+        track : string
+          MAESTRO track name
+
+        Returns
+        ----------
+        wav_path : string
+          Path to the audio of the specified track
+        """
+
+        # Get the path to the audio
+        wav_path = os.path.join(self.base_dir, track + tools.WAV_EXT)
+
+        return wav_path
+
+    def get_midi_path(self, track):
+        """
+        Get the path to the annotations of a track.
+
+        Parameters
+        ----------
+        track : string
+          MAESTRO track name
+
+        Returns
+        ----------
+        midi_path : string
+          Path to the MIDI file of the specified track
+        """
+
+        # Get the path to the annotations
+        midi_path = os.path.join(self.base_dir, track + tools.MIDI_EXT)
+
+        return midi_path
 
     @staticmethod
     def available_splits():

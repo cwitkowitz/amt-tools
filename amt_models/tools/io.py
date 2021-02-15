@@ -55,12 +55,10 @@ def load_normalize_audio(wav_path, fs=None, norm=-1):
         # Normalize the audio using librosa
         audio = librosa.util.normalize(audio, norm)
 
-    # TODO - validation check?
-
     return audio, fs
 
 
-def load_stacked_notes_jams(jams_path, to_hz=True):
+def load_stacked_notes_jams(jams_path):
     """
     Load MIDI notes spread across slices (e.g. guitar strings) from JAMS file into a dictionary.
 
@@ -68,8 +66,6 @@ def load_stacked_notes_jams(jams_path, to_hz=True):
     ----------
     jams_path : string
       Path to JAMS file to read
-    to_hz : bool
-      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
 
     Returns
     ----------
@@ -106,19 +102,13 @@ def load_stacked_notes_jams(jams_path, to_hz=True):
         # Convert the pitch and interval lists to arrays
         pitches, intervals = np.array(pitches), np.array(intervals)
 
-        # Convert pitch to Hertz if specified or leave as MIDI
-        if to_hz:
-            pitches = librosa.midi_to_hz(pitches)
-
         # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
         stacked_notes.update(utils.notes_to_stacked_notes(pitches, intervals, slc))
-
-    # TODO - validation check?
 
     return stacked_notes
 
 
-def load_notes_jams(jams_path, to_hz=True):
+def load_notes_jams(jams_path):
     """
     Load all MIDI notes within a JAMS file.
 
@@ -126,8 +116,6 @@ def load_notes_jams(jams_path, to_hz=True):
     ----------
     jams_path : string
       Path to JAMS file to read
-    to_hz : bool
-      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
 
     Returns
     ----------
@@ -140,16 +128,14 @@ def load_notes_jams(jams_path, to_hz=True):
     """
 
     # First, load the notes into a stack
-    stacked_notes = load_stacked_notes_jams(jams_path=jams_path, to_hz=to_hz)
+    stacked_notes = load_stacked_notes_jams(jams_path=jams_path)
 
     pitches, intervals = utils.stacked_notes_to_notes(stacked_notes)
-
-    # TODO - validation check?
 
     return pitches, intervals
 
 
-def load_stacked_pitch_list_jams(jams_path, times=None, to_hz=True):
+def load_stacked_pitch_list_jams(jams_path, times=None):
     """
     Load pitch lists spread across slices (e.g. guitar strings) from JAMS file into a dictionary.
 
@@ -160,8 +146,6 @@ def load_stacked_pitch_list_jams(jams_path, times=None, to_hz=True):
     times : ndarray or None (optional) (N)
       Time in seconds of beginning of each frame
       N - number of times samples
-    to_hz : bool
-      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
 
     Returns
     ----------
@@ -198,10 +182,6 @@ def load_stacked_pitch_list_jams(jams_path, times=None, to_hz=True):
             if np.sum(freq) == 0:
                 freq = np.empty(0)
 
-            # Convert to the desired format
-            if not to_hz:
-                freq = librosa.hz_to_midi(freq)
-
             # Append the observation time
             entry_times = np.append(entry_times, pitch.time)
             # Append the frequency
@@ -222,12 +202,10 @@ def load_stacked_pitch_list_jams(jams_path, times=None, to_hz=True):
                                                                          slice_pitch_list,
                                                                          slc))
 
-    # TODO - validation check?
-
     return stacked_pitch_list
 
 
-def load_pitch_list_jams(jams_path, times, to_hz=True):
+def load_pitch_list_jams(jams_path, times):
     """
     Load pitch list from JAMS file.
 
@@ -238,8 +216,6 @@ def load_pitch_list_jams(jams_path, times, to_hz=True):
     times : ndarray or None (optional) (N)
       Time in seconds of beginning of each frame
       N - number of times samples
-    to_hz : bool
-      Whether to convert the note pitches to Hertz, as opposed to leaving as MIDI
 
     Returns
     ----------
@@ -252,19 +228,18 @@ def load_pitch_list_jams(jams_path, times, to_hz=True):
     """
 
     # Load the pitch lists into a stack
-    stacked_pitch_list = load_stacked_pitch_list_jams(jams_path, times, to_hz)
+    stacked_pitch_list = load_stacked_pitch_list_jams(jams_path, times)
 
     # Convert them to a single pitch list
     times, pitch_list = utils.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
-
-    # TODO - validation check?
 
     return times, pitch_list
 
 
 def load_notes_midi(midi_path):
     """
-    Load all MIDI notes from a MIDI file.
+    Load all MIDI notes from a MIDI file, keeping track of sustain pedal activity.
+    TODO - make sustain pedal stuff optional?
 
     Parameters
     ----------
@@ -278,43 +253,92 @@ def load_notes_midi(midi_path):
       N - number of notes
     """
 
+    # Open the MIDI file
     midi = mido.MidiFile(midi_path)
 
+    # Initialize a counter for the time
     time = 0
-    sustain = False
+
+    # Keep track of sustain pedal activity
+    sustain_status = False
+
+    # Initialize an empty list to store MIDI events
     events = []
+
+    # Loop through MIDI messages, keeping track of only those pertaining to notes and sustain pedal activity
     for message in midi:
+        # Increment the time
         time += message.time
 
-        if message.type == 'control_change' and message.control == 64 and (message.value >= 64) != sustain:
-            # sustain pedal state has just changed
-            sustain = message.value >= 64
-            event_type = 'sustain_on' if sustain else 'sustain_off'
-            event = dict(index=len(events), time=time, type=event_type, note=None, velocity=0)
-            events.append(event)
+        # Check if the message constitutes a control change event
+        if message.type == constants.MIDI_CONTROL_CHANGE:
+            # Whether the message constitutes a sustain control event
+            sustain_control = message.control == constants.MIDI_SUSTAIN_CONTROL_NUM
 
+            # Value >= 64 means SUSTAIN_ON and value < 64 means SUSTAIN OFF
+            sustain_on = message.value >= constants.MIDI_SUSTAIN_CONTROL_NUM
+
+            # Whether the current status of the sustain pedal was actually changed
+            sustain_change = sustain_on != sustain_status
+
+            # Check if the above two conditions were met (sustain control and status change)
+            if sustain_control and sustain_change:
+                # Update the status of the sustain pedal (on/off)
+                sustain_status = sustain_on
+                # Determine which event occurred (SUSTAIN_ON or SUSTAIN_OFF)
+                event_type = constants.MIDI_SUSTAIN_ON if sustain_status else constants.MIDI_SUSTAIN_OFF
+
+                # Create a new event detailing the sustain pedal activity
+                event = dict(index=len(events),
+                             time=time,
+                             type=event_type,
+                             note=None,
+                             velocity=0)
+                # Add the sustain pedal event to the MIDI event list
+                events.append(event)
+
+        # Check if the message constitutes a note event (NOTE_ON or NOTE_OFF)
         if 'note' in message.type:
-            # MIDI offsets can be either 'note_off' events or 'note_on' with zero velocity
-            velocity = message.velocity if message.type == 'note_on' else 0
-            event = dict(index=len(events), time=time, type='note', note=message.note, velocity=velocity, sustain=sustain)
+            # MIDI offsets can be either NOTE_OFF events or NOTE_ON with zero velocity
+            velocity = message.velocity if message.type == constants.MIDI_NOTE_ON else 0
+
+            # Create a new event detailing the note and current sustain pedal state
+            event = dict(index=len(events),
+                         time=time,
+                         type='note',
+                         note=message.note,
+                         velocity=velocity,
+                         sustain=sustain_status)
+            # Add the note event to the MIDI event list
             events.append(event)
 
-    notes = []
+    # Initialize an empty list to store notes
+    notes = list()
+
+    # Loop through all of the documented MIDI events
     for i, onset in enumerate(events):
+        # Ignore anything but note onset events (note offsets and sustain activity ignored)
         if onset['velocity'] == 0:
             continue
 
-        # find the next note_off message
+        # Determine where the corresponding offset occurs
+        # by finding the next note event with the same pitch,
+        # clipping at the final frame if no correspondence is found
         offset = next(n for n in events[i + 1:] if n['note'] == onset['note'] or n is events[-1])
 
+        # Check if the sustain pedal is on when the note offset occurs
         if offset['sustain'] and offset is not events[-1]:
-            # if the sustain pedal is active at offset, find when the sustain ends
-            offset = next(n for n in events[offset['index'] + 1:] if n['type'] == 'sustain_off' or n is events[-1])
+            # If so, offset is when sustain ends or another note event of same pitch occurs
+            offset = next(n for n in events[offset['index'] + 1:] if n['type'] == constants.MIDI_SUSTAIN_OFF or
+                          n['note'] == onset['note'] or n is events[-1])
 
-        note = (onset['time'], offset['time'], onset['note'], onset['velocity'])
-        notes.append(note)
+        # Create a new note entry and append it to the list of notes
+        notes.append([onset['time'], offset['time'], onset['note'], onset['velocity']])
 
-    return np.array(notes)
+    # Package the notes into an array
+    notes = np.array(notes)
+
+    return notes
 
 
 ##################################################
@@ -367,9 +391,9 @@ def write_pitch_multi(log_dir, multi, times, low, labels=None, places=3):
 
     for i in range(multi_num):
         if labels is None:
-            path = os.path.join(log_dir, i, '.txt')
+            path = os.path.join(log_dir, i, constants.TXT_EXT)
         else:
-            path = os.path.join(log_dir, labels[i], '.txt')
+            path = os.path.join(log_dir, labels[i], constants.TXT_EXT)
 
         write_pitch(path, multi[i], times, low, places)
 
@@ -407,9 +431,9 @@ def write_notes_multi(log_dir, notes_multi, labels=None, places=3):
 
     for i in range(multi_num):
         if labels is None:
-            path = os.path.join(log_dir, i, '.txt')
+            path = os.path.join(log_dir, i, constants.TXT_EXT)
         else:
-            path = os.path.join(log_dir, labels[i], '.txt')
+            path = os.path.join(log_dir, labels[i], constants.TXT_EXT)
 
         pitches, intervals = notes_multi[i]
         write_notes(path, pitches, intervals, places)

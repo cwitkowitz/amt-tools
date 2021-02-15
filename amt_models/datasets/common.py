@@ -13,11 +13,12 @@ import numpy as np
 import shutil
 import os
 
-# TODO - MusicNet
-# TODO - Note splitting
-# TODO - other bells/whistles in OF/TabCNN
+# TODO - more datasets - MusicNet, Slakh, Drums
 # TODO - optionally download datasets in flac to save memory
 # TODO - possible integration with mirdata
+# TODO - OnsetsFrames features - weighted frame loss, avoid note splitting
+
+# TODO - get notes function?
 
 
 class TranscriptionDataset(Dataset):
@@ -169,8 +170,11 @@ class TranscriptionDataset(Dataset):
         track_id = self.tracks[index]
         # Slice the track's features and ground-truth
         data = self.get_track_data(track_id)
-        # Remove the notes, as they cannot be batched
-        data.pop('notes')
+        # Convert all numpy arrays in the data dictionary to float32
+        data = tools.track_to_dtype(data, dtype=tools.FLOAT32)
+        # Remove any notes, as they cannot be batched
+        if tools.KEY_NOTES in data.keys():
+            data.pop(tools.KEY_NOTES)
 
         return data
 
@@ -196,9 +200,9 @@ class TranscriptionDataset(Dataset):
             data = deepcopy(data)
         else:
             # We assume a track name was given
-            data = {'track' : data}
+            data = {tools.KEY_TRACK : data}
 
-        track = data['track']
+        track = data[tools.KEY_TRACK]
 
         # Determine the path to the track's features
         feats_path = self.get_feats_dir(track)
@@ -207,16 +211,16 @@ class TranscriptionDataset(Dataset):
         if os.path.exists(feats_path):
             # If so, load the features
             feats_dict = np.load(feats_path, allow_pickle=True)
-            feats = feats_dict['feats']
+            feats = feats_dict[tools.KEY_FEATS]
             feats = feats.item() if feats.size == 1 else feats
 
             # Load supporting hyper-parameters
-            fs = feats_dict['fs'].item()
-            hop_length = feats_dict['hop_length'].item()
+            fs = feats_dict[tools.KEY_FS].item()
+            hop_length = feats_dict[tools.KEY_HOP].item()
 
         else:
             # If not, calculate the features
-            feats = self.data_proc.process_audio(data['audio'])
+            feats = self.data_proc.process_audio(data[tools.KEY_AUDIO])
 
             # Fetch the hyper-parameters of the feature module
             fs = self.data_proc.get_sample_rate()
@@ -232,20 +236,20 @@ class TranscriptionDataset(Dataset):
         assert self.hop_length == hop_length
 
         # Calculate the frame times every time (faster than saving/loading)
-        times = self.data_proc.get_times(data['audio'])
+        times = self.data_proc.get_times(data[tools.KEY_AUDIO])
 
         # Check if fixed features were provided
         if feats is not None:
             # Add the features to the data dictionary
-            data['feats'] = feats
-        data['times'] = times
+            data[tools.KEY_FEATS] = feats
+        data[tools.KEY_TIMES] = times
 
         if self.store_data:
             # Check if fixed features were provided
             if feats is not None:
                 # Add the features to the data dictionary in RAM
-                self.data[track]['feats'] = feats
-            self.data[track]['times'] = times
+                self.data[track][tools.KEY_FEATS] = feats
+            self.data[track][tools.KEY_TIMES] = times
 
         return data
 
@@ -277,18 +281,7 @@ class TranscriptionDataset(Dataset):
             # Load the track's ground-truth
             data = self.load(track_id)
 
-        # TODO - for now, this cannot be done, as it requires knowledge of original profile
-        # # Determine which keys exist before calculating features
-        # keys = list(data.keys())
-        #
-        # # Loop through possible ground-truth time frequency representations
-        # for tfr_key in ['pitch', 'onsets', 'offsets']:
-        #     # If the tfr exists in the ground-truth
-        #     if tfr_key in keys:
-        #         # Make sure it adheres to the chosen instrument profile
-        #         data[tfr_key] = self.profile.to(data[tfr_key])
-
-        if 'feats' not in data.keys():
+        if tools.KEY_FEATS not in data.keys():
             # Calculate the features and add to the dictionary
             data.update(self.calculate_feats(data))
 
@@ -302,15 +295,11 @@ class TranscriptionDataset(Dataset):
                 seq_length = self.seq_length
             # Otherwise, we assume the whole track is desired and perform no further actions
             else:
-                # Convert all numpy arrays in the data dictionary to float32
-                data = tools.track_to_dtype(data, dtype='float32')
-                # Validate all of the track data before returning
-                assert self.validate_track(data, self.profile)
                 return data
 
         # If a specific starting sample was not provided, sample one randomly
         if sample_start is None:
-            sample_start = self.rng.randint(0, len(data['audio']) - seq_length)
+            sample_start = self.rng.randint(0, len(data[tools.KEY_AUDIO]) - seq_length)
 
         # Determine the frames contained in this slice
         frame_start = sample_start // self.hop_length
@@ -324,15 +313,15 @@ class TranscriptionDataset(Dataset):
         sample_end = sample_start + seq_length
 
         # Slice the audio
-        data['audio'] = data['audio'][..., sample_start : sample_end]
+        data[tools.KEY_AUDIO] = data[tools.KEY_AUDIO][..., sample_start : sample_end]
 
         # Determine if there is note ground-truth and, if so, get it
-        if 'notes' in keys:
+        if tools.KEY_NOTES in keys:
             # Notes entry has not been popped by a dataloader
-            notes = data['notes']
-        elif 'notes' in self.data[track_id].keys():
+            notes = data[tools.KEY_NOTES]
+        elif tools.KEY_NOTES in self.data[track_id].keys():
             # Notes entry has been popped and must be added again
-            notes = self.data[track_id]['notes']
+            notes = self.data[track_id][tools.KEY_NOTES]
         else:
             # Notes entry never existed
             notes = None
@@ -350,86 +339,20 @@ class TranscriptionDataset(Dataset):
             # Clip offsets at the slice stop time
             notes[:, 1] = np.minimum(notes[:, 1], sec_stop)
 
-            data['notes'] = notes
+            data[tools.KEY_NOTES] = notes
 
         # Remove keys already processed
-        keys.remove('audio')
-        keys.remove('notes')
-        keys.remove('fs')
+        keys.remove(tools.KEY_AUDIO)
+        keys.remove(tools.KEY_NOTES)
+        keys.remove(tools.KEY_FS)
 
         # Slice remaining entries (all assumed to be NumPy arrays)
         for key in keys:
             if isinstance(data[key], np.ndarray):
-                if key == 'times':
-                    # Leave in the extra entry to mark the ending time
-                    data[key] = data[key][..., frame_start : frame_end + 1]
-                else:
-                    # Normal frame slicing protocol
-                    data[key] = data[key][..., frame_start : frame_end]
-
-        # TODO - repeat code of returning whole track above
-        # Convert all numpy arrays in the data dictionary to float32
-        data = tools.track_to_dtype(data, dtype='float32')
-        # Validate all of the track data before returning
-        assert self.validate_track(data, self.profile)
+                # Normal frame slicing protocol
+                data[key] = data[key][..., frame_start : frame_end]
 
         return data
-
-    @staticmethod
-    def validate_track(data, profile):
-        """
-        Make sure ground-truth and features adhere to standards.
-
-        Parameters
-        ----------
-        data : dict
-          Dictionary containing the features and ground-truth for a track
-        profile : InstrumentProfile (tools/instrument.py)
-          Instructions for organizing data and ground-truth
-
-        Returns
-        ----------
-        valid : bool
-          Whether or not the track data is valid
-        """
-
-        # This true has to pass through all checks
-        valid = True
-
-        # Get all of the entries in the track data
-        keys = list(data.keys())
-
-        if 'audio' in keys:
-            # Audio should be 1-D
-            valid = valid and (len(data['audio'].shape) == 1)
-
-        if 'pitch' in keys:
-            # Make sure the pitch data follows a supported format
-            valid = valid and tools.valid_activations(data['pitch'], profile)
-
-        if 'feats' in keys:
-            # Make sure features have channel, num_feats, and num_frames dimension (3-D)
-            valid = valid and (len(data['feats'].shape) == 3)
-            # Make sure there are times corresponding to features
-            valid = valid and ('times' in keys)
-            if 'times' in keys:
-                # Times should be 1-D
-                valid = valid and (len(data['times'].shape) == 1)
-                # Dimensionality must agree (time has an extra entry)
-                valid = valid and (data['times'].size == data['feats'].shape[-1] + 1)
-
-        if 'notes' in keys:
-            # Convert the presumed array into standard representation
-            pitches, intervals = tools.batched_notes_to_notes(data['notes'])
-            # Make sure the notes are valid
-            valid = valid and tools.valid_notes(pitches, intervals)
-
-        # Make sure all NumPy arrays consist of 32-bit floats
-        for entry in data.values():
-            if isinstance(entry, np.ndarray):
-                valid = valid and (entry.dtype == 'float32')
-
-        return valid
 
     @abstractmethod
     def get_tracks(self, split):
@@ -473,14 +396,14 @@ class TranscriptionDataset(Dataset):
             data = dict(np.load(gt_path))
 
             # Make sure there is agreement between dataset and saved data
-            assert self.sample_rate == data['fs'].item()
+            assert self.sample_rate == data[tools.KEY_FS].item()
 
         if data is None:
             # Initialize a new dictionary if there is no saved data
             data = {}
 
         # Add the track ID to the dictionary
-        data['track'] = track
+        data[tools.KEY_TRACK] = track
 
         return data
 
@@ -500,11 +423,11 @@ class TranscriptionDataset(Dataset):
         """
 
         # Get the path to the ground truth directory
-        path = os.path.join(self.save_loc, self.dataset_name(), 'gt')
+        path = os.path.join(self.save_loc, self.dataset_name(), tools.GROUND_TRUTH_DIR)
 
         # Add the track name and the .npz extension if a track was provided
         if track is not None:
-            path = os.path.join(path, track + '.npz')
+            path = os.path.join(path, track + tools.NPZ_EXT)
 
         return path
 
@@ -528,7 +451,7 @@ class TranscriptionDataset(Dataset):
 
         # Add the track name and the .npz extension if a track was provided
         if track is not None:
-            path = os.path.join(path, track + '.npz')
+            path = os.path.join(path, track + tools.NPZ_EXT)
 
         return path
 

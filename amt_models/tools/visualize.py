@@ -28,6 +28,22 @@ def visualize_pitch_list(times, pitch_list, save_path=None):
 
     return plt
 
+
+def visualize_multi_pitch(multi_pitch, save_path=None):
+    #ax = plt.gca()
+
+    plt.imshow(pianoroll, cmap='gray_r', vmin=0, vmax=1)
+    plt.gca().invert_yaxis()
+    #plt.ylabel('MIDI (R/E2)')
+    plt.xlabel('Frame')
+    #plt.grid()
+
+    plt.tight_layout()
+
+    plt.savefig(save_path) if save_path else plt.show()
+
+    return plt
+
 # TODO - this is mostly trash for now - I've yet to make an effort to reestablish this
 # TODO - see earlier commits to get started
 
@@ -138,18 +154,3 @@ def guitar_tabs(track_name, tabs_est, tabs_ref, t_bounds, offset=True, save_path
         plt.savefig(save_path, bbox_inches='tight', dpi=500)
     else:
         plt.show()
-
-
-def plot_pianoroll(pianoroll):
-    #ax = plt.gca()
-
-    pianoroll = pianoroll[..., 0 : 100]
-
-    plt.imshow(pianoroll, cmap='gray_r', vmin=0, vmax=1)
-    plt.gca().invert_yaxis()
-    plt.ylabel('MIDI (R/E2)')
-    plt.xlabel('Frame')
-    #plt.grid()
-    plt.show()
-
-    return plt

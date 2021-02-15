@@ -5,6 +5,7 @@ import amt_models.tools as tools
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
+import torch.nn as nn
 import numpy as np
 import torch
 import os
@@ -185,15 +186,15 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             train_loss.append(batch_loss.item())
             # Compute gradients
             batch_loss.backward()
+            # Perform gradient clipping
+            # TODO = make optional
+            #nn.utils.clip_grad_norm_(model.parameters(), 3)
             # Perform an optimization step
             optimizer.step()
 
             if scheduler is not None:
                 # Perform a learning rate scheduler step
                 scheduler.step()
-
-            # Run additional steps required by model
-            model.special_steps()
 
             if single_batch:
                 # Move onto the next iteration after the first batch

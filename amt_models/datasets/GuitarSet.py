@@ -90,7 +90,7 @@ class GuitarSet(TranscriptionDataset):
             jams_path = self.get_jams_path(track)
 
             # Load the notes by string from the JAMS file
-            stacked_notes = tools.load_stacked_notes_jams(jams_path, False)
+            stacked_notes = tools.load_stacked_notes_jams(jams_path)
 
             # We need the frame times for the tablature
             times = self.data_proc.get_times(data[tools.KEY_AUDIO])

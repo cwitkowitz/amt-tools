@@ -169,14 +169,6 @@ class TranscriptionModel(nn.Module):
 
         return preds
 
-    @abstractmethod
-    def special_steps(self):
-        """
-        Perform any final training steps specific to this model.
-        """
-
-        return NotImplementedError
-
     @classmethod
     def model_name(cls):
         """

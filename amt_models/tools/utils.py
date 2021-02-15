@@ -1,12 +1,11 @@
 # My imports
-# None of my imports used
+import amt_models.tools.constants as constants
 
 # Regular imports
 from copy import deepcopy
 from scipy import signal
 
 import numpy as np
-import mir_eval
 import librosa
 import random
 import torch
@@ -14,7 +13,8 @@ import torch
 
 # TODO - torch Tensor compatibility
 # TODO - description of data formats in headings
-# TODO - functions to convert all types of note formats to/from hz/midi
+# TODO - try to ensure these won't break if extra dimensions (e.g. batch) are included
+# TODO - make sure there are no hard assignments (make return copies instead of original)
 
 
 ##################################################
@@ -51,7 +51,51 @@ def notes_to_batched_notes(pitches, intervals):
         # Concatenate the loose arrays to obtain ndarray([[onset, offset, pitch]])
         batched_notes = np.concatenate((intervals, pitches), axis=-1)
 
-    # TODO - validation check?
+    return batched_notes
+
+
+def batched_notes_to_hz(batched_notes):
+    """
+    Convert batched notes from MIDI to Hertz.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of MIDI note pitches and intervals by row
+      N - number of notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of Hertz note pitches and intervals by row
+      N - number of notes
+    """
+
+    # Convert pitch column to Hertz
+    batched_notes[..., 2] = librosa.midi_to_hz(batched_notes[..., 2])
+
+    return batched_notes
+
+
+def batched_notes_to_midi(batched_notes):
+    """
+    Convert batched notes from Hertz to MIDI.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of Hertz note pitches and intervals by row
+      N - number of notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of MIDI note pitches and intervals by row
+      N - number of notes
+    """
+
+    # Convert pitch column to MIDI
+    batched_notes[..., 2] = librosa.hz_to_midi(batched_notes[..., 2])
 
     return batched_notes
 
@@ -83,8 +127,6 @@ def batched_notes_to_notes(batched_notes):
 
     # Split along the final dimension into the loose groups
     pitches, intervals = batched_notes[..., 2], batched_notes[:, :2]
-
-    # TODO - validation check?
 
     return pitches, intervals
 
@@ -118,9 +160,57 @@ def stacked_notes_to_notes(stacked_notes):
     # Sort the notes by onset
     pitches, intervals = sort_notes(pitches, intervals)
 
-    # TODO - validation check?
-
     return pitches, intervals
+
+
+def notes_to_hz(pitches):
+    """
+    Convert note pitches from MIDI to Hertz.
+    Array of corresponding intervals does not change and is
+    assumed to be managed outside of the function.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of MIDI pitches corresponding to notes
+      N - number of notes
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Array of Hertz pitches corresponding to notes
+      N - number of notes
+    """
+
+    # Convert to Hertz
+    pitches = librosa.midi_to_hz(pitches)
+
+    return pitches
+
+
+def notes_to_midi(pitches):
+    """
+    Convert note pitches from Hertz to MIDI.
+    Array of corresponding intervals does not change and is
+    assumed to be managed outside of the function.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of Hertz pitches corresponding to notes
+      N - number of notes
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Array of MIDI pitches corresponding to notes
+      N - number of notes
+    """
+
+    # Convert to MIDI
+    pitches = librosa.hz_to_midi(pitches)
+
+    return pitches
 
 
 ##################################################
@@ -155,7 +245,65 @@ def notes_to_stacked_notes(pitches, intervals, i=0):
     # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
     stacked_notes[i] = sort_notes(pitches, intervals)
 
-    # TODO - validation check?
+    return stacked_notes
+
+
+def stacked_notes_to_hz(stacked_notes):
+    """
+    Convert stacked notes from MIDI to Hertz.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (MIDI), intervals)) pairs
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (Hertz), intervals)) pairs
+    """
+
+    # Make a copy of the stacked notes for conversion
+    stacked_notes = deepcopy(stacked_notes)
+
+    # Loop through the stack of notes
+    for slc in range(len(stacked_notes)):
+        # Get the pitches from the slice
+        pitches, intervals = stacked_notes[slc]
+        # Convert the pitches to Hertz
+        pitches = notes_to_hz(pitches)
+        # Add converted slice back to stack
+        stacked_notes[slc] = pitches, intervals
+
+    return stacked_notes
+
+
+def stacked_notes_to_midi(stacked_notes):
+    """
+    Convert stacked notes from Hertz to MIDI.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (Hertz), intervals)) pairs
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (MIDI), intervals)) pairs
+    """
+
+    # Make a copy of the stacked notes for conversion
+    stacked_notes = deepcopy(stacked_notes)
+
+    # Loop through the stack of notes
+    for slc in range(len(stacked_notes)):
+        # Get the pitches from the slice
+        pitches, intervals = stacked_notes[slc]
+        # Convert the pitches to MIDI
+        pitches = notes_to_midi(pitches)
+        # Add converted slice back to stack
+        stacked_notes[slc] = pitches, intervals
 
     return stacked_notes
 
@@ -205,21 +353,96 @@ def stacked_pitch_list_to_pitch_list(stacked_pitch_list):
     # Sort the time-pitch array pairs by time
     times, pitch_list = sort_pitch_list(times, pitch_list)
 
-    # TODO - validation check?
-
     return times, pitch_list
 
 
-def multi_pitch_to_pitch_list():
+def multi_pitch_to_pitch_list(multi_pitch, profile):
     """
-    TODO
-    active_pitches = []
+    Convert a multi pitch array into a pitch list.
+    Array of corresponding times does not change and is
+    assumed to be managed outside of the function.
 
-    for i in range(pianoroll.shape[-1]): # For each frame
-        # Determine the activations across this frame
-        active_pitches += [librosa.midi_to_hz(np.where(pianoroll[:, i] != 0)[0] + lowest)]
+    Parameters
+    ----------
+    multi_pitch : ndarray (F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    pitch_list : list of ndarray (T x [...])
+      Array of pitches corresponding to notes
+      T - number of pitch observations (frames)
     """
-    pass
+
+    # Determine the number of frames in the multi pitch array
+    num_frames = multi_pitch.shape[-1]
+
+    # Initialize empty pitch arrays for each time entry
+    pitch_list = [np.empty(0)] * num_frames
+
+    # Determine which frames contain pitch activity
+    non_silent_frames = np.where(np.sum(multi_pitch, axis=-2) > 0)[-1]
+
+    # Loop through the frames containing pitch activity
+    for i in list(non_silent_frames):
+        # Determine the MIDI pitches active in the frame and add to the list
+        pitch_list[i] = profile.low + np.where(multi_pitch[..., i])[-1]
+
+    return pitch_list
+
+
+def pitch_list_to_hz(pitch_list):
+    """
+    Convert pitch list from MIDI to Hertz.
+    Array of corresponding times does not change and is
+    assumed to be managed outside of the function.
+
+    Parameters
+    ----------
+    pitch_list : list of ndarray (T x [...])
+      Array of MIDI pitches corresponding to notes
+      T - number of pitch observations (frames)
+
+    Returns
+    ----------
+    pitch_list : list of ndarray (T x [...])
+      Array of Hertz pitches corresponding to notes
+      T - number of pitch observations (frames)
+    """
+
+    # Convert to Hertz
+    pitch_list = [librosa.midi_to_hz(pitch_list[i]) for i in range(len(pitch_list))]
+
+    return pitch_list
+
+
+def pitch_list_to_midi(pitch_list):
+    """
+    Convert pitch list from Hertz to MIDI.
+    Array of corresponding times does not change and is
+    assumed to be managed outside of the function.
+
+    Parameters
+    ----------
+    pitch_list : list of ndarray (T x [...])
+      Array of Hertz pitches corresponding to notes
+      T - number of pitch observations (frames)
+
+    Returns
+    ----------
+    pitch_list : list of ndarray (T x [...])
+      Array of MIDI pitches corresponding to notes
+      T - number of pitch observations (frames)
+    """
+
+    # Convert to MIDI
+    pitch_list = [librosa.hz_to_midi(pitch_list[i]) for i in range(len(pitch_list))]
+
+    return pitch_list
 
 
 ##################################################
@@ -254,13 +477,110 @@ def pitch_list_to_stacked_pitch_list(times, pitch_list, i=0):
     # Add the time-pitch array pairs to the stacked notes dictionary under the slice key
     stacked_pitch_list[i] = sort_pitch_list(times, pitch_list)
 
-    # TODO - validation check?
+    return stacked_pitch_list
+
+
+def stacked_multi_pitch_to_stacked_pitch_list(stacked_multi_pitch, times, profile):
+    """
+    Convert a stack of multi pitch arrays into a stack of pitch lists.
+
+    Parameters
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    times : ndarray (T)
+      Time in seconds of beginning of each frame
+      T - number of time samples (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Determine the number of slices in the stacked multi pitch array
+    stack_size = stacked_multi_pitch.shape[-3]
+
+    # Initialize a dictionary to hold the pitch lists
+    stacked_pitch_list = dict()
+
+    # Loop through the slices of the stack
+    for slc in range(stack_size):
+        # Extract the multi pitch array pertaining to this slice
+        slice_multi_pitch = stacked_multi_pitch[slc]
+
+        # Convert the multi pitch array to a pitch list
+        slice_pitch_list = multi_pitch_to_pitch_list(slice_multi_pitch, profile)
+
+        # Add the pitch list to the stacked pitch list dictionary under the slice key
+        stacked_pitch_list.update(pitch_list_to_stacked_pitch_list(times, slice_pitch_list, slc))
 
     return stacked_pitch_list
 
 
-def stacked_multi_pitch_to_stacked_pitch_list():
-    pass
+def stacked_pitch_list_to_hz(stacked_pitch_list):
+    """
+    Convert stacked pitch list from MIDI to Hertz.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list (MIDI))) pairs
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list (Hertz)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for conversion
+    stacked_pitch_list = deepcopy(stacked_pitch_list)
+
+    # Loop through the stack of pitch lists
+    for slc in range(len(stacked_pitch_list)):
+        # Get the pitch list from the slice
+        times, pitch_list = stacked_pitch_list[slc]
+        # Convert the pitches to Hertz
+        pitch_list = pitch_list_to_hz(pitch_list)
+        # Add converted slice back to stack
+        stacked_pitch_list[slc] = times, pitch_list
+
+    return stacked_pitch_list
+
+
+def stacked_pitch_list_to_midi(stacked_pitch_list):
+    """
+    Convert stacked pitch list from Hertz to MIDI.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list (Hertz))) pairs
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list (MIDI)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for conversion
+    stacked_pitch_list = deepcopy(stacked_pitch_list)
+
+    # Loop through the stack of pitch lists
+    for slc in range(len(stacked_pitch_list)):
+        # Get the pitches from the slice
+        times, pitch_list = stacked_pitch_list[slc]
+        # Convert the pitches to MIDI
+        pitch_list = pitch_list_to_midi(pitch_list)
+        # Add converted slice back to stack
+        stacked_pitch_list[slc] = times, pitch_list
+
+    return stacked_pitch_list
 
 
 ##################################################
@@ -302,7 +622,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     multi_pitch = np.zeros((num_pitches, num_frames))
 
     # Convert the pitches to number of semitones from lowest note
-    pitches = np.round(pitches - profile.low).astype('uint')
+    pitches = np.round(pitches - profile.low).astype(constants.UINT)
 
     # Duplicate the array of times for each note and stack along a new axis
     times = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
@@ -319,8 +639,6 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     for i in range(len(pitches)):
         # Populate the multi pitch array with activations for the note
         multi_pitch[pitches[i], onsets[i] : offsets[i] + 1] = 1
-
-    # TODO - validation check?
 
     return multi_pitch
 
@@ -366,11 +684,9 @@ def pitch_list_to_multi_pitch(times, pitch_list, profile, tolerance=0.5):
         deviation[deviation > 0.5] -= 1
         deviation = np.abs(deviation)
         # Convert the pitches to number of semitones from lowest note
-        pitches = np.round(difference[deviation < tolerance]).astype('uint')
+        pitches = np.round(difference[deviation < tolerance]).astype(constants.UINT)
         # Populate the multi pitch array with activations
         multi_pitch[pitches, i] = 1
-
-    # TODO - validation check?
 
     return multi_pitch
 
@@ -397,8 +713,6 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
 
     # Collapse the stacked arrays into one using the max operation
     multi_pitch = np.max(stacked_multi_pitch, axis=-3)
-
-    # TODO - validation check?
 
     return multi_pitch
 
@@ -444,8 +758,6 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
     # Collapse the list into an array
     stacked_multi_pitch = np.concatenate(stacked_multi_pitch)
 
-    # TODO - validation check?
-
     return stacked_multi_pitch
 
 
@@ -482,8 +794,6 @@ def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
     # Collapse the list into an array
     stacked_multi_pitch = np.concatenate(stacked_multi_pitch)
 
-    # TODO - validation check?
-
     return stacked_multi_pitch
 
 
@@ -508,42 +818,63 @@ def multi_pitch_to_stacked_multi_pitch(multi_pitch):
     """
 
     # Add an extra dimension for slice
-    stacked_multi_pitch = np.expand_dims(multi_pitch, axis=0)
-
-    # TODO - validation check?
+    stacked_multi_pitch = np.expand_dims(multi_pitch, axis=-3)
 
     return stacked_multi_pitch
 
 
-def tablature_to_stacked_multi_pitch():
+def tablature_to_stacked_multi_pitch(tablature, profile):
     """
-    TODO
-    tabs = tabs.copy().astype('int')
+    Convert a tablature representation into a stacked multi pitch array.
+    Array of corresponding times does not change and is
+    assumed to be managed outside of the function.
 
-    shape = list(tabs.shape) + [profile.get_range_len()]
-    #shape = list(tabs.shape)
-    #shape = shape[:-1] + [profile.get_range_len()] + shape[-1:]
-    pianoroll = np.zeros(shape)
+    Parameters
+    ----------
+    tablature : ndarray (S x T)
+      Array of class membership for multiple degrees of freedom (e.g. strings)
+      S - number of strings or degrees of freedom
+      T - number of frames
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
 
-    midi_tuning = profile.get_midi_tuning()
-    multi_start = midi_tuning - profile.low
-
-    if shape[0] != profile.num_strings:
-        # Add a batch dimension
-        multi_start = np.expand_dims(multi_start, axis=0)
-        multi_start = np.repeat(multi_start, shape[0], axis=0)
-
-    non_silent = tabs != -1
-
-    pitches = tabs + multi_start
-    pitches = pitches[non_silent]
-
-    idcs = tuple(list(non_silent.nonzero()) + [pitches])
-
-    pianoroll[idcs] = 1
-    pianoroll = np.swapaxes(pianoroll, -1, -2)
+    Returns
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
     """
-    pass
+
+    # Determine the number of degrees of freedom and frames
+    num_dofs, num_frames = tablature.shape
+
+    # Determine the total number of pitches to be incldued
+    num_pitches = profile.get_range_len()
+
+    # Initialize and empty stacked multi pitch array
+    stacked_multi_pitch = np.zeros((num_dofs, num_pitches, num_frames))
+
+    # Obtain the tuning for the tablature (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Determine the place in the stacked multi pitch array where each degree of freedom begins
+    dof_start = np.expand_dims(tuning - profile.low, -1)
+
+    # Determine which frames, by degree of freedom, contain pitch activity
+    non_silent_frames = tablature >= 0
+
+    # Determine the active pitches, relative to the start of the stacked multi pitch array
+    pitch_idcs = (tablature + dof_start)[non_silent_frames]
+
+    # Break the non-silent frames indices into degree of freedom and frame
+    dof_idcs, frame_idcs = non_silent_frames.nonzero()
+
+    # Populate the stacked multi pitch array
+    stacked_multi_pitch[(dof_idcs, pitch_idcs, frame_idcs)] = 1
+
+    return stacked_multi_pitch
 
 
 ##################################################
@@ -575,8 +906,6 @@ def stacked_pitch_list_to_tablature(stacked_pitch_list, profile):
 
     # Convert the stacked multi pitch array into tablature
     tablature = stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile)
-
-    # TODO - validation check?
 
     return tablature
 
@@ -636,8 +965,6 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
     # Collapse the list to get the final tablature
     tablature = np.concatenate(tablature)
 
-    # TODO - validation check?
-
     return tablature
 
 
@@ -695,8 +1022,6 @@ def notes_to_onsets(pitches, intervals, times, profile, ambiguity=None):
     # Obtain the offsets using the note to multi pitch conversion
     onsets = notes_to_multi_pitch(pitches, truncated_note_intervals, times, profile)
 
-    # TODO - validation check?
-
     return onsets
 
 
@@ -730,8 +1055,6 @@ def multi_pitch_to_onsets(multi_pitch):
 
     # Consider anything above zero an onset
     onsets[onsets <= 0] = 0
-
-    # TODO - validation check?
 
     return onsets
 
@@ -801,8 +1124,6 @@ def notes_to_offsets(pitches, intervals, times, profile, ambiguity=None):
     # Obtain the offsets using the note to multi pitch conversion
     offsets = notes_to_multi_pitch(pitches, post_note_intervals, times, profile)
 
-    # TODO - validation check?
-
     return offsets
 
 
@@ -839,8 +1160,6 @@ def multi_pitch_to_offsets(multi_pitch):
 
     # Consider anything below zero an offset
     offsets[offsets <= 0] = 0
-
-    # TODO - validation check?
 
     return offsets
 
@@ -895,8 +1214,6 @@ def sort_batched_notes(batched_notes, by=0):
     # Reset the dtype of the batch-friendly notes
     batched_notes.dtype = dtype
 
-    # TODO - validation check?
-
     return batched_notes
 
 
@@ -933,8 +1250,6 @@ def sort_notes(pitches, intervals, by=0):
     # Convert back to loose note groups
     pitches, intervals = batched_notes_to_notes(batched_notes)
 
-    # TODO - validation check?
-
     return pitches, intervals
 
 
@@ -970,37 +1285,12 @@ def sort_pitch_list(times, pitch_list):
     # Sort the pitch list
     pitch_list = [pitch_list[i] for i in sort_order]
 
-    # TODO - validation check?
-
     return times, pitch_list
 
 
 ##################################################
-# UTILITY                                        #
+# DATA MANIPULATION                              #
 ##################################################
-
-
-def seed_everything(seed):
-    """
-    Set all necessary seeds for PyTorch at once.
-
-
-    WARNING: the number of workers in the training loader affects behavior:
-             this is because each sample will inevitably end up being processed
-             by a different worker if num_workers is changed, and each worker
-             has its own random seed
-             TODO - I will fix this in the future if possible
-
-    Parameters
-    ----------
-    seed : int
-      Seed to use for random number generation
-    """
-
-    torch.backends.cudnn.deterministic = True
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    random.seed(seed)
 
 
 def rms_norm(audio):
@@ -1136,44 +1426,154 @@ def threshold_activations(activations, threshold=0.5):
     return activations
 
 
+def framify_activations(activations, win_length, hop_length, pad=True):
+    """
+    Chunk activations into overlapping frames along the last dimension.
+
+    Parameters
+    ----------
+    activations : ndarray
+      Provided activations
+    win_length : int
+      Number of frames to include in each chunk
+    hop_length : int
+      Number of frames to skip between each chunk
+    pad : bool
+      Whether to pad incoming activations with zeros to give back array with same shape
+
+    Returns
+    ----------
+    activations : ndarray
+      Framified activations
+    """
+
+    # Determine the number of frames provided
+    num_frames = activations.shape[-1]
+
+    # Determine the pad length (also used if not padding)
+    pad_length = (win_length // 2)
+
+    if pad:
+        # Determine the number of intermediary frames required to give back same size
+        int_frames = num_frames + 2 * pad_length
+        # Pad the activations with zeros
+        activations = librosa.util.pad_center(activations, int_frames)
+    else:
+        # Number of intermediary frames is the same
+        int_frames = num_frames
+
+
+    #TODO - following code might be cleaner but seems very unstable
+
+    # Convert the activations to a fortran array
+    activations = np.asfortranarray(activations)
+
+    # Framify the activations using librosa
+    activations = librosa.util.frame(activations, win_length, hop_length).copy()
+
+    # Switch window index and time index axes
+    activations = np.swapaxes(activations, -1, -2)
+
+    return activations
+
+    """
+    TODO - make sure librosa version works, if not, revert to my implementation
+    # Determine the number of hops in the activations
+    num_hops = (int_frames - 2 * pad_length) // hop_length
+    # Obtain the indices of the start of each chunk
+    chunk_idcs = np.arange(0, num_hops) * hop_length
+
+    # Chunk the activations with the specified window and hop length
+    activations = [np.expand_dims(activations[..., i : i + win_length], axis=-2) for i in chunk_idcs]
+
+    # Combine the chunks to get the framified activations
+    activations = np.concatenate(activations, axis=-2)
+
+    return activations
+    """
+
+
+##################################################
+# UTILITY                                        #
+##################################################
+
+
+def seed_everything(seed):
+    """
+    Set all necessary seeds for PyTorch at once.
+
+
+    WARNING: the number of workers in the training loader affects behavior:
+             this is because each sample will inevitably end up being processed
+             by a different worker if num_workers is changed, and each worker
+             has its own random seed
+             TODO - I will fix this in the future if possible
+
+    Parameters
+    ----------
+    seed : int
+      Seed to use for random number generation
+    """
+
+    torch.backends.cudnn.deterministic = True
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    random.seed(seed)
+
+
+def tensor_to_array(tensor):
+    """
+    Simple helper function to convert a PyTorch tensor
+    into a NumPy array in order to keep code readable.
+
+    Parameters
+    ----------
+    tensor : PyTorch tensor
+      Tensor to convert to array
+
+    Returns
+    ----------
+    array : NumPy ndarray
+      Converted array
+    """
+
+    # Change device to CPU,
+    # detach from gradient graph,
+    # and convert to NumPy array
+    array = tensor.cpu().detach().numpy()
+
+    return array
+
+
+def array_to_tensor(array, device=None):
+    """
+    Simple helper function to convert a NumPy array
+    into a PyTorch tensor in order to keep code readable.
+
+    Parameters
+    ----------
+    array : NumPy ndarray
+      Array to convert to tensor
+    device : string, or None (optional)
+      Add tensor to this device, if specified
+
+    Returns
+    ----------
+    tensor : PyTorch tensor
+      Converted tensor
+    """
+
+    # Convert to PyTorch tensor
+    tensor = torch.from_numpy(array)
+
+    # Add tensor to device, if specified
+    if device is not None:
+        tensor = tensor.to(device)
+
+    return tensor
+
+
 # TODO - major cleanup needed for all of these functions
-
-
-def to_single(activations, profile):
-    if valid_tabs(activations, profile):
-        activations = tabs_to_multi_pianoroll(activations, profile)
-
-    if valid_multi(activations, profile):
-        # TODO - multi_to_single and single_to_multi funcs
-        activations = np.max(activations, axis=0)
-
-    assert valid_single(activations, profile)
-
-    return activations
-
-
-def to_multi(activations, profile):
-    if valid_single(activations, profile):
-        activations = np.expand_dims(activations, axis=0)
-
-    if valid_tabs(activations, profile):
-        activations = tabs_to_multi_pianoroll(activations, profile)
-
-    assert valid_multi(activations, profile)
-
-    return activations
-
-
-def to_tabs(activations, profile):
-    if valid_single(activations, profile):
-        activations = np.expand_dims(activations, axis=0)
-
-    if valid_multi(activations, profile):
-        activations = multi_pianoroll_to_tabs(activations, profile)
-
-    assert valid_tabs(activations, profile)
-
-    return activations
 
 
 def feats_to_batch(feats, times):
@@ -1228,131 +1628,6 @@ def track_to_cpu(track):
             track[key] = track[key].squeeze().cpu().detach().numpy()
 
     return track
-
-
-# TODO - should I be using a yield function instead of for batch in loader?
-
-
-def framify_tfr(tfr, win_length, hop_length, pad=None):
-    # TODO - avoid conversion in collate_fn instead?
-    to_torch = False
-    if 'torch' in str(tfr.dtype):
-        to_torch = True
-        tfr = tfr.cpu().detach().numpy()
-
-    # TODO - parameterize axis or just assume -1?
-    if pad is not None:
-        # TODO - librosa pad center?
-        pad_amts = [(0,)] * (len(tfr.shape) - 1) + [(pad,)]
-        tfr = np.pad(tfr, tuple(pad_amts))
-
-    #tfr = np.asfortranarray(tfr)
-    # TODO - this is a cleaner solution but seems to be very unstable
-    #stack = librosa.util.frame(tfr, win_length, hop_length).copy()
-
-    dims = tfr.shape
-    num_hops = (dims[-1] - 2 * pad) // hop_length
-    hops = np.arange(0, num_hops, hop_length)
-    new_dims = dims[:-1] + (win_length, num_hops)
-
-    tfr = tfr.reshape(np.prod(dims[:-1]), dims[-1])
-    tfr = [np.expand_dims(tfr[:, i : i + win_length], axis=-1) for i in hops]
-
-    stack = np.concatenate(tfr, axis=-1)
-    stack = np.reshape(stack, new_dims)
-
-    if to_torch:
-        stack = torch.from_numpy(stack)
-
-    return stack
-
-
-def valid_activations(activations, profile):
-    # TODO - add valid pitchlist?
-    valid = valid_single(activations, profile)
-    valid = valid or valid_multi(activations, profile)
-    valid = valid or valid_tabs(activations, profile)
-
-    return valid
-
-
-def valid_single(activations, profile):
-    single = True
-
-    shape = activations.shape
-
-    if len(shape) != 2:
-        single = False
-
-    if shape[0] != profile.get_range_len():
-        single = False
-
-    if isinstance(activations, np.ndarray):
-        if np.max(activations) > 1:
-            single = False
-
-        if np.min(activations) < 0:
-            single = False
-
-    if isinstance(activations, torch.Tensor):
-        if torch.max(activations) > 1:
-            single = False
-
-        if torch.min(activations) < 0:
-            single = False
-
-    return single
-
-
-def valid_multi(activations, profile):
-    multi = True
-
-    shape = activations.shape
-
-    if len(shape) != 3:
-        multi = False
-
-    if shape[1] != profile.get_range_len():
-        multi = False
-
-    return multi
-
-
-def valid_tabs(activations, profile):
-    tabs = True
-
-    shape = activations.shape
-
-    if len(shape) != 2:
-        tabs = False
-
-    if shape[0] == profile.get_range_len():
-        tabs = False
-
-    # Must be exact integers
-    if isinstance(activations, np.ndarray):
-        if np.sum(activations - np.round(activations)) != 0:
-            tabs = False
-
-    if isinstance(activations, torch.Tensor):
-        if torch.sum(activations - torch.round(activations)) != 0:
-            tabs = False
-
-    return tabs
-
-
-def valid_notes(pitches, intervals):
-    # TODO - array dimensions as well
-    # Validate the intervals
-    valid = librosa.util.valid_intervals(intervals)
-
-    # Validate the pitches - should be in Hz
-    try:
-        mir_eval.util.validate_frequencies(pitches, 5000, 20)
-    except ValueError:
-        valid = False
-
-    return valid
 
 
 # TODO - use this standardized version everywhere

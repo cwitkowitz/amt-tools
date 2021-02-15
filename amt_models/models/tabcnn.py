@@ -124,6 +124,3 @@ class TabCNN(TranscriptionModel):
         preds[label] = out_layer.finalize_output(output)
 
         return preds
-
-    def special_steps(self):
-        super().special_steps()

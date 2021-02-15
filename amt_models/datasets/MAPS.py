@@ -5,11 +5,10 @@ import amt_models.tools as tools
 
 # Regular imports
 import numpy as np
-import librosa
 import os
 
 # TODO - put velocity to use
-# TODO - significant overlap in load with MAESTRO
+# TODO - same load as MAESTRO
 
 
 class MAPS(TranscriptionDataset):
@@ -81,7 +80,7 @@ class MAPS(TranscriptionDataset):
         data = super().load(track)
 
         # If the track data is being instantiated, it will not have the 'audio' key
-        if 'audio' not in data.keys():
+        if tools.KEY_AUDIO not in data.keys():
             # Construct the path to the track's audio
             wav_path = self.get_wav_path(track)
             # Load and normalize the audio along with the sampling rate
@@ -97,7 +96,17 @@ class MAPS(TranscriptionDataset):
             # We need the frame times for the multi pitch array
             times = self.data_proc.get_times(data[tools.KEY_AUDIO])
 
+            # Obtain the multi pitch array from the notes
             data[tools.KEY_MULTIPITCH] = tools.notes_to_multi_pitch(pitches, intervals, times, self.profile)
+
+            # Consider the length of a hop as the ambiguity for onsets/offsets
+            ambiguity = self.hop_length / self.sample_rate
+
+            # Obtain note onsets from the notes
+            data[tools.KEY_ONSET] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
+
+            # Obtain note offsets from the notes
+            data[tools.KEY_OFFSET] = tools.notes_to_offsets(pitches, intervals, times, self.profile, ambiguity)
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
@@ -178,7 +187,7 @@ class MAPS(TranscriptionDataset):
         """
 
         # Get the path to the audio
-        wav_path = os.path.join(self.get_track_dir(track), track + '.wav')
+        wav_path = os.path.join(self.get_track_dir(track), track + tools.WAV_EXT)
 
         return wav_path
 
@@ -198,7 +207,7 @@ class MAPS(TranscriptionDataset):
         """
 
         # Get the path to the annotations
-        midi_path = os.path.join(self.get_track_dir(track), track + '.mid')
+        midi_path = os.path.join(self.get_track_dir(track), track + tools.MID_EXT)
 
         return midi_path
 
