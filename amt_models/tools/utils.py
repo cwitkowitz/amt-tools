@@ -835,8 +835,8 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
       Array of class membership for multiple degrees of freedom (e.g. strings)
       S - number of strings or degrees of freedom
       T - number of frames
-    profile : InstrumentProfile (instrument.py)
-      Instrument profile detailing experimental setup
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
 
     Returns
     ----------
@@ -890,8 +890,8 @@ def stacked_pitch_list_to_tablature(stacked_pitch_list, profile):
     ----------
     stacked_pitch_list : dict
       Dictionary containing (slice -> (times, pitch_list)) pairs
-    profile : InstrumentProfile (instrument.py)
-      Instrument profile detailing experimental setup
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
 
     Returns
     ----------
@@ -921,8 +921,8 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
       S - number of slices in stack
       F - number of discrete pitches
       T - number of frames
-    profile : InstrumentProfile (instrument.py)
-      Instrument profile detailing experimental setup
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
 
     Returns
     ----------
@@ -948,7 +948,7 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
 
         # Lower and upper pitch boundary for this degree of freedom
         lower_bound = tuning[dof] - profile.low
-        upper_bound = lower_bound + profile.num_frets + 1
+        upper_bound = lower_bound + profile.num_pitches
 
         # Bound the multi pitch array by the support of the degree of freedom
         multi_pitch = multi_pitch[lower_bound : upper_bound]
