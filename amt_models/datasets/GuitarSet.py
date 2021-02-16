@@ -108,25 +108,19 @@ class GuitarSet(TranscriptionDataset):
             ambiguity = self.hop_length / self.sample_rate
 
             # Obtain note onsets from the notes
-            data[tools.KEY_ONSET] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
+            data[tools.KEY_ONSETS] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
 
             # Obtain note offsets from the notes
-            data[tools.KEY_OFFSET] = tools.notes_to_offsets(pitches, intervals, times, self.profile, ambiguity)
+            data[tools.KEY_OFFSETS] = tools.notes_to_offsets(pitches, intervals, times, self.profile, ambiguity)
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
 
-                # Save the audio, sampling rate, frame-wise pitches, and notes
-                args = (data[tools.KEY_FS],
-                        data[tools.KEY_AUDIO],
-                        data[tools.KEY_TABLATURE],
-                        data[tools.KEY_NOTES])
-                kwds = (tools.KEY_FS,
-                        tools.KEY_AUDIO,
-                        tools.KEY_TABLATURE,
-                        tools.KEY_NOTES)
-                np.savez(gt_path)
+                # Save the data as a NumPy zip file
+                keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_TABLATURE, tools.KEY_ONSETS, tools.KEY_OFFSETS)
+                np.savez(gt_path, keys, data[tools.KEY_FS], data[tools.KEY_AUDIO],
+                         data[tools.KEY_TABLATURE], data[tools.KEY_ONSETS], data[tools.KEY_OFFSETS])
 
         return data
 

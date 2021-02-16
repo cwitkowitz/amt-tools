@@ -10,6 +10,7 @@ from copy import deepcopy
 from tqdm import tqdm
 
 import numpy as np
+import warnings
 import shutil
 import os
 
@@ -395,8 +396,19 @@ class TranscriptionDataset(Dataset):
             # Load the ground-truth if it exists
             data = dict(np.load(gt_path))
 
+            # Extract the key names stored in the dictionary
+            keys = data.pop(list(data.keys())[0])
+
+            # Obtain the names of the saved keys
+            old_keys = list(data.keys())
+
+            # Re-add all of the entries of the data with the specified keys
+            for i in range(len(keys)):
+                data[keys[i]] = data.pop(old_keys[i])
+
             # Make sure there is agreement between dataset and saved data
-            assert self.sample_rate == data[tools.KEY_FS].item()
+            if self.sample_rate != data[tools.KEY_FS].item():
+                warnings.warn('Loaded track\'s sampling rate differs from expected.')
 
         if data is None:
             # Initialize a new dictionary if there is no saved data
