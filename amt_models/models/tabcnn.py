@@ -6,16 +6,25 @@ import amt_models.tools as tools
 # Regular imports
 from torch import nn
 
-# TODO - different file naming scheme? - don't remember why I put this here (probably bc same name as example)
-
 
 class TabCNN(TranscriptionModel):
-    def __init__(self, dim_in, profile, in_channels=1, model_complexity=1, device='cpu', win_len=9):
+    """
+    Implements the TabCNN model (http://archives.ismir.net/ismir2019/paper/000033.pdf).
+    """
+
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=1, device='cpu'):
+        """
+        Initialize the model and establish parameter defaults in function signature.
+
+        Parameters
+        ----------
+        See TranscriptionModel class for others...
+        """
+
         super().__init__(dim_in, profile, in_channels, model_complexity, device)
 
-        # TODO - redo model complexity - don't remember why I put this here
         # Number of frames required for a prediction
-        sample_width = 9
+        self.frame_width = 9
 
         # Number of filters for each stage
         nf1 = 32 * self.model_complexity
@@ -37,9 +46,7 @@ class TabCNN(TranscriptionModel):
         # Number of neurons for each fully-connected stage
         nn1 = 128
 
-        self.win_len = win_len
-
-        self.spatial = nn.Sequential(
+        self.conv = nn.Sequential(
             # 1st convolution
             nn.Conv2d(self.in_channels, nf1, ks1),
             # Activation function
@@ -58,69 +65,139 @@ class TabCNN(TranscriptionModel):
             nn.Dropout(dp1)
         )
 
+        # Determine the height, width, and total size of the feature map
         feat_map_height = (self.dim_in - 6) // 2
-        feat_map_width = (sample_width - 6) // 2
-        self.feat_map_size = nf3 * feat_map_height * feat_map_width
+        feat_map_width = (self.frame_width - 6) // 2
+        feat_map_size = nf3 * feat_map_height * feat_map_width
+
+        # Extract tablature parameters
+        num_groups = self.profile.get_num_dofs()
+        num_classes = self.profile.num_pitches + 1
 
         self.dense = nn.Sequential(
             # 1st fully-connected
-            nn.Linear(self.feat_map_size, nn1),
+            nn.Linear(feat_map_size, nn1),
             # Activation function
             nn.ReLU(),
             # 2nd dropout
             nn.Dropout(dp2),
             # 2nd fully-connected
-            SoftmaxGroups(nn1, self.profile, 'pitch')
+            SoftmaxGroups(nn1, num_groups, num_classes)
         )
 
     def pre_proc(self, batch):
-        # Add the batch to the model's device
-        super().pre_proc(batch)
+        """
+        Perform necessary pre-processing steps for the transcription model.
 
-        feats = batch['feats']
-        # Window the features
-        feats = framify_tfr(feats, self.win_len, 1, self.win_len // 2)
-        # Switch the sample-frame and sequence-frame axes
-        feats = feats.transpose(-1, -2)
+        Parameters
+        ----------
+        batch : dict
+          Dictionary containing all relevant fields for a group of tracks
+
+        Returns
+        ----------
+        batch : dict
+          Dictionary with all PyTorch Tensors added to the appropriate device
+          and all pre-processing steps complete
+        """
+
+        batch = super().pre_proc(batch)
+
+        # Extract the features from the batch as a NumPy array
+        feats = tools.tensor_to_array(batch[tools.KEY_FEATS])
+        # Window the features to mimic real-time operation
+        feats = tools.framify_activations(feats, self.frame_width)
+        # Convert the features back to PyTorch tensor and add to device
+        feats = tools.array_to_tensor(feats, self.device)
         # Switch the sequence-frame and feature axes
         feats = feats.transpose(-2, -3)
         # Remove the single channel dimension
         feats = feats.squeeze(1)
-        batch['feats'] = feats.to(self.device)
+
+        batch[tools.KEY_FEATS] = feats
 
         return batch
 
     def forward(self, feats):
-        bs = get_batch_size(feats)
-        # Collapse the sequence-frame axis into the batch axis, so that
-        # each windowed group of frames is treated as one independent sample
-        feats = feats.reshape(-1, 1, self.dim_in, self.win_len)
+        """
+        Perform the main processing steps for TabCNN.
 
-        x = self.spatial(feats)
-        x = x.flatten().view(bs, -1, self.feat_map_size)
-        preds = self.dense(x)
+        Parameters
+        ----------
+        feats : Tensor (B x T x F x W)
+          Input features for a batch of tracks,
+          B - batch size
+          T - number of frames
+          F - number of features (frequency bins)
+          W - frame width of each sample
 
-        return preds
+        Returns
+        ----------
+        output : dict w/ Tensor (B x T x O)
+          Dictionary containing tablature output
+          B - batch size,
+          T - number of time steps (frames),
+          O - number of output neurons (dim_out)
+        """
+
+        # Initialize an empty dictionary to hold output
+        output = dict()
+
+        # Obtain the batch size before sequence-frame axis is collapsed
+        batch_size = feats.size(0)
+
+        # Collapse the sequence-frame axis into the batch axis,
+        # so that each windowed group of frames is treated as one
+        # independent sample. This is not done during pre-processing
+        # in order to maintain consistency with the notion of batch size
+        feats = feats.reshape(-1, 1, self.dim_in, self.frame_width)
+
+        # Obtain the feature embeddings
+        embeddings = self.conv(feats)
+        # Flatten spatial features into one embedding
+        embeddings = embeddings.flatten(1)
+        # Size of the embedding
+        embedding_size = embeddings.size(-1)
+        # Restore proper batch dimension, unsqueezing sequence-frame axis
+        embeddings = embeddings.view(batch_size, -1, embedding_size)
+
+        # Obtain the tablature estimate and add it to the output dictionary
+        output[tools.KEY_TABLATURE] = self.dense(embeddings)
+
+        return output
 
     def post_proc(self, batch):
-        preds = batch['preds']
+        """
+        Calculate loss and finalize model output
 
-        out_layer = self.dense[-1]
+        Parameters
+        ----------
+        batch : dict
+          Dictionary including model output and potentially
+          ground-truth for a group of tracks
 
-        label = out_layer.tag
-        output = preds[label]
+        Returns
+        ----------
+        output : dict
+          Dictionary containing tablature as well as loss
+        """
 
-        loss = None
+        # Extract the raw output
+        output = batch[tools.KEY_OUTPUT]
 
-        # Check to see if ground-truth is available
-        if label in batch.keys():
-            reference = batch[label]
-            loss = out_layer.get_loss(output, reference)
+        # Obtain pointers to the output layer
+        tablature_output_layer = self.dense[-1]
 
-        preds.update({
-            'loss' : loss
-        })
+        # Obtain the tablature estimation
+        tablature_est = output[tools.KEY_TABLATURE]
 
-        preds[label] = out_layer.finalize_output(output)
+        # Check to see if ground-truth tablature is available
+        if tools.KEY_TABLATURE in batch.keys():
+            # Extract the ground-truth, calculate the loss and add it to the dictionary
+            tablature_ref = batch[tools.KEY_TABLATURE]
+            output[tools.KEY_LOSS] = tablature_output_layer.get_loss(tablature_est, tablature_ref)
 
-        return preds
+        # Finalize tablature estimation
+        output[tools.KEY_TABLATURE] = tablature_output_layer.finalize_output(tablature_est)
+
+        return output

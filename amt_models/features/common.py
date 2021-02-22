@@ -13,7 +13,7 @@ class FeatureModule(object):
     Implements a generic music feature extraction module wrapper.
     """
 
-    def __init__(self, sample_rate, hop_length, num_channels=1, decibels=True):
+    def __init__(self, sample_rate, hop_length, num_channels, decibels=True):
         """
         Initialize parameters common to all feature extraction modules.
 

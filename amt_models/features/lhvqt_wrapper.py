@@ -51,11 +51,8 @@ class LHVQT(FeatureModule):
                            to_db=decibels,
                            batch_norm=batch_norm)
 
-        # TODO - this is kinda sloppy
-        if isinstance(self.lhvqt, lc_type):
-            num_channels = 1
-        else:
-            num_channels = len(self.lhvqt.harmonics)
+        # If using harmonic comb variant of LHVQT, everything collapses to one channel
+        num_channels = 1 if isinstance(self.lhvqt, lc_type) else len(self.lhvqt.harmonics)
 
         super().__init__(sample_rate, hop_length, num_channels, decibels)
 

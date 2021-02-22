@@ -119,8 +119,8 @@ class GuitarSet(TranscriptionDataset):
 
                 # Save the data as a NumPy zip file
                 keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_TABLATURE, tools.KEY_ONSETS, tools.KEY_OFFSETS)
-                np.savez(gt_path, keys, data[tools.KEY_FS], data[tools.KEY_AUDIO],
-                         data[tools.KEY_TABLATURE], data[tools.KEY_ONSETS], data[tools.KEY_OFFSETS])
+                tools.save_pack_npz(gt_path, keys, data[tools.KEY_FS], data[tools.KEY_AUDIO],
+                                    data[tools.KEY_TABLATURE], data[tools.KEY_ONSETS], data[tools.KEY_OFFSETS])
 
         return data
 

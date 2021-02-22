@@ -1,5 +1,5 @@
 # My imports
-from amt_models.features import MelSpec
+from amt_models.features import STFT
 
 import amt_models.tools as tools
 
@@ -17,7 +17,7 @@ import os
 # TODO - more datasets - MusicNet, Slakh, Drums
 # TODO - optionally download datasets in flac to save memory
 # TODO - possible integration with mirdata
-# TODO - OnsetsFrames features - weighted frame loss, avoid note splitting
+# TODO - optionally avoud splitting notes
 
 # TODO - get notes function?
 
@@ -85,8 +85,8 @@ class TranscriptionDataset(Dataset):
 
         # Default the feature extraction to a plain Mel Spectrogram if none was provided
         if data_proc is None:
-            data_proc = MelSpec(hop_length=self.hop_length,
-                                sample_rate=self.sample_rate)
+            data_proc = STFT(hop_length=self.hop_length,
+                             sample_rate=self.sample_rate)
         self.data_proc = data_proc
 
         # Default the instrument profile to a standard piano if none was provided
@@ -211,7 +211,7 @@ class TranscriptionDataset(Dataset):
         # Check if the features already exist
         if os.path.exists(feats_path):
             # If so, load the features
-            feats_dict = np.load(feats_path, allow_pickle=True)
+            feats_dict = tools.load_unpack_npz(feats_path)
             feats = feats_dict[tools.KEY_FEATS]
             feats = feats.item() if feats.size == 1 else feats
 
@@ -228,13 +228,15 @@ class TranscriptionDataset(Dataset):
             hop_length = self.data_proc.get_hop_length()
 
             if self.save_data:
-                # Save the features to memory
+                # Get the appropriate path for saving the features
                 os.makedirs(os.path.dirname(feats_path), exist_ok=True)
-                np.savez(feats_path, feats=feats, fs=fs, hop_length=hop_length)
+                # Save the features to memory as a NumPy zip file
+                keys = (tools.KEY_FEATS, tools.KEY_FS, tools.KEY_HOP)
+                tools.save_pack_npz(feats_path, keys, feats, fs, hop_length)
 
         # Make sure there is agreement between dataset and features
-        assert self.sample_rate == fs
-        assert self.hop_length == hop_length
+        if self.sample_rate != fs or self.hop_length != hop_length:
+            warnings.warn('Loaded features\' sampling rate or hop length differs from expected.')
 
         # Calculate the frame times every time (faster than saving/loading)
         times = self.data_proc.get_times(data[tools.KEY_AUDIO])
@@ -333,25 +335,13 @@ class TranscriptionDataset(Dataset):
             sec_start = sample_start / self.sample_rate
             sec_stop = sample_end / self.sample_rate
 
-            # Remove notes with onsets before the slice start time
-            notes = notes[notes[:, 0] > sec_start]
-            # Remove notes with onsets after the slice stop time
-            notes = notes[notes[:, 0] < sec_stop]
-            # Clip offsets at the slice stop time
-            notes[:, 1] = np.minimum(notes[:, 1], sec_stop)
+            # Remove notes occurring outside of the sampled window
+            data[tools.KEY_NOTES] = tools.slice_batched_notes(notes, sec_start, sec_stop)
 
-            data[tools.KEY_NOTES] = notes
-
-        # Remove keys already processed
-        keys.remove(tools.KEY_AUDIO)
-        keys.remove(tools.KEY_NOTES)
-        keys.remove(tools.KEY_FS)
-
-        # Slice remaining entries (all assumed to be NumPy arrays)
-        for key in keys:
-            if isinstance(data[key], np.ndarray):
-                # Normal frame slicing protocol
-                data[key] = data[key][..., frame_start : frame_end]
+        # Define list of entries to skip during slicing process
+        skipped_keys = [tools.KEY_AUDIO, tools.KEY_FS, tools.KEY_NOTES]
+        # Slice the remaining dictionary entries
+        data = tools.slice_track(data, frame_start, frame_end, skipped_keys)
 
         return data
 
@@ -393,18 +383,8 @@ class TranscriptionDataset(Dataset):
 
         # Check if an entry for the data exists
         if os.path.exists(gt_path):
-            # Load the ground-truth if it exists
-            data = dict(np.load(gt_path))
-
-            # Extract the key names stored in the dictionary
-            keys = data.pop(list(data.keys())[0])
-
-            # Obtain the names of the saved keys
-            old_keys = list(data.keys())
-
-            # Re-add all of the entries of the data with the specified keys
-            for i in range(len(keys)):
-                data[keys[i]] = data.pop(old_keys[i])
+            # Load and unpack the data
+            data = tools.load_unpack_npz(gt_path)
 
             # Make sure there is agreement between dataset and saved data
             if self.sample_rate != data[tools.KEY_FS].item():

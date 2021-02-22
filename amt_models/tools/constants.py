@@ -12,7 +12,6 @@ ROOT_DIR = os.path.dirname(os.path.join(SCPT_DIR))
 # DEFAULT PATHS                                  #
 ##################################################
 
-# TODO - make these all overridable (I think they are)
 # TODO - should I highlight DIR vs. PATH?
 HOME = os.path.expanduser('~')
 DEFAULT_DATASETS_DIR = os.path.join(HOME, 'Desktop', 'Datasets')
@@ -49,6 +48,8 @@ KEY_ONSETS = 'onsets'
 KEY_OFFSETS = 'offsets'
 KEY_TIMES = 'times'
 KEY_NOTES = 'notes'
+KEY_OUTPUT = 'model_output'
+KEY_LOSS = 'loss'
 
 ##################################################
 # JAMS ATTRIBUTES                                #

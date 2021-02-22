@@ -26,5 +26,6 @@ from .cqt import *
 from .hcqt import *
 from .hvqt import *
 from .lhvqt_wrapper import *
-from .melspec import *
+from .mel import *
+from .stft import *
 from .vqt import *

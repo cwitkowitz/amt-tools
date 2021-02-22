@@ -13,7 +13,7 @@ class MelSpec(FeatureModule):
     Implements a Mel Spectrogram wrapper.
     """
     def __init__(self, sample_rate=16000, hop_length=512, decibels=True,
-                 n_mels=229, n_fft=2048, htk=False):
+                 n_mels=229, n_fft=2048, win_length=None, htk=False):
         """
         Initialize parameters for the Mel Spectrogram.
 
@@ -24,6 +24,10 @@ class MelSpec(FeatureModule):
           Number of bins (filters) in Mel spectrogram
         n_fft : int
           Length of the FFT window in spectrogram calculation
+        win_length : int
+          Number of samples to use for each frame;
+          Must be less than or equal to n_fft;
+          Defaults to n_fft if unspecified
         htk : bool
           Whether to use HTK formula instead of Slaney
         """
@@ -32,6 +36,7 @@ class MelSpec(FeatureModule):
 
         self.n_mels = n_mels
         self.n_fft = n_fft
+        self.win_length = win_length
         self.htk = htk
 
     def process_audio(self, audio):
@@ -55,6 +60,7 @@ class MelSpec(FeatureModule):
                                              n_mels=self.n_mels,
                                              n_fft=self.n_fft,
                                              hop_length=self.hop_length,
+                                             win_length=self.win_length,
                                              htk=self.htk)
 
         # Post-process the Mel Spectrogram

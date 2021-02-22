@@ -4,7 +4,7 @@ from .common import FeatureModule
 # Regular imports
 import numpy as np
 
-# TODO - redundant saving
+# TODO - redundant saving - maybe it should be a function of feature extraction module and not dataset
 
 
 class FeatureCombo(FeatureModule):
@@ -41,6 +41,8 @@ class FeatureCombo(FeatureModule):
         # Gather expected counts from inner modules
         num_frames = [module.get_expected_frames(audio)
                       for module in self.modules]
+
+        # TODO - equality constraint depend on how I deal with following TODOs
         # Make sure the expected frame count of each module is the same
         assert len(set(num_frames)) == 1
         # Collapse the expected frame counts
@@ -92,7 +94,7 @@ class FeatureCombo(FeatureModule):
           Post-processed features
         """
 
-        # TODO - more sophisticated stacking/padding may be required
+        # TODO - more sophisticated stacking/padding may be required - not if I return a list and let user figure it out
 
         feats = []
         # Gather features from inner modules
@@ -110,6 +112,7 @@ class FeatureCombo(FeatureModule):
         if feats is not None:
             # Stack the features along the channel dimension
             # TODO - this will break if dimensionality mismatch
+            # TODO - I should just return the list if I can't concatenate
             feats = np.concatenate(feats, axis=0)
 
         return feats
@@ -152,6 +155,8 @@ class FeatureCombo(FeatureModule):
           Presumed sampling rate for all audio
         """
 
+        # TODO - remove equality constraint - return min/max? - or only collapse if size(unique) == 1 like above
+
         sample_rate = [module.get_sample_rate() for module in self.modules]
         # Make sure the sample_rate of each module is the same
         assert len(set(sample_rate)) == 1
@@ -169,6 +174,8 @@ class FeatureCombo(FeatureModule):
         hop_length : int or float
           Number of samples between feature frames
         """
+
+        # TODO - remove equality constraint - return min/max? - or only collapse if size(unique) == 1 like above
 
         hop_length = [module.get_hop_length() for module in self.modules]
         # Make sure the hop length of each module is the same

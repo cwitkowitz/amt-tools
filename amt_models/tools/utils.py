@@ -6,6 +6,7 @@ from copy import deepcopy
 from scipy import signal
 
 import numpy as np
+import warnings
 import librosa
 import random
 import torch
@@ -14,7 +15,7 @@ import torch
 # TODO - torch Tensor compatibility
 # TODO - description of data formats in headings
 # TODO - try to ensure these won't break if extra dimensions (e.g. batch) are included
-# TODO - make sure there are no hard assignments (make return copies instead of original)
+# TODO - make sure there are no hard assignments (make return copies instead of original where necessary)
 
 
 ##################################################
@@ -38,7 +39,7 @@ def notes_to_batched_notes(pitches, intervals):
     Returns
     ----------
     batched_notes : ndarray (N x 3)
-      Array of note pitches and intervals by row
+      Array of note intervals and pitches by row
       N - number of notes
     """
 
@@ -61,13 +62,13 @@ def batched_notes_to_hz(batched_notes):
     Parameters
     ----------
     batched_notes : ndarray (N x 3)
-      Array of MIDI note pitches and intervals by row
+      Array of note intervals and MIDI pitches by row
       N - number of notes
 
     Returns
     ----------
     batched_notes : ndarray (N x 3)
-      Array of Hertz note pitches and intervals by row
+      Array of note intervals and Hertz pitches by row
       N - number of notes
     """
 
@@ -84,18 +85,54 @@ def batched_notes_to_midi(batched_notes):
     Parameters
     ----------
     batched_notes : ndarray (N x 3)
-      Array of Hertz note pitches and intervals by row
+      Array of note intervals and Hertz pitches by row
       N - number of notes
 
     Returns
     ----------
     batched_notes : ndarray (N x 3)
-      Array of MIDI note pitches and intervals by row
+      Array of note intervals and MIDI pitches by row
       N - number of notes
     """
 
     # Convert pitch column to MIDI
     batched_notes[..., 2] = librosa.hz_to_midi(batched_notes[..., 2])
+
+    return batched_notes
+
+
+def slice_batched_notes(batched_notes, start_time, stop_time):
+    """
+    Remove note entries occurring outside of time window.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row
+      N - number of notes
+    start_time : float
+      Beginning of time window
+    stop_time : float
+      End of time window
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row
+      N - number of notes
+    """
+
+    # Remove notes with offsets before the slice start time
+    batched_notes = batched_notes[batched_notes[:, 1] > start_time]
+
+    # Remove notes with onsets after the slice stop time
+    batched_notes = batched_notes[batched_notes[:, 0] < stop_time]
+
+    # Clip onsets at the slice start time
+    batched_notes[:, 0] = np.maximum(batched_notes[:, 0], start_time)
+
+    # Clip offsets at the slice stop time
+    batched_notes[:, 1] = np.minimum(batched_notes[:, 1], stop_time)
 
     return batched_notes
 
@@ -1426,7 +1463,7 @@ def threshold_activations(activations, threshold=0.5):
     return activations
 
 
-def framify_activations(activations, win_length, hop_length, pad=True):
+def framify_activations(activations, win_length, hop_length=1, pad=True):
     """
     Chunk activations into overlapping frames along the last dimension.
 
@@ -1463,8 +1500,9 @@ def framify_activations(activations, win_length, hop_length, pad=True):
         int_frames = num_frames
 
 
-    #TODO - following code might be cleaner but seems very unstable
+    # TODO - commented code is cleaner but breaks in PyTorch pipeline during model.pre_proc
 
+    """
     # Convert the activations to a fortran array
     activations = np.asfortranarray(activations)
 
@@ -1475,9 +1513,8 @@ def framify_activations(activations, win_length, hop_length, pad=True):
     activations = np.swapaxes(activations, -1, -2)
 
     return activations
-
     """
-    TODO - make sure librosa version works, if not, revert to my implementation
+
     # Determine the number of hops in the activations
     num_hops = (int_frames - 2 * pad_length) // hop_length
     # Obtain the indices of the start of each chunk
@@ -1490,7 +1527,6 @@ def framify_activations(activations, win_length, hop_length, pad=True):
     activations = np.concatenate(activations, axis=-2)
 
     return activations
-    """
 
 
 ##################################################
@@ -1573,11 +1609,217 @@ def array_to_tensor(array, device=None):
     return tensor
 
 
-# TODO - major cleanup needed for all of these functions
+def save_pack_npz(path, keys, *args):
+    """
+    Simple helper function to circumvent hardcoding of
+    keyword arguments for NumPy zip loading and saving.
+    This saves the desired keys (in-order) for the rest
+    of the array in the first entry of the zipped array.
+
+    Parameters
+    ----------
+    path : string
+      Path to save the NumPy zip file
+    keys : list of str
+      Keys corresponding to the rest of the entries
+    *args : object
+      Any objects to save to the array
+    """
+
+    # Make sure there is agreement between dataset and features
+    if len(keys) != len(args):
+        warnings.warn('Number of keys does not match number of entries provided.')
+
+    # Save the keys and entries as a NumPy zip at the specified path
+    np.savez(path, keys, *args)
+
+
+def load_unpack_npz(path):
+    """
+    Simple helper function to circumvent hardcoding of
+    keyword arguments for NumPy zip loading and saving.
+    This assumes that the first entry of the zipped array
+    contains the keys (in-order) for the rest of the array.
+
+    Parameters
+    ----------
+    path : string
+      Path to load the NumPy zip file
+
+    Returns
+    ----------
+    data : dict
+      Unpacked dictionary with specified keys inserted
+    """
+
+    # Load the NumPy zip file at the path
+    data = dict(np.load(path, allow_pickle=True))
+
+    # Extract the key names stored in the dictionary
+    keys = data.pop(list(data.keys())[0])
+
+    # Obtain the names of the saved keys
+    old_keys = list(data.keys())
+
+    # Re-add all of the entries of the data with the specified keys
+    for i in range(len(keys)):
+        data[keys[i]] = data.pop(old_keys[i])
+
+    return data
+
+
+def track_to_dtype(track, dtype):
+    """
+    Convert all ndarray entries in a dictionary to a specified type.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    dtype : string or type
+      TODO - will type work?
+      Ndarray dtype to convert
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the dictionary entry is an ndarray
+        if isinstance(track[key], np.ndarray):
+            # Convert the ndarray to the specified type
+            track[key] = track[key].astype(dtype)
+
+        # TODO - convert non ndarray to similar type?
+        #if isinstance(track[key], int):
+        #    track[key] = float(track[key])
+
+    return track
+
+
+def track_to_device(track, device):
+    """
+    Add all tensor entries in a dictionary to a specified device.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    device : string, or None (optional)
+      Add tensor to this device, if specified
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the dictionary entry is a tensor
+        if isinstance(track[key], torch.Tensor):
+            # Add the tensor to the specified device
+            track[key] = track[key].to(device)
+
+    return track
+
+
+def track_to_cpu(track):
+    """
+    Convert all tensor entries in a dictionary to ndarray.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the dictionary entry is a tensor
+        if isinstance(track[key], torch.Tensor):
+            # Squeeze the tensor and convert to ndarray
+            # TODO - is squeeze necessary?
+            track[key] = tensor_to_array(track[key].squeeze())
+
+    return track
+
+
+def slice_track(track, start, stop, skip=None):
+    """
+    Slice any ndarray or tensor entries of a dictionary along the last axis.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    start : int
+      Beginning index
+    stop : int
+      End index (excluded in slice)
+    skip : list of str
+      Keys to skip during this process
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Default the skipped keys to an empty list if unspecified
+    if skip is None:
+        skip = list()
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the dictionary entry is an ndarray or tensor
+        if key not in skip and (isinstance(track[key], np.ndarray) or
+                                isinstance(track[key], torch.Tensor)):
+            # Slice along the final axis
+            track[key] = track[key][..., start : stop]
+
+    return track
+
+
+# TODO - verify/cleanup the following
 
 
 def feats_to_batch(feats, times):
     # TODO - a function which accepts only feats (for deployment)
+    # TODO - I don't think I need this at all if fwd accepts raw features
+    # TODO - in pre_proc, catch non-dict and call this?
     pass
 
 
@@ -1595,48 +1837,3 @@ def track_to_batch(track):
             batch[key] = torch.from_numpy(batch[key]).unsqueeze(0)
 
     return batch
-
-
-def track_to_dtype(track, dtype='float32'):
-    track = deepcopy(track)
-
-    keys = list(track.keys())
-    for key in keys:
-        if isinstance(track[key], np.ndarray):
-            track[key] = track[key].astype(dtype)
-        if isinstance(track[key], int):
-            track[key] = float(track[key])
-
-    return track
-
-
-def track_to_device(track, device):
-    keys = list(track.keys())
-
-    for key in keys:
-        if isinstance(track[key], torch.Tensor):
-            track[key] = track[key].to(device)
-
-    return track
-
-
-def track_to_cpu(track):
-    keys = list(track.keys())
-
-    for key in keys:
-        if isinstance(track[key], torch.Tensor):
-            track[key] = track[key].squeeze().cpu().detach().numpy()
-
-    return track
-
-
-# TODO - use this standardized version everywhere
-def get_batch_size(batch):
-    if isinstance(batch, dict):
-        bs = len(batch['track'])
-    elif isinstance(batch, np.ndarray) or isinstance(batch, torch.Tensor):
-        bs = batch.shape[0]
-    else:
-        bs = None
-
-    return bs

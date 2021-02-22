@@ -8,10 +8,24 @@ from torch import nn
 
 import torch
 
+# TODO - optional weighted frame loss
+# TODO - optionally stop gradient propagation into the onset subnetwork from the frame network
+
 
 class OnsetsFrames(TranscriptionModel):
-    # TODO - try to adhere to details of paper as much as possible
-    def __init__(self, dim_in, profile, in_channels, model_complexity=2, device='cpu'):
+    """
+    Implements the Onsets & Frames model (V1) (https://arxiv.org/abs/1710.11153).
+    """
+
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=2, device='cpu'):
+        """
+        Initialize the model and establish parameter defaults in function signature.
+
+        Parameters
+        ----------
+        See TranscriptionModel class...
+        """
+
         super().__init__(dim_in, profile, in_channels, model_complexity, device)
 
         # Number of output neurons for the acoustic models
@@ -20,107 +34,295 @@ class OnsetsFrames(TranscriptionModel):
         # Number of output neurons for the language models
         self.dim_lm = 256 * (self.model_complexity - 1)
 
-        self.onsets = nn.Sequential(
+        # Number of output neurons for each head's activations
+        dim_out = self.profile.get_range_len()
+
+        # Create the onset detector head
+        self.onset_head = nn.Sequential(
             AcousticModel(self.dim_in, self.dim_am, self.in_channels, self.model_complexity),
             LanguageModel(self.dim_am, self.dim_lm),
-            LogisticBank(self.dim_lm, self.profile, 'onsets')
+            LogisticBank(self.dim_lm, dim_out)
         )
 
-        self.pianoroll = nn.Sequential(
+        # Create the multi pitch estimator head
+        self.pitch_head = nn.Sequential(
             AcousticModel(self.dim_in, self.dim_am, self.in_channels, self.model_complexity),
-            LogisticBank(self.dim_am, self.profile)
+            LogisticBank(self.dim_am, dim_out)
         )
 
-        self.dim_aj = self.onsets[-1].dim_out + self.pianoroll[-1].dim_out
-
+        # Create the refined multi pitch estimator head
+        self.dim_aj = self.onset_head[-1].dim_out + self.pitch_head[-1].dim_out
         self.adjoin = nn.Sequential(
             LanguageModel(self.dim_aj, self.dim_lm),
-            LogisticBank(self.dim_lm, self.profile, 'pitch')
+            LogisticBank(self.dim_lm, dim_out)
         )
 
     def pre_proc(self, batch):
-        # Add the batch to the model's device
-        super().pre_proc(batch)
+        """
+        Perform necessary pre-processing steps for the transcription model.
+
+        Parameters
+        ----------
+        batch : dict
+          Dictionary containing all relevant fields for a group of tracks
+
+        Returns
+        ----------
+        batch : dict
+          Dictionary with all PyTorch Tensors added to the appropriate device
+          and all pre-processing steps complete
+        """
+
+        batch = super().pre_proc(batch)
 
         # Switch the frequency and time axes
-        batch['feats'] = batch['feats'].transpose(-1, -2)
+        batch[tools.KEY_FEATS] = batch[tools.KEY_FEATS].transpose(-1, -2)
 
         return batch
 
     def forward(self, feats):
-        generic_label = self.pianoroll[-1].tag
-        pianoroll = self.pianoroll(feats)[generic_label]
+        """
+        Perform the main processing steps for Onsets & Frames (V1).
 
-        onsets_label = self.onsets[-1].tag
-        preds = self.onsets(feats)
-        onsets = preds[onsets_label]
+        Parameters
+        ----------
+        feats : Tensor (B x C x T x F)
+          Input features for a batch of tracks,
+          B - batch size
+          C - channels
+          T - number of frames
+          F - number of features (frequency bins)
 
-        joint = torch.cat((onsets, pianoroll), -1)
-        preds.update(self.adjoin(joint))
+        Returns
+        ----------
+        output : dict w/ Tensors (B x T x O)
+          Dictionary containing multi pitch and onsets output
+          B - batch size,
+          T - number of time steps (frames),
+          O - number of output neurons (dim_out)
+        """
 
-        return preds
+        # Initialize an empty dictionary to hold output
+        output = dict()
 
-    # TODO - break this into helper functions get_onsets_loss(), get_pitch_loss(), get_loss()
+        # Obtain the initial multi pitch estimate
+        multi_pitch = self.pitch_head(feats)
+
+        # Obtain the onsets estimate and add it to the output dictionary
+        onsets = self.onset_head(feats)
+        output[tools.KEY_ONSETS] = onsets
+
+        # Concatenate the above estimates
+        joint = torch.cat((onsets, multi_pitch), -1)
+
+        # Obtain a refined multi pitch estimate and add it to the output dictionary
+        output[tools.KEY_MULTIPITCH] = self.adjoin(joint)
+
+        return output
+
     def post_proc(self, batch):
-        preds = batch['preds']
+        """
+        Calculate loss and finalize model output
 
-        onsets_layer = self.onsets[-1]
-        pianoroll_layer = self.adjoin[-1]
+        Parameters
+        ----------
+        batch : dict
+          Dictionary including model output and potentially
+          ground-truth for a group of tracks
 
-        onsets_label = onsets_layer.tag
-        pianoroll_label = pianoroll_layer.tag
+        Returns
+        ----------
+        output : dict
+          Dictionary containing multi pitch and onsets output as well as loss
+        """
 
-        onsets = preds[onsets_label]
-        pianoroll = preds[pianoroll_label]
+        # Extract the raw output
+        output = batch[tools.KEY_OUTPUT]
 
-        loss = None
+        # Obtain pointers to the output layers
+        onset_output_layer = self.onset_head[-1]
+        pitch_output_layer = self.adjoin[-1]
 
-        # TODO - separate function for calculate loss so it can be overridden?
-        # Check to see if ground-truth is available
-        if pianoroll_label in batch.keys():
-            reference_pianoroll = batch[pianoroll_label]
+        # Obtain the onset and pitch estimations
+        onsets_est = output[tools.KEY_ONSETS]
+        multi_pitch_est = output[tools.KEY_MULTIPITCH]
 
-            if onsets_label in batch.keys():
-                reference_onsets = batch[onsets_label]
+        # Check to see if ground-truth multi pitch is available
+        if tools.KEY_MULTIPITCH in batch.keys():
+            # Extract the ground-truth and calculate the multi pitch loss term
+            multi_pitch_ref = batch[tools.KEY_MULTIPITCH]
+            multi_pitch_loss = pitch_output_layer.get_loss(multi_pitch_est, multi_pitch_ref)
+
+            # Check to see if ground-truth onsets are available
+            if tools.KEY_ONSETS in batch.keys():
+                # Extract the ground-truth
+                onsets_ref = batch[tools.KEY_ONSETS]
             else:
-                reference_onsets = get_onsets(reference_pianoroll, self.profile)
+                # Obtain the onset labels from the reference multi pitch
+                onsets_ref = tools.multi_pitch_to_onsets(multi_pitch_ref)
 
-            onsets_loss = onsets_layer.get_loss(onsets, reference_onsets)
-            pianoroll_loss = pianoroll_layer.get_loss(pianoroll, reference_pianoroll)
+            # Calculate the onsets loss term
+            onsets_loss = onset_output_layer.get_loss(onsets_est, onsets_ref)
 
-            loss = onsets_loss + pianoroll_loss
+            # Compute the total loss and add it to the output dictionary
+            output[tools.KEY_LOSS] = multi_pitch_loss + onsets_loss
 
-        preds.update({
-            'loss': loss
-        })
+        # Finalize onset and pitch estimations
+        output[tools.KEY_ONSETS] = onset_output_layer.finalize_output(onsets_est)
+        output[tools.KEY_MULTIPITCH] = pitch_output_layer.finalize_output(multi_pitch_est)
 
-        preds[onsets_label] = onsets_layer.finalize_output(onsets)
-        preds[pianoroll_label] = pianoroll_layer.finalize_output(pianoroll)
-
-        return preds
+        return output
 
 
 class OnsetsFrames2(OnsetsFrames):
-    def __init__(self, dim_in, dim_out, model_complexity=3, device='cpu'):
-        super().__init__(dim_in, dim_out, model_complexity, device)
+    """
+    Implements the Onsets & Frames model (V2) (https://arxiv.org/abs/1810.12247).
+    """
 
-        # TODO - add offset head
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=3, device='cpu'):
+        """
+        Initialize the model and establish parameter defaults in function signature.
 
-    def pre_proc(self, batch):
-        return batch
+        Parameters
+        ----------
+        See TranscriptionModel class...
+        """
 
-    def forward(self):
-        pass
+        super().__init__(dim_in, profile, in_channels, model_complexity, device)
+
+        # Number of output neurons for each head's activations
+        dim_out = self.profile.get_range_len()
+
+        # Create the offset detector head
+        self.offset_head = nn.Sequential(
+            AcousticModel(self.dim_in, self.dim_am, self.in_channels, self.model_complexity),
+            LanguageModel(self.dim_am, self.dim_lm),
+            LogisticBank(self.dim_lm, dim_out)
+        )
+
+        # Re-initialize the refined multi pitch estimator head
+        self.dim_aj = self.onset_head[-1].dim_out + self.offset_head[-1].dim_out + self.pitch_head[-1].dim_out
+        self.adjoin = nn.Sequential(
+            LanguageModel(self.dim_aj, self.dim_lm),
+            LogisticBank(self.dim_lm, dim_out)
+        )
+
+    def forward(self, feats):
+        """
+        Perform the main processing steps for Onsets & Frames (V2).
+
+        Parameters
+        ----------
+        feats : Tensor (B x C x T x F)
+          Input features for a batch of tracks,
+          B - batch size
+          C - channels
+          T - number of frames
+          F - number of features (frequency bins)
+
+        Returns
+        ----------
+        output : dict w/ Tensors (B x T x O)
+          Dictionary containing multi pitch, onsets, and offsets output
+          B - batch size,
+          T - number of time steps (frames),
+          O - number of output neurons (dim_out)
+        """
+
+        # Initialize an empty dictionary to hold output
+        output = dict()
+
+        # Obtain the initial multi pitch estimate
+        multi_pitch = self.pitch_head(feats)
+
+        # Obtain the onsets estimate and add it to the output dictionary
+        onsets = self.onset_head(feats)
+        output[tools.KEY_ONSETS] = onsets
+
+        # Obtain the onsets estimate and add it to the output dictionary
+        offsets = self.offset_head(feats)
+        output[tools.KEY_OFFSETS] = offsets
+
+        # Concatenate the above estimates
+        joint = torch.cat((onsets, offsets, multi_pitch), -1)
+
+        # Obtain a refined multi pitch estimate and add it to the output dictionary
+        output[tools.KEY_MULTIPITCH] = self.adjoin(joint)
+
+        return output
 
     def post_proc(self, batch):
-        preds = None
-        loss = None
+        """
+        Calculate loss and finalize model output
 
-        return preds, loss
+        Parameters
+        ----------
+        batch : dict
+          Dictionary including model output and potentially
+          ground-truth for a group of tracks
+
+        Returns
+        ----------
+        output : dict
+          Dictionary containing multi pitch, onsets, and offsets output as well as loss
+        """
+
+        # Perform standard Onsets & Frames steps
+        output = super().post_proc(batch)
+
+        # Obtain pointers to the offset output layer
+        offset_output_layer = self.offset_head[-1]
+
+        # Obtain the offset estimations
+        offsets_est = output[tools.KEY_OFFSETS]
+
+        # Check to see if ground-truth offsets are available
+        if tools.KEY_LOSS in output.keys():
+            # Check to see if ground-truth offsets are available
+            if tools.KEY_OFFSETS in batch.keys():
+                # Extract the ground-truth
+                offsets_ref = batch[tools.KEY_OFFSETS]
+            else:
+                # Obtain the offset labels from the reference multi pitch
+                offsets_ref = tools.multi_pitch_to_offsets(batch[tools.KEY_MULTIPITCH])
+
+            # Calculate the offsets loss term
+            offsets_loss = offset_output_layer.get_loss(offsets_est, offsets_ref)
+
+            # Compute the total loss and add it to the output dictionary
+            output[tools.KEY_LOSS] += offsets_loss
+
+        # Finalize offset estimations
+        output[tools.KEY_OFFSETS] = offset_output_layer.finalize_output(offsets_est)
+
+        return output
 
 
 class AcousticModel(nn.Module):
+    """
+    Implements the acoustic model from Kelz 2016 (https://arxiv.org/abs/1710.11153),
+    with the modifications made in Onsets & Frames. To the best of my knowledge, the
+    architecture modifications consist only of an additional batch normalization
+    after the first convolutional layer. See the following Magenta implementation:
+    https://github.com/magenta/magenta/blob/master/magenta/models/onsets_frames_transcription/model.py
+    """
+
     def __init__(self, dim_in, dim_out, in_channels=1, model_complexity=2):
+        """
+        Initialize the acoustic model and establish parameter defaults in function signature.
+
+        Parameters
+        ----------
+        dim_in : int
+          Dimensionality of framewise input vectors along the feature axis
+        dim_out : int
+          Dimensionality of framewise output vectors along the feature axis
+        in_channels : int
+          Number of channels in input features
+        model_complexity : int, optional (default 1)
+          Scaling parameter for size of model's components
+        """
+
         super(AcousticModel, self).__init__()
 
         # Number of filters for each convolutional layer
@@ -182,42 +384,119 @@ class AcousticModel(nn.Module):
             nn.Dropout(dp2)
         )
 
+        # Feature dimension was reduced by a factor of 4 as a result of pooling
         feat_map_height = dim_in // 4
-        self.feat_map_size = nf3 * feat_map_height
+        # Determine the number of features per sample (frame)
+        feat_map_size = nf3 * feat_map_height
 
         self.fc1 = nn.Sequential(
             # 1st fully-connected
-            nn.Linear(self.feat_map_size, dim_out),
+            nn.Linear(feat_map_size, dim_out),
             # 3rd dropout
             nn.Dropout(dp3)
         )
 
-    def forward(self, feats):
-        x = self.layer1(feats)
+    def forward(self, in_feats):
+        """
+        Feed features through the acoustic model.
+
+        Parameters
+        ----------
+        in_feats : Tensor (B x C x T x F)
+          Input features for a batch of tracks,
+          B - batch size
+          C - channels
+          T - number of frames
+          F - number of features (frequency bins)
+
+        Returns
+        ----------
+        out_feats : Tensor (B x T x E)
+          Embeddings for a batch of tracks,
+          B - batch size
+          T - number of frames
+          E - dimensionality of embeddings
+        """
+
+        # Feed features through convolutional layers
+        x = self.layer1(in_feats)
         x = self.layer2(x)
         x = self.layer3(x)
 
-        x = x.transpose(1, 2).flatten(-2)
+        # Switch the channel and time axes
+        x = x.transpose(-3, -2)
+        # Combine the channel and feature axes
+        x = x.flatten(-2)
 
-        out = self.fc1(x)
+        # Feed the convolutional features through the fully connected layer
+        out_feats = self.fc1(x)
 
-        return out
+        return out_feats
 
 
 class LanguageModel(nn.Module):
-    def __init__(self, dim_in, dim_out, inf_len=512):
-        super().__init__()
-        self.dim_in = dim_in
-        # TODO - If bidirectional ... - better naming convention for dim out
-        self.dim_out = dim_out // 2
-        #self.dim_out = dim_out
-        self.inf_len = inf_len
-        self.rnn = nn.LSTM(self.dim_in, self.dim_out, batch_first=True, bidirectional=True)
+    """
+    Implements a simple LSTM language model for refining features over time.
+    """
 
-    def forward(self, feats):
+    def __init__(self, dim_in, dim_out, chunk_len=512, bidirectional=True):
+        """
+        Initialize the acoustic model and establish parameter defaults in function signature.
+
+        Parameters
+        ----------
+        dim_in : int
+          Dimensionality of framewise input vectors along the feature axis
+        dim_out : int
+          Dimensionality of framewise output vectors along the feature axis
+        chunk_len : int
+          Number of frames to process at a time during inference
+        bidirectional : bool
+          Whether LSTM is bidirectional
+        """
+
+        super().__init__()
+
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.chunk_len = chunk_len
+
+        # Determine the number of neurons
+        self.hidden_size = dim_out // 2 if bidirectional else dim_out
+
+        # Initialize the LSTM
+        self.mlm = nn.LSTM(input_size=self.dim_in,
+                           hidden_size=self.hidden_size,
+                           batch_first=True,
+                           bidirectional=bidirectional)
+
+    def forward(self, in_feats):
+        """
+        Feed features through the music language model.
+
+        Parameters
+        ----------
+        in_feats : Tensor (B x T x E)
+          Input features for a batch of tracks,
+          B - batch size
+          T - number of frames
+          E - dimensionality of input embeddings
+
+        Returns
+        ----------
+        out_feats : Tensor (B x T x E)
+          Embeddings for a batch of tracks,
+          B - batch size
+          T - number of frames
+          E - dimensionality of output embeddings
+        """
+
+        # Do not chunk the features during training
         if self.training:
-            return self.rnn(feats)[0]
+            # Process the features, discarding the hidden state and cell state
+            out_feats, _ = self.mlm(in_feats)
         else:
+            # TODO - fix/clean this up and make it work for uni/bi-directional
             # Process the features in chunks
             batch_size = feats.size(0)
             seq_length = feats.size(1)
@@ -232,7 +511,7 @@ class LanguageModel(nn.Module):
             slices = range(0, seq_length, self.inf_len)
             for start in slices:
                 end = start + self.inf_len
-                output[:, start : end, :], (h, c) = self.rnn(feats[:, start : end, :], (h, c))
+                output[:, start : end, :], (h, c) = self.mlm(feats[:, start : end, :], (h, c))
 
             # Backward
             h.zero_()
@@ -240,7 +519,7 @@ class LanguageModel(nn.Module):
 
             for start in reversed(slices):
                 end = start + self.inf_len
-                result, (h, c) = self.rnn(feats[:, start : end, :], (h, c))
+                result, (h, c) = self.mlm(feats[:, start : end, :], (h, c))
                 output[:, start : end, self.dim_out:] = result[:, :, self.dim_out:]
 
-            return output
+        return out_feats

@@ -192,8 +192,7 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
             entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
 
             # Resample the observation times if new times are specified
-            gap_tolerance = 2 * np.min(times[1:] - times[:-1])
-            slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times, gap_tolerance)
+            slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)
             # Overwrite the entry times with the specified times
             entry_times = times
 
