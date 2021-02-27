@@ -101,17 +101,16 @@ class GuitarSet(TranscriptionDataset):
             # Convert the stacked multi pitch array into tablature
             data[tools.KEY_TABLATURE] = tools.stacked_multi_pitch_to_tablature(stacked_multi_pitch, self.profile)
 
-            # Convert the stacked notes into notes
-            pitches, intervals = tools.stacked_notes_to_notes(stacked_notes)
-
             # Consider the length of a hop as the ambiguity for onsets/offsets
             ambiguity = self.hop_length / self.sample_rate
 
-            # Obtain note onsets from the notes
-            data[tools.KEY_ONSETS] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
+            # Obtain note onsets from the notes in tablature format
+            stacked_onsets = tools.stacked_notes_to_stacked_onsets(stacked_notes, times, self.profile, ambiguity)
+            data[tools.KEY_ONSETS] = tools.stacked_multi_pitch_to_tablature(stacked_onsets, self.profile)
 
-            # Obtain note offsets from the notes
-            data[tools.KEY_OFFSETS] = tools.notes_to_offsets(pitches, intervals, times, self.profile, ambiguity)
+            # Obtain note offsets from the notes in tablature format
+            stacked_offsets = tools.stacked_notes_to_stacked_offsets(stacked_notes, times, self.profile, ambiguity)
+            data[tools.KEY_OFFSETS] = tools.stacked_multi_pitch_to_tablature(stacked_offsets, self.profile)
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
@@ -140,7 +139,7 @@ class GuitarSet(TranscriptionDataset):
         """
 
         # Get the path to the audio
-        wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic' + tools.WAV_EXT)
+        wav_path = os.path.join(self.base_dir, 'audio_mono-mic', track + '_mic.' + tools.WAV_EXT)
 
         return wav_path
 
@@ -160,7 +159,7 @@ class GuitarSet(TranscriptionDataset):
         """
 
         # Get the path to the annotations
-        jams_path = os.path.join(self.base_dir, 'annotation', track + tools.JAMS_EXT)
+        jams_path = os.path.join(self.base_dir, 'annotation', f'{track}.{tools.JAMS_EXT}')
 
         return jams_path
 

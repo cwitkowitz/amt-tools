@@ -106,7 +106,7 @@ class _MAESTRO(MAPS):
         """
 
         # Get the path to the audio
-        wav_path = os.path.join(self.base_dir, track + tools.WAV_EXT)
+        wav_path = os.path.join(self.base_dir, f'{track}.{tools.WAV_EXT}')
 
         return wav_path
 
@@ -126,7 +126,7 @@ class _MAESTRO(MAPS):
         """
 
         # Get the path to the annotations
-        midi_path = os.path.join(self.base_dir, track + tools.MIDI_EXT)
+        midi_path = os.path.join(self.base_dir, f'{track}.{tools.MIDI_EXT}')
 
         return midi_path
 

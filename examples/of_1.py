@@ -1,14 +1,16 @@
 # My imports
-from amt_models.datasets import MAPS
 from amt_models.models import OnsetsFrames
 from amt_models.features import MelSpec
+from amt_models.datasets import MAPS
+
 from amt_models import train, validate
+from amt_models.transcribe import *
+from amt_models.evaluate import *
 
 import amt_models.tools as tools
 
 # Regular imports
 from sacred.observers import FileStorageObserver
-from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from sacred import Experiment
 
@@ -34,7 +36,7 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 350
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 40
@@ -46,10 +48,7 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 1
-
-    # Flag to control whether sampled blocks of frames should avoid splitting notes
-    split_notes = False
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different feature extraction parameters
@@ -67,7 +66,7 @@ def config():
 
 @ex.automain
 def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoints,
-                      batch_size, learning_rate, gpu_id, split_notes, reset_data, seed, root_dir):
+                      batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
     # Seed everything with the same seed
     tools.seed_everything(seed)
 
@@ -93,6 +92,19 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                         n_mels=dim_in,
                         hop_length=hop_length)
 
+    # Initialize the estimation pipeline
+    validation_estimator = ComboEstimator([NoteTranscriber(profile=profile),
+                                           MultiPitchRefiner(profile=profile),
+                                           PitchListWrapper(profile=profile)])
+
+    # Initialize the evaluation
+    validation_evaluator = MultipitchEvaluator(patterns=['f1'])
+
+    # Initialize the evaluation pipeline for testing
+    results_dir = os.path.join(root_dir, 'results')
+    #test_evaluator = MultipitchEvaluator(results_dir=results_dir)
+    test_evaluator = NoteEvaluator(results_dir=results_dir)
+
     print('Loading training partition...')
 
     # Create a dataset corresponding to the training partition
@@ -102,7 +114,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                       data_proc=data_proc,
                       profile=profile,
                       num_frames=num_frames,
-                      split_notes=split_notes,
                       reset_data=reset_data)
 
     # Remove tracks in both partitions from the training partitions
@@ -113,10 +124,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     train_loader = DataLoader(dataset=maps_train,
                               batch_size=batch_size,
                               shuffle=True,
-                              num_workers=16,
+                              num_workers=0,
                               drop_last=True)
-
-    # TODO - validate using overlapping tracks which were removed
 
     print('Loading testing partition...')
 
@@ -126,7 +135,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                      sample_rate=sample_rate,
                      data_proc=data_proc,
                      profile=profile,
-                     store_data=False)
+                     store_data=True)
 
     print('Initializing model...')
 
@@ -137,8 +146,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Initialize a new optimizer for the model parameters
     optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
-    # Decay the learning rate over the course of training
-    scheduler = StepLR(optimizer, iterations, 0.95)
 
     print('Training classifier...')
 
@@ -152,17 +159,17 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          iterations=iterations,
                          checkpoints=checkpoints,
                          log_dir=model_dir,
-                         scheduler=scheduler,
                          val_set=maps_test,
-                         resume=False)
+                         estimator=validation_estimator,
+                         evaluator=validation_evaluator)
 
     print('Transcribing and evaluating test partition...')
 
-    estim_dir = os.path.join(root_dir, 'estimated')
-    results_dir = os.path.join(root_dir, 'results')
+    # Add save directories to the estimators
+    validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated'), ['notes', None, 'pitch'])
 
     # Get the average results for the testing partition
-    results = validate(onsetsframes, maps_test, estim_dir, results_dir)
+    results = validate(onsetsframes, maps_test, evaluator=test_evaluator, estimator=validation_estimator)
 
     # Log the average results in metrics.json
-    ex.log_scalar('results', results, 0)
+    ex.log_scalar('Final Results', results, 0)

@@ -26,12 +26,14 @@ DEFAULT_VISUALIZATION_DIR = os.path.join(DEFAULT_GENERATED_DIR, 'visualization')
 # FILE EXTENSIONS                                #
 ##################################################
 
-WAV_EXT = '.wav'
-MID_EXT = '.mid'
-MIDI_EXT = '.midi'
-JAMS_EXT = '.jams'
-NPZ_EXT = '.npz'
-TXT_EXT = '.txt'
+# TODO - remove '.' for better readability
+WAV_EXT = 'wav'
+MID_EXT = 'mid'
+MIDI_EXT = 'midi'
+JAMS_EXT = 'jams'
+NPZ_EXT = 'npz'
+TXT_EXT = 'txt'
+PYT_EXT = 'pt'
 
 ##################################################
 # GROUND TRUTH / PREDICTION KEYS                 #
@@ -43,6 +45,7 @@ KEY_FS = 'fs'
 KEY_HOP = 'hop_length'
 KEY_FEATS = 'features'
 KEY_MULTIPITCH = 'multi_pitch'
+KEY_PITCHLIST = 'pitch_list'
 KEY_TABLATURE = 'tablature'
 KEY_ONSETS = 'onsets'
 KEY_OFFSETS = 'offsets'
@@ -70,20 +73,24 @@ MIDI_SUSTAIN_CONTROL_NUM = 64
 MIDI_CONTROL_CHANGE = 'control_change'
 
 ##################################################
-# EVALUATION KEYS                                #
+# LOGGING/EVALUATION KEYS                        #
 ##################################################
 
-PR_KEY = 'precision'
-RC_KEY = 'recall'
-F1_KEY = 'f1-score'
+TRAIN = 'train'
+VAL = 'validation'
+TEST = 'test'
 
-NOTE_ON = 'note-on'
-NOTE_OFF = 'note-off'
+KEY_PRECISION = 'precision'
+KEY_RECALL = 'recall'
+KEY_F1 = 'f1-score'
 
-TAB_PITCH = 'pitch-tab'
-TAB_NOTES = 'note-tab'
+KEY_NOTE_ON = 'note-on'
+KEY_NOTE_OFF = 'note-off'
 
-TDR = 'tdr'
+# TODO - KEY_TABLATURE - already used
+# TODO - KEY_MULTIPITCH - already used
+
+KEY_TDR = 'tdr'
 
 ##################################################
 # DEFAULT INSTRUMENT PARAMETERS                  #
@@ -102,4 +109,12 @@ DEFAULT_PIANO_HIGHEST_PITCH = 108
 ##################################################
 
 UINT = 'uint'
+FLOAT = 'float'
 FLOAT32 = 'float32'
+
+##################################################
+# MISCELLANEOUS                                  #
+##################################################
+
+PYT_MODEL = 'model'
+PYT_STATE = 'opt-state'

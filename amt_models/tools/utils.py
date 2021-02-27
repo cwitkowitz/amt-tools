@@ -2,6 +2,7 @@
 import amt_models.tools.constants as constants
 
 # Regular imports
+from datetime import datetime
 from copy import deepcopy
 from scipy import signal
 
@@ -304,7 +305,7 @@ def stacked_notes_to_hz(stacked_notes):
     stacked_notes = deepcopy(stacked_notes)
 
     # Loop through the stack of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert the pitches to Hertz
@@ -334,7 +335,7 @@ def stacked_notes_to_midi(stacked_notes):
     stacked_notes = deepcopy(stacked_notes)
 
     # Loop through the stack of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert the pitches to MIDI
@@ -579,7 +580,7 @@ def stacked_pitch_list_to_hz(stacked_pitch_list):
     stacked_pitch_list = deepcopy(stacked_pitch_list)
 
     # Loop through the stack of pitch lists
-    for slc in range(len(stacked_pitch_list)):
+    for slc in stacked_pitch_list.keys():
         # Get the pitch list from the slice
         times, pitch_list = stacked_pitch_list[slc]
         # Convert the pitches to Hertz
@@ -609,7 +610,7 @@ def stacked_pitch_list_to_midi(stacked_pitch_list):
     stacked_pitch_list = deepcopy(stacked_pitch_list)
 
     # Loop through the stack of pitch lists
-    for slc in range(len(stacked_pitch_list)):
+    for slc in stacked_pitch_list.keys():
         # Get the pitches from the slice
         times, pitch_list = stacked_pitch_list[slc]
         # Convert the pitches to MIDI
@@ -789,8 +790,9 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
     for slc in range(len(stacked_notes)):
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
-        multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile)
-        stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(multi_pitch))
+        # Convert to multi pitch and add to the list
+        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile)
+        stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(slice_multi_pitch))
 
     # Collapse the list into an array
     stacked_multi_pitch = np.concatenate(stacked_multi_pitch)
@@ -1101,12 +1103,87 @@ def multi_pitch_to_onsets(multi_pitch):
 ##################################################
 
 
-def stacked_multi_pitch_to_stacked_onsets():
-    pass
+def stacked_notes_to_stacked_onsets(stacked_notes, times, profile, ambiguity=None):
+    """
+    Obtain the onsets of stacked loose MIDI note groups in stacked multi pitch format.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (MIDI), intervals)) pairs
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    ambiguity : float or None (optional
+      Amount of time each onset label should span
+
+    Returns
+    ----------
+    stacked_onsets : ndarray (S x F x T)
+      Array of multiple discrete onset activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Initialize an empty list to hold the onset arrays
+    stacked_onsets = list()
+
+    # Loop through the slices of notes
+    for slc in range(len(stacked_notes)):
+        # Get the pitches and intervals from the slice
+        pitches, intervals = stacked_notes[slc]
+        # Convert to onsets and add to the list
+        slice_onsets = notes_to_onsets(pitches, intervals, times, profile, ambiguity)
+        stacked_onsets.append(multi_pitch_to_stacked_multi_pitch(slice_onsets))
+
+    # Collapse the list into an array
+    stacked_onsets = np.concatenate(stacked_onsets)
+
+    return stacked_onsets
 
 
-def stacked_notes_to_stacked_onsets():
-    pass
+def stacked_multi_pitch_to_stacked_onsets(stacked_multi_pitch):
+    """
+    Obtain a stacked representation detailing where discrete pitches become active.
+
+    Parameters
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+
+    Returns
+    ----------
+    stacked_onsets : ndarray (S x F x T)
+      Array of multiple discrete onset activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Determine the number of slices in the stacked multi pitch array
+    stack_size = stacked_multi_pitch.shape[-3]
+
+    # Initialize an empty list to hold the onset arrays
+    stacked_onsets = list()
+
+    # Loop through the slices of the stack
+    for slc in range(stack_size):
+        # Extract the multi pitch array pertaining to this slice
+        slice_multi_pitch = stacked_multi_pitch[slc]
+        # Convert to onsets and add to the list
+        slice_onsets = multi_pitch_to_onsets(slice_multi_pitch)
+        stacked_onsets.append(multi_pitch_to_stacked_multi_pitch(slice_onsets))
+
+    # Collapse the list into an array
+    stacked_onsets = np.concatenate(stacked_onsets)
+
+    return stacked_onsets
 
 
 ##################################################
@@ -1206,12 +1283,87 @@ def multi_pitch_to_offsets(multi_pitch):
 ##################################################
 
 
-def stacked_multi_pitch_to_stacked_offsets():
-    pass
+def stacked_notes_to_stacked_offsets(stacked_notes, times, profile, ambiguity):
+    """
+    Obtain the offsets of stacked loose MIDI note groups in stacked multi pitch format.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (MIDI), intervals)) pairs
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    ambiguity : float or None (optional
+      Amount of time each onset label should span
+
+    Returns
+    ----------
+    stacked_offsets : ndarray (S x F x T)
+      Array of multiple discrete offset activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Initialize an empty list to hold the offset arrays
+    stacked_offsets = list()
+
+    # Loop through the slices of notes
+    for slc in range(len(stacked_notes)):
+        # Get the pitches and intervals from the slice
+        pitches, intervals = stacked_notes[slc]
+        # Convert to offsets and add to the list
+        slice_offsets = notes_to_offsets(pitches, intervals, times, profile, ambiguity)
+        stacked_offsets.append(multi_pitch_to_stacked_multi_pitch(slice_offsets))
+
+    # Collapse the list into an array
+    stacked_offsets = np.concatenate(stacked_offsets)
+
+    return stacked_offsets
 
 
-def stacked_notes_to_stacked_offsets():
-    pass
+def stacked_multi_pitch_to_stacked_offsets(stacked_multi_pitch):
+    """
+    Obtain a stacked representation detailing where discrete pitch activity ceases.
+
+    Parameters
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+
+    Returns
+    ----------
+    stacked_offsets : ndarray (S x F x T)
+      Array of multiple discrete offset activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Determine the number of slices in the stacked multi pitch array
+    stack_size = stacked_multi_pitch.shape[-3]
+
+    # Initialize an empty list to hold the offset arrays
+    stacked_offsets = list()
+
+    # Loop through the slices of the stack
+    for slc in range(stack_size):
+        # Extract the multi pitch array pertaining to this slice
+        slice_multi_pitch = stacked_multi_pitch[slc]
+        # Convert to offsets and add to the list
+        slice_offsets = multi_pitch_to_offsets(slice_multi_pitch)
+        stacked_offsets.append(multi_pitch_to_stacked_multi_pitch(slice_offsets))
+
+    # Collapse the list into an array
+    stacked_offsets = np.concatenate(stacked_offsets)
+
+    return stacked_offsets
 
 
 ##################################################
@@ -1529,6 +1681,91 @@ def framify_activations(activations, win_length, hop_length=1, pad=True):
     return activations
 
 
+def inhibit_activations(activations, times, window_length):
+    """
+    Remove any activations within a specified time window following a previous activation.
+
+    TODO - this is extremely slow for non-sparse activations
+
+    Parameters
+    ----------
+    activations : ndarray
+      Provided activations
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    window_length : float
+      Duration (seconds) of inhibition window
+
+    Returns
+    ----------
+    activations : ndarray
+      Inhibited activations
+    """
+
+    # Keep track of non-inhibited non-zeros
+    pitch_idcs_keep = np.empty(0)
+    frame_idcs_keep = np.empty(0)
+
+    while True:
+        # Determine the pitch and frame indices where activations begin
+        pitch_idcs, frame_idcs = activations.nonzero()
+
+        # Check if there are any non-zeros left to process
+        if len(pitch_idcs) == 0 or len(frame_idcs) == 0:
+            # If not, stop looping
+            break
+
+        # Determine the location of the next non-zero activation
+        next_nz_pitch, next_nz_frame = pitch_idcs[0], frame_idcs[0]
+
+        # Determine where the inhibition window ends
+        inhibition_end = np.argmax(np.append(times, np.inf) >= times[next_nz_frame] + window_length)
+
+        # Zero-out the activations in the inhibition window (including the non-zero itself)
+        activations[next_nz_pitch, next_nz_frame : inhibition_end] = 0
+
+        # The the non-zero that was just processed
+        pitch_idcs_keep = np.append(pitch_idcs_keep, next_nz_pitch)
+        frame_idcs_keep = np.append(frame_idcs_keep, next_nz_frame)
+
+    # Add back in all of the non-inhibited non-zeros
+    activations[pitch_idcs_keep.astype(constants.UINT),
+                frame_idcs_keep.astype(constants.UINT)] = 1
+
+    return activations
+
+
+def remove_activation_blips(activations):
+    """
+    Remove blips (single-frame positives) in activations.
+
+    Parameters
+    ----------
+    activations : ndarray
+      Provided activations
+
+    Returns
+    ----------
+    activations : ndarray
+      Blip-free activations
+    """
+
+    # Determine where activations begin
+    onsets = multi_pitch_to_onsets(activations)
+
+    # Determine where activations end
+    offsets = multi_pitch_to_offsets(activations)
+
+    # Determine where the blips are located
+    blip_locations = np.logical_and(onsets, offsets)
+
+    # Zero out blips
+    activations[blip_locations] = 0
+
+    return activations
+
+
 ##################################################
 # UTILITY                                        #
 ##################################################
@@ -1764,11 +2001,152 @@ def track_to_cpu(track):
     for key in keys:
         # Check if the dictionary entry is a tensor
         if isinstance(track[key], torch.Tensor):
-            # Squeeze the tensor and convert to ndarray
-            # TODO - is squeeze necessary?
+            # Squeeze the tensor and convert to ndarray and remove batch dimension
             track[key] = tensor_to_array(track[key].squeeze())
 
     return track
+
+
+def track_to_batch(track):
+    """
+    Treat track data as a batch of size one.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the dictionary entry is an ndarray
+        if isinstance(track[key], np.ndarray):
+            # Convert to tensor and add batch dimension
+            track[key] = array_to_tensor(track[key]).unsqueeze(0)
+
+    return track
+
+
+def try_unpack_dict(data, key):
+    """
+    Unpack a specified entry if a dictionary is provided and the entry exists.
+
+    TODO - can use this many places (e.g. datasets) to be safe and neat
+
+    Parameters
+    ----------
+    data : object
+      Object to query as being a dictionary and containing the specified key
+    key : string
+      Key specifying entry to unpack, if possible
+
+    Returns
+    ----------
+    data : object
+      Unpacked entry or same object provided if no dictionary
+    """
+
+    # Unpack the specified dictionary entry
+    entry = unpack_dict(data, key)
+
+    # Return the entry if it existed and the original data otherwise
+    if entry is not None:
+        data = entry
+
+    return data
+
+
+def unpack_dict(data, key):
+    """
+    Determine the corresponding entry for a dictionary key.
+
+    TODO - can use this many places (e.g. datasets) to be safe and neat
+
+    Parameters
+    ----------
+    data : dictionary or object
+      Object to query as being a dictionary and containing the specified key
+    key : string
+      Key specifying entry to unpack, if possible
+
+    Returns
+    ----------
+    entry : object or None
+      Unpacked entry or None to indicate non-existence
+    """
+
+    # Default the entry
+    entry = None
+
+    # Check if a dictionary was provided and if the key is in the dictionary
+    if isinstance(data, dict) and query_dict(data, key):
+        # Unpack the relevant entry
+        entry = data[key]
+
+    return entry
+
+
+def query_dict(dictionary, key):
+    """
+    Determine if a dictionary has an entry for a specified key.
+
+    TODO - can use this many places (e.g. datasets) to be safe and neat
+
+    Parameters
+    ----------
+    dictionary : dict
+      Dictionary to query
+    key : string
+      Key to query
+
+    Returns
+    ----------
+    exists : bool
+      Whether or not the key exists in the dictionary
+    """
+
+    # Check if the dictionary contains the key
+    exists = key in dictionary.keys()
+
+    return exists
+
+
+def get_tag(tag=None):
+    """
+    Simple helper function to create a tag for saving a file if one does not already exist.
+
+    This is useful because in some places we don't know whether we will have a tag or not,
+    but still want to save files.
+
+    Parameters
+    ----------
+    tag : string or None (optional)
+      Name of file if it already exists
+
+    Returns
+    ----------
+    tag : string or None (optional)
+      Name picked for the file
+    """
+
+    # Get the data and time in a file-saving--friendly format
+    date_time = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
+
+    # If there is no tag, use the date and time
+    tag = date_time if tag is None else tag
+
+    return tag
 
 
 def slice_track(track, start, stop, skip=None):
@@ -1813,27 +2191,9 @@ def slice_track(track, start, stop, skip=None):
     return track
 
 
-# TODO - verify/cleanup the following
-
-
 def feats_to_batch(feats, times):
     # TODO - a function which accepts only feats (for deployment)
     # TODO - I don't think I need this at all if fwd accepts raw features
     # TODO - in pre_proc, catch non-dict and call this?
+    # TODO - while num_dims < 4: feats.unsqueeze(0)
     pass
-
-
-def track_to_batch(track):
-    batch = deepcopy(track)
-
-    if 'track' in batch:
-        batch['track'] = [batch['track']]
-    else:
-        batch['track'] = ['no_name']
-
-    keys = list(batch.keys())
-    for key in keys:
-        if isinstance(batch[key], np.ndarray):
-            batch[key] = torch.from_numpy(batch[key]).unsqueeze(0)
-
-    return batch

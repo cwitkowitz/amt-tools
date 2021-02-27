@@ -1,6 +1,4 @@
 # My imports
-from .transcribe import predict_multi
-
 import amt_models.tools as tools
 
 # Regular imports
@@ -14,7 +12,7 @@ import numpy as np
 import sys
 import os
 
-eps = sys.float_info.epsilon
+EPSILON = sys.float_info.epsilon
 
 
 def framewise_multi(t_ref, p_ref, t_est, p_est, low):
@@ -151,105 +149,582 @@ def evaluate(prediction, reference, profile, log_dir=None, verbose=False):
     return results
 
 
-class ComboEvaluator(object):
-    def __init__(self):
-        pass
-
-
 class Evaluator(object):
     """
-    Implements a generic music information retrieval estimator.
+    Implements a generic music information retrieval evaluator.
     """
 
-    def __init__(self, patterns, results_dir):
-        self.patterns = patterns
-        self.results_dir = results_dir
+    def __init__(self, results_dir, patterns, verbose):
+        """
+        Initialize parameters common to all evaluators and instantiate.
 
+        Parameters
+        ----------
+        results_dir : string or None (optional)
+          Directory where results for each track will be written
+        patterns : list of string or None (optional)
+          Only write/log metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
+        verbose : bool
+          Whether to print any written text to console as well
+        """
+
+        self.results_dir = results_dir
+        self.patterns = patterns
+        self.verbose = verbose
+
+        if self.results_dir is not None:
+            # Create the specified directory if it does not already exist
+            os.makedirs(self.results_dir, exist_ok=True)
+
+        # Initialize dictionary to track results
         self.results = None
         self.reset_results()
 
     def reset_results(self):
+        """
+        Reset tracked results to empty dictionary.
+        """
+
         self.results = {}
 
-    @staticmethod
-    def average_results(d):
-        d_avg = deepcopy(d)
-        for key in d_avg.keys():
-            if isinstance(d_avg[key], dict):
-                # TODO - __class__ instead?
-                d_avg[key] = Evaluator.average_results(d_avg[key])
-            else:
-                # Take the average of all entries and convert to float (necessary for logger)
-                d_avg[key] = float(np.mean(d_avg[key]))
-        return d_avg
+    def average_results(self):
+        """
+        Return the average of the currently tracked results.
+
+        Returns
+        ----------
+        average : dictionary
+          Dictionary with a single value for each metric
+        """
+
+        # Average the tracked results
+        average = average_results(self.results)
+
+        return average
 
     @staticmethod
-    def append_results(d1, d2):
-        d3 = deepcopy(d1)
-        for key in d2.keys():
-            if key not in d3.keys():
-                d3[key] = d2[key]
-            elif isinstance(d2[key], dict):
-                d3[key] = Evaluator.append_results(d3[key], d2[key])
-            else:
-                d3[key] = np.append(d3[key], d2[key])
-        return d3
+    @abstractmethod
+    def get_key():
+        """
+        Provide the default key to use in extracting predictions and ground-truth.
+        """
 
-    def log_results(self, results, writer, step=0, metrics=None):
-        for type in results.keys():
-            if isinstance(results[type], dict):
-                for metric in results[type].keys():
-                    if metrics is None or metric in metrics:
-                        writer.add_scalar(f'val/{type}/{metric}', results[type][metric], global_step=step)
-            else:
-                if metrics is None or type in metrics:
-                    writer.add_scalar(f'val/{type}', results[type], global_step=step)
+        return NotImplementedError
 
-    def write_results(self, results, path, verbose=False):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        # Open the file with writing permissions
-        results_file = open(path, 'w')
-        for type in results.keys():
-            write_and_print(results_file, f'-----{type}-----\n', verbose)
-            if isinstance(results[type], dict):
-                for metric in results[type].keys():
-                    write_and_print(results_file, f' {metric} : {results[type][metric]}\n', verbose)
-            else:
-                write_and_print(results_file, f' {type} : {results[type]}\n', verbose)
-            write_and_print(results_file, '', verbose, '\n')
-        # Close the results file
-        results_file.close()
+    def unpack(self, data):
+        """
+        Unpack the relevant entry for evaluation if
+        a dictionary is provided and the entry exists.
+
+        Parameters
+        ----------
+        data : object
+          Presumably either a dictionary containing ground-truth
+          or model output, or the already-unpacked entry
+
+        Returns
+        ----------
+        data : object
+          Unpacked entry or same object provided if no dictionary
+        """
+
+        # Determine the relevant key for evaluation
+        key = self.get_key()
+
+        # Check if a dictionary was provided and if the key is in the dictionary
+        data = tools.try_unpack_dict(data, key)
+
+        return data
+
+    def pre_proc(self, estimated, reference):
+        """
+        Handle both dictionary input as well as relevant input for
+        both estimated and reference data.
+
+        Note: This method can be overridden in order to insert extra steps.
+
+        Parameters
+        ----------
+        estimated : object
+          Dictionary containing ground-truth or the already-unpacked entry
+        reference : object
+          Dictionary containing model output or the already-unpacked entry
+
+        Returns
+        ----------
+        estimated : object
+          Estimate relevant to the evaluation
+        reference : object
+          Reference relevant to the evaluation
+        """
+
+        # Unpacked estimate and reference if dictionaries were provided
+        estimated = self.unpack(estimated)
+        reference = self.unpack(reference)
+
+        return estimated, reference
 
     @abstractmethod
-    def evaluate(self):
-        pass
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate one estimate with respect to a reference.
 
-class StackedNoteEvaluator(Evaluator):
-    def __init__(self, patterns=None, results_dir=None):
-        super().__init__(results_dir)
+        Parameters
+        ----------
+        estimated : object
+          Estimate relevant to the evaluation or the dictionary containing it
+        reference : object
+          Reference relevant to the evaluation or the dictionary containing it
+        """
 
+        return NotImplementedError
 
-class NoteEvaluator(StackedNoteEvaluator):
-    def __init__(self, patterns=None, results_dir=None):
-        super().__init__(results_dir)
+    def track_results(self, estimated, reference, track=None):
+        # Make sure the estimated and reference data are unpacked
+        estimated, reference = self.pre_proc(estimated, reference)
+
+        # Calculate the results
+        new_results = self.evaluate(estimated, reference)
+
+        # Add the results to the tracked dictionary
+        self.results = append_results(self.results, new_results)
+
+        if self.results_dir is not None:
+            # Determine how to name the results
+            tag = tools.get_tag(track)
+
+            # Construct a path for the results
+            results_path = os.path.join(self.results_dir, f'{tag}.{tools.TXT_EXT}')
+
+            # Open a file at the path with writing permissions
+            with open(results_path, 'w') as results_file:
+                # Write the results to a text file
+                write_results(new_results, results_file, self.patterns, self.verbose)
+
+    def finalize(self, writer, step=0):
+        # Average the currently tracked results
+        average = self.average_results()
+
+        # Log the currently tracked results
+        log_results(average, writer, step, patterns=self.patterns)
+
+        # Reset the tracked results
+        self.reset_results()
 
 
 class StackedMultipitchEvaluator(Evaluator):
-    def __init__(self, profile=None, labels=None, patterns=None, results_dir=None):
-        super().__init__(patterns=patterns, results_dir=results_dir)
+    """
+    Implements an evaluator for stacked multi pitch activation maps, i.e.
+    independent multi pitch estimations across degrees of freedom or instruments.
+    """
 
-    def evaluate(self, predictions, reference):
-        # TODO - grab the correct dictionary elements - preferably using a key defined with constants
-        # TODO - convert both to multi with to_multi()
-        # TODO - do the dot product thing along the last two dimensions
-        # TODO - append result to the overall results
-        # TODO - write result if results dir was specified
-        # TODO - return results
+    def __init__(self, results_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
 
-        to_multi()
+        Parameters
+        ----------
+        See Evaluator class...
+        """
+
+        super().__init__(results_dir, patterns, verbose)
+
+    @staticmethod
+    def get_key():
+        """
+        Default key for multi pitch activation maps.
+        """
+
+        return tools.KEY_MULTIPITCH
+
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate a stacked multi pitch estimate with respect to a reference.
+
+        Parameters
+        ----------
+        estimated : ndarray (S x F x T)
+          Array of multiple discrete pitch activation maps
+          S - number of slices in stack
+          F - number of discrete pitches
+          T - number of frames
+        reference : ndarray (S x F x T)
+          Array of multiple discrete pitch activation maps
+
+        Returns
+        ----------
+        results : dict
+          Dictionary containing precision, recall, and f-measure
+        """
+
+        # Determine the shape necessary to flatten the last two dimensions
+        flatten_shape = estimated.shape[:-2] + tuple([-1])
+
+        # Flatten the estimated and reference data
+        estimated = np.reshape(estimated, flatten_shape)
+        reference = np.reshape(reference, flatten_shape)
+
+        # Determine the number of correct predictions,
+        # where estimated activation lines up with reference
+        num_correct = np.sum(estimated * reference, axis=-1)
+
+        # Count the number of activations predicted
+        num_predicted = np.sum(estimated, axis=-1)
+        # Count the number of activations referenced
+        num_ground_truth = np.sum(reference, axis=-1)
+
+        # Calculate precision and recall
+        precision = num_correct / (num_predicted + EPSILON)
+        recall = num_correct / (num_ground_truth + EPSILON)
+
+        # Calculate the f1-score using the harmonic mean formula
+        f_measure = hmean([precision + EPSILON, recall + EPSILON]) - EPSILON
+
+        # TODO - what will break if I don't average across dof?
+        # Package the results into a dictionary
+        results = {
+            tools.KEY_PRECISION : precision,
+            tools.KEY_RECALL : recall,
+            tools.KEY_F1 : f_measure
+        }
+
+        return results
 
 
-# TODO - option to evaluate based on continuous measurements
 class MultipitchEvaluator(StackedMultipitchEvaluator):
-    def __init__(self, profile=None, patterns=None, results_dir=None):
-        super().__init__(profile=profile, patterns=patterns, results_dir=results_dir)
+    """
+    Implements an evaluator for multi pitch activation maps.
+    """
+
+    def __init__(self, results_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
+
+        Parameters
+        ----------
+        See Evaluator class...
+        """
+
+        super().__init__(results_dir, patterns, verbose)
+
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate a stacked multi pitch estimate with respect to a reference.
+
+        Parameters
+        ----------
+        estimated : ndarray (F x T)
+          Predicted discrete pitch activation map
+          F - number of discrete pitches
+          T - number of frames
+        reference : ndarray (F x T)
+          Ground-truth discrete pitch activation map
+
+        Returns
+        ----------
+        results : dict
+          Dictionary containing precision, recall, and f-measure
+        """
+
+        # Convert the multi pitch arrays to stacked multi pitch arrays
+        estimated = tools.multi_pitch_to_stacked_multi_pitch(estimated)
+        reference = tools.multi_pitch_to_stacked_multi_pitch(reference)
+
+        # Call the parent class evaluate function. Multi pitch is just a special
+        # case of stacked multi pitch, where there is only one degree of freedom
+        results = super().evaluate(estimated, reference)
+
+        # Average the results across the degree of freedom - i.e. collapse extraneous dimension
+        results = average_results(results)
+
+        return results
+
+
+class StackedNoteEvaluator(Evaluator):
+    """
+    Implements an evaluator for stacked (independent) note estimations.
+    """
+
+    def __init__(self, offset_ratio=None, results_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
+
+        Parameters
+        ----------
+        See Evaluator class...
+
+        offset_ratio : float
+          Ratio of the reference note's duration used to define the offset tolerance
+        """
+
+        super().__init__(results_dir, patterns, verbose)
+
+        self.offset_ratio = offset_ratio
+
+    @staticmethod
+    def get_key():
+        """
+        Default key for notes.
+        """
+
+        return tools.KEY_NOTES
+
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate stacked note estimates with respect to a reference.
+
+        Parameters
+        ----------
+        estimated :
+        reference :
+
+        Returns
+        ----------
+        results : dict
+          Dictionary containing precision, recall, and f-measure
+        """
+
+        # Make sure the estimated and reference data are unpacked
+        estimated, reference = self.pre_proc(estimated, reference)
+
+        precision, recall, f_measure = np.empty(0), np.empty(0), np.empty(0)
+
+        # Loop through the stack of notes
+        for key in estimated.keys():
+            pitches_ref, intervals_ref = reference[key]
+            pitches_est, intervals_est = estimated[key]
+
+            pitches_ref = tools.notes_to_hz(pitches_ref)
+            pitches_est = tools.notes_to_hz(pitches_est)
+
+            # Calculate frame-wise precision, recall, and f1 score with or without offset
+            p, r, f, _ = evaluate_notes(ref_intervals=intervals_ref,
+                                        ref_pitches=pitches_ref,
+                                        est_intervals=intervals_est,
+                                        est_pitches=pitches_est,
+                                        offset_ratio=self.offset_ratio)
+
+            precision = np.append(precision, p)
+            recall = np.append(recall, r)
+            f_measure = np.append(f_measure, f)
+
+        # TODO - what will break if I don't average across dof?
+        # Package the results into a dictionary
+        results = {
+            tools.KEY_PRECISION : precision,
+            tools.KEY_RECALL : recall,
+            tools.KEY_F1 : f_measure
+        }
+
+        return results
+
+
+class NoteEvaluator(StackedNoteEvaluator):
+    """
+    Implements an evaluator for notes.
+    """
+
+    def __init__(self, offset_ratio=None, results_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
+
+        Parameters
+        ----------
+        See StackedNoteEvaluator class...
+        """
+
+        super().__init__(offset_ratio, results_dir, patterns, verbose)
+
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate note estimates with respect to a reference.
+
+        Parameters
+        ----------
+        estimated :
+        reference :
+
+        Returns
+        ----------
+        results : dict
+          Dictionary containing precision, recall, and f-measure
+        """
+
+        # Make sure the estimated and reference data are unpacked
+        estimated, reference = self.pre_proc(estimated, reference)
+
+        # TODO - should I be expecting batched notes or note groups?
+
+        # Convert the batches notes to notes
+        estimated = tools.batched_notes_to_notes(estimated)
+        reference = tools.batched_notes_to_notes(reference)
+
+        # Convert the notes to stacked notes
+        estimated = tools.notes_to_stacked_notes(*estimated)
+        reference = tools.notes_to_stacked_notes(*reference)
+
+        # Call the parent class evaluate function
+        results = super().evaluate(estimated, reference)
+
+        # Average the results across the degree of freedom - i.e. collapse extraneous dimension
+        results = average_results(results)
+
+        return results
+
+
+class PitchListEvaluator():
+    pass
+
+
+class ComboEvaluator():
+    pass
+
+
+##################################################
+# RESULTS DICTIONARY                             #
+##################################################
+
+
+def average_results(results):
+    """
+    Obtain the average across all tracked results for each metric
+    in a results dictionary.
+
+    Parameters
+    ----------
+    results : dictionary
+      Dictionary containing results of tracks arranged by metric
+
+    Returns
+    ----------
+    average : dictionary
+      Dictionary with a single value for each metric
+    """
+
+    # TODO - average along axis 0 for stacked representations?
+
+    # Only modify a local copy which will be returned
+    average = deepcopy(results)
+
+    # Loop through the keys in the dictionary
+    for key in average.keys():
+        # Check if the entry is another dictionary
+        if isinstance(average[key], dict):
+            # Recursively call this function
+            average[key] = average_results(average[key])
+        else:
+            # Check if the entry is a NumPy array or list - leave it alone otherwise
+            if isinstance(average[key], np.ndarray) or isinstance(average[key], list):
+                # Take the average of all entries and convert to float (necessary for logger)
+                average[key] = float(np.mean(average[key]))
+
+    return average
+
+
+def append_results(tracked_results, new_results):
+    """
+    Combine two results dictionaries. This function is more general than
+    the signature suggests.
+
+    Parameters
+    ----------
+    tracked_results and new_results : dictionary
+      Dictionaries containing results of tracks arranged by metric
+
+    Returns
+    ----------
+    tracked_results : dictionary
+      Dictionary with all results appended along the metric
+    """
+
+    # Only modify a local copy which will be returned
+    tracked_results = deepcopy(tracked_results)
+
+    # Loop through the keys in the new dictionary
+    for key in new_results.keys():
+        # Check if the key already exists in the current dictionary
+        if key not in tracked_results.keys():
+            # Add the untracked entry
+            tracked_results[key] = new_results[key]
+        # Check if the entry is another dictionary
+        elif isinstance(new_results[key], dict):
+            # Recursively call this function
+            tracked_results[key] = append_results(tracked_results[key], new_results[key])
+        else:
+            # Append the new entry (or entries) to the current entry
+            tracked_results[key] = np.append(tracked_results[key], new_results[key])
+
+    return tracked_results
+
+
+def log_results(results, writer, step=0, patterns=None):
+    for type in results.keys():
+        if isinstance(results[type], dict):
+            for metric in results[type].keys():
+                if pattern_match(metric, patterns):
+                    writer.add_scalar(f'val/{type}/{metric}', results[type][metric], global_step=step)
+        else:
+            if patterns is None or type in patterns:
+                writer.add_scalar(f'val/{type}', results[type], global_step=step)
+
+
+def write_results(results, file, patterns=None, verbose=False):
+    """
+    Write result dictionary to a text file.
+
+    Parameters
+    ----------
+    results : dictionary
+      Dictionary containing results of tracks arranged by metric
+    file : TextIOWrapper
+      File open in write mode
+    patterns : list of string or None (optional)
+      Only write metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
+    verbose : bool
+      Whether to print to console whatever is written to the file
+    """
+
+    # Loop through the keys in the dictionary
+    for key in results.keys():
+        # Check if the key's entry is another dictionary
+        if isinstance(results[key], dict):
+            # Write a header to the file
+            tools.write_and_print(file, f'-----{key}-----\n', verbose)
+            # Call this function recursively
+            write_results(results[key, file, verbose])
+        else:
+            # Check if the key matches the specified patterns
+            if pattern_match(key, patterns):
+                # Write the metric and corresponding result to the file
+                tools.write_and_print(file, f' {key} : {results[key]}\n', verbose)
+
+        # Write an empty line
+        tools.write_and_print(file, '', verbose, '\n')
+
+
+def pattern_match(query, patterns=None):
+    """
+    Simple helper function to see if a query matches a list of strings, even if partially.
+
+    Parameters
+    ----------
+    query : string
+      String to check for matches
+    patterns : list of string or None (optional)
+      Patterns to reference, return False if unspecified
+
+    Returns
+    ----------
+    match : bool
+      Whether the query matches some pattern, fully or partially
+    """
+
+    # Default the returned value
+    match = False
+
+    # Check if there are any patterns to analyze
+    if patterns is not None:
+        # Compare the query to each pattern
+        match = any([p in query for p in patterns])
+
+    return match

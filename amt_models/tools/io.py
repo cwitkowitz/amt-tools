@@ -4,6 +4,7 @@ import amt_models.tools.constants as constants
 
 # Regular imports
 from mir_eval.multipitch import resample_multipitch
+from mir_eval.util import time_series_to_uniform
 from tqdm import tqdm
 
 import numpy as np
@@ -191,15 +192,18 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
             # Sort the pitch list before resampling just in case it is not already sorted
             entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
 
+            # Make sure the pitch list is uniform before resampling
+            entry_times, slice_pitch_list = time_series_to_uniform(times=entry_times,
+                                                                   values=slice_pitch_list,
+                                                                   duration=jam.file_metadata.duration)
+
             # Resample the observation times if new times are specified
             slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)
             # Overwrite the entry times with the specified times
             entry_times = times
 
         # Add the pitch list to the stacked pitch list dictionary under the slice key
-        stacked_pitch_list.update(utils.pitch_list_to_stacked_pitch_list(entry_times,
-                                                                         slice_pitch_list,
-                                                                         slc))
+        stacked_pitch_list.update(utils.pitch_list_to_stacked_pitch_list(entry_times, slice_pitch_list, slc))
 
     return stacked_pitch_list
 
@@ -239,6 +243,7 @@ def load_notes_midi(midi_path):
     """
     Load all MIDI notes from a MIDI file, keeping track of sustain pedal activity.
     TODO - make sustain pedal stuff optional?
+    TODO - break this up more?
 
     Parameters
     ----------
@@ -345,97 +350,109 @@ def load_notes_midi(midi_path):
 ##################################################
 
 
-def write_and_print(file, text, verbose = True, end=''):
+def write_and_print(file, text, verbose=True, end=''):
+    """
+    Write text to a file and optionally the console.
+
+    Parameters
+    ----------
+    file : TextIOWrapper
+      File open in write mode
+    text : string
+      Text to write to the file
+    verbose : bool
+      Whether to print to console whatever is written to the file
+    end : string
+      Append this to the end of the text (e.g. for new line or no new line)
+    """
+
     try:
-        # Try to write the text to the file (it is assumed to be open)
+        # Append the ending to the text
+        text = text + end
+        # Try to write the text to the file
         file.write(text)
     finally:
+        # Check if the verbose flag is true
         if verbose:
             # Print the text to console
             print(text, end=end)
 
 
-# TODO - make sure it works for empty
-def write_pitch(path, pitch, times, low, places=3):
+def write_pitch_list(times, pitches, path, places=3):
+    """
+    Write all of the notes in a loose collection to a file.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitches : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames)
+    path : string
+      Location to the file to write
+    places : int
+      Number of decimal places to keep
+    """
+
+    # Make sure all the directories in the path exist
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    # Round the times to the specified number of decimal places
+    times = np.round(times, decimals=places)
+
     # Open a file at the path with writing permissions
-    file = open(path, 'w')
+    with open(path, 'w') as estim_file:
+        # Loop through all of the times
+        for i in range(len(times)):
+            # Create a line of the form 'frame_time pitch1 pitch2 ...'
+            line = f'{times[i]} {str(np.round(pitches[i], decimals=places))[1 : -1]}'
 
-    # TODO - can this be done without a loop?
-    for i in range(times.size): # For each frame
-        # Determine the activations across this frame
-        # TODO - change this to Hz
-        active_pitches = librosa.midi_to_hz(np.where(pitch[:, i] != 0)[0] + low)
+            # Determine how the line should end
+            end = '' if (i + 1) == len(pitches) else '\n'
 
-        # Create a line of the form 'frame_time pitch1 pitch2 ...'
-        line = str(round(times[i], places)) + ' ' + str(active_pitches)[1: -1]
-
-        # Remove newline character
-        line = line.replace('\n', '')
-
-        # If we are not at the last line, add a newline character
-        # TODO - can't I just change this to ==, remove \n instead, then I won't need the above line?
-        if (i + 1) != times.size:
-            line += '\n'
-
-        # Write the line to the file
-        file.write(line)
-
-    # Close the file
-    file.close()
+            # Write the line to the file
+            write_and_print(estim_file, line, verbose=False, end=end)
 
 
-def write_pitch_multi(log_dir, multi, times, low, labels=None, places=3):
-    multi_num = multi.shape[0]
+def write_notes(pitches, intervals, path, places=3):
+    """
+    Write all of the notes in a loose collection to a file.
 
-    for i in range(multi_num):
-        if labels is None:
-            path = os.path.join(log_dir, i, constants.TXT_EXT)
-        else:
-            path = os.path.join(log_dir, labels[i], constants.TXT_EXT)
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    path : string
+      Location to the file to write
+    places : int
+      Number of decimal places to keep
+    """
 
-        write_pitch(path, multi[i], times, low, places)
-
-
-# TODO - check for NoneType
-def write_notes(path, pitches, intervals, places=3):
+    # Make sure all the directories in the path exist
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    # Round the pitches and intervals to the specified number of decimal places
+    pitches = np.round(pitches, decimals=places)
+    intervals = np.round(intervals, decimals=places)
+
     # Open a file at the path with writing permissions
-    file = open(path, 'w')
+    with open(path, 'w') as estim_file:
+        # Loop through all of the notes
+        for i in range(len(pitches)):
+            # Create a line of the form 'onset offset pitch'
+            line = f'{intervals[i][0]} {intervals[i][1]} {str(pitches[i])}'
 
-    # TODO - can this be done without a loop?
-    for i in range(len(pitches)): # For each note
-        # Create a line of the form 'start_time end_time pitch'
-        line = str(round(intervals[i][0], places)) + ' ' + \
-               str(round(intervals[i][1], places)) + ' ' + \
-               str(round(pitches[i], places))
+            # Determine how the line should end
+            end = '' if (i + 1) == len(pitches) else '\n'
 
-        # Remove newline character
-        line = line.replace('\n', '')
-
-        # If we are not at the last line, add a newline character
-        # TODO - can't I just change this to ==, remove \n instead, then I won't need the above line?
-        if (i + 1) != len(pitches):
-            line += '\n'
-
-        # Write the line to the file
-        file.write(line)
-
-    # Close the file
-    file.close()
-
-
-def write_notes_multi(log_dir, notes_multi, labels=None, places=3):
-    multi_num = len(notes_multi)
-
-    for i in range(multi_num):
-        if labels is None:
-            path = os.path.join(log_dir, i, constants.TXT_EXT)
-        else:
-            path = os.path.join(log_dir, labels[i], constants.TXT_EXT)
-
-        pitches, intervals = notes_multi[i]
-        write_notes(path, pitches, intervals, places)
+            # Write the line to the file
+            write_and_print(estim_file, line, verbose=False, end=end)
 
 
 ##################################################

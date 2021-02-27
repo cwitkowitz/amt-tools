@@ -4,10 +4,7 @@ from .common import TranscriptionDataset
 import amt_models.tools as tools
 
 # Regular imports
-import numpy as np
 import os
-
-# TODO - put velocity to use
 
 
 class MAPS(TranscriptionDataset):
@@ -89,6 +86,9 @@ class MAPS(TranscriptionDataset):
             midi_path = self.get_midi_path(track)
             # Load the batch-friendly notes from the MIDI data and remove the velocity
             batched_notes = tools.load_notes_midi(midi_path)[..., :-1]
+            # Add the notes to the dictionary
+            data[tools.KEY_NOTES] = batched_notes
+
             # Convert the batch-friendly notes to notes
             pitches, intervals = tools.batched_notes_to_notes(batched_notes)
 
@@ -112,9 +112,12 @@ class MAPS(TranscriptionDataset):
                 gt_path = self.get_gt_dir(track)
 
                 # Save the data as a NumPy zip file
-                keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_MULTIPITCH, tools.KEY_ONSETS, tools.KEY_OFFSETS)
-                tools.save_pack_npz(gt_path, keys, data[tools.KEY_FS], data[tools.KEY_AUDIO],
-                                    data[tools.KEY_MULTIPITCH], data[tools.KEY_ONSETS], data[tools.KEY_OFFSETS])
+                keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_MULTIPITCH,
+                        tools.KEY_ONSETS, tools.KEY_OFFSETS, tools.KEY_NOTES)
+                tools.save_pack_npz(gt_path, keys,
+                                    data[tools.KEY_FS], data[tools.KEY_AUDIO],
+                                    data[tools.KEY_MULTIPITCH], data[tools.KEY_ONSETS],
+                                    data[tools.KEY_OFFSETS], data[tools.KEY_NOTES])
 
         return data
 
@@ -185,7 +188,7 @@ class MAPS(TranscriptionDataset):
         """
 
         # Get the path to the audio
-        wav_path = os.path.join(self.get_track_dir(track), track + tools.WAV_EXT)
+        wav_path = os.path.join(self.get_track_dir(track), f'{track}.{tools.WAV_EXT}')
 
         return wav_path
 
@@ -205,7 +208,7 @@ class MAPS(TranscriptionDataset):
         """
 
         # Get the path to the annotations
-        midi_path = os.path.join(self.get_track_dir(track), track + tools.MID_EXT)
+        midi_path = os.path.join(self.get_track_dir(track), f'{track}.{tools.MID_EXT}')
 
         return midi_path
 

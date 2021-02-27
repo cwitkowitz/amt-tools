@@ -3,6 +3,7 @@ import amt_models.tools as tools
 
 # Regular imports
 from abc import abstractmethod
+from copy import deepcopy
 from torch import nn
 
 import torch.nn.functional as F
@@ -89,8 +90,12 @@ class TranscriptionModel(nn.Module):
         ----------
         batch : dict
           Dictionary with all PyTorch Tensors added to the appropriate device
-          and all pre-processing steps complete
+          and all pre-processing steps complete (local copy)
         """
+
+        # Create a local copy of the batch so it is only modified within scope
+        # TODO
+        # batch = deepcopy(batch)
 
         # Make sure all data is on correct device
         batch = tools.track_to_device(batch, self.device)
@@ -163,6 +168,10 @@ class TranscriptionModel(nn.Module):
           Dictionary containing loss and relevant predictions for a group of tracks
         """
 
+        # Create a local copy of the batch so it is only modified within scope
+        # TODO
+        # batch = deepcopy(batch)
+
         # Pre-process batch
         batch = self.pre_proc(batch)
 
@@ -171,6 +180,9 @@ class TranscriptionModel(nn.Module):
 
         # Post-process batch
         output = self.post_proc(batch)
+
+        # Add the frame times to the output
+        output[tools.KEY_TIMES] = batch[tools.KEY_TIMES]
 
         return output
 

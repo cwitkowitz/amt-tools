@@ -6,8 +6,10 @@ import amt_models.tools as tools
 # Regular imports
 from torch import nn
 
+import numpy as np
 import torch
 
+# TODO - velocity stuff
 # TODO - optional weighted frame loss
 # TODO - optionally stop gradient propagation into the onset subnetwork from the frame network
 
@@ -51,7 +53,7 @@ class OnsetsFrames(TranscriptionModel):
         )
 
         # Create the refined multi pitch estimator head
-        self.dim_aj = self.onset_head[-1].dim_out + self.pitch_head[-1].dim_out
+        self.dim_aj = 2 * dim_out
         self.adjoin = nn.Sequential(
             LanguageModel(self.dim_aj, self.dim_lm),
             LogisticBank(self.dim_lm, dim_out)
@@ -74,6 +76,10 @@ class OnsetsFrames(TranscriptionModel):
         """
 
         batch = super().pre_proc(batch)
+
+        # Create a local copy of the batch so it is only modified within scope
+        # TODO
+        # batch = deepcopy(batch)
 
         # Switch the frequency and time axes
         batch[tools.KEY_FEATS] = batch[tools.KEY_FEATS].transpose(-1, -2)
@@ -122,7 +128,7 @@ class OnsetsFrames(TranscriptionModel):
 
     def post_proc(self, batch):
         """
-        Calculate loss and finalize model output
+        Calculate loss and finalize model output.
 
         Parameters
         ----------
@@ -200,12 +206,9 @@ class OnsetsFrames2(OnsetsFrames):
             LogisticBank(self.dim_lm, dim_out)
         )
 
-        # Re-initialize the refined multi pitch estimator head
-        self.dim_aj = self.onset_head[-1].dim_out + self.offset_head[-1].dim_out + self.pitch_head[-1].dim_out
-        self.adjoin = nn.Sequential(
-            LanguageModel(self.dim_aj, self.dim_lm),
-            LogisticBank(self.dim_lm, dim_out)
-        )
+        # Increase the input size of the refinement stage
+        self.dim_aj += dim_out
+        self.adjoin[0] = LanguageModel(self.dim_aj, self.dim_lm)
 
     def forward(self, feats):
         """
@@ -253,7 +256,7 @@ class OnsetsFrames2(OnsetsFrames):
 
     def post_proc(self, batch):
         """
-        Calculate loss and finalize model output
+        Calculate loss and finalize model output.
 
         Parameters
         ----------
@@ -455,14 +458,18 @@ class LanguageModel(nn.Module):
           Whether LSTM is bidirectional
         """
 
+        bidirectional=False
         super().__init__()
 
         self.dim_in = dim_in
         self.dim_out = dim_out
         self.chunk_len = chunk_len
 
+        # Keep track of the bidirectional argument as the number of directions
+        self.num_directions = int(bidirectional) + 1
+
         # Determine the number of neurons
-        self.hidden_size = dim_out // 2 if bidirectional else dim_out
+        self.hidden_size = self.dim_out // self.num_directions
 
         # Initialize the LSTM
         self.mlm = nn.LSTM(input_size=self.dim_in,
@@ -480,7 +487,7 @@ class LanguageModel(nn.Module):
           Input features for a batch of tracks,
           B - batch size
           T - number of frames
-          E - dimensionality of input embeddings
+          E - dimensionality of input embeddings (dim_in)
 
         Returns
         ----------
@@ -488,7 +495,7 @@ class LanguageModel(nn.Module):
           Embeddings for a batch of tracks,
           B - batch size
           T - number of frames
-          E - dimensionality of output embeddings
+          E - dimensionality of output embeddings (dim_out)
         """
 
         # Do not chunk the features during training
@@ -496,30 +503,48 @@ class LanguageModel(nn.Module):
             # Process the features, discarding the hidden state and cell state
             out_feats, _ = self.mlm(in_feats)
         else:
-            # TODO - fix/clean this up and make it work for uni/bi-directional
-            # Process the features in chunks
-            batch_size = feats.size(0)
-            seq_length = feats.size(1)
+            # Determine the batch size and the number of frames given
+            batch_size, seq_length, _ = in_feats.size()
 
-            assert self.dim_in == feats.size(2)
+            # Initialize the hidden state and cell state
+            hidden = torch.zeros(self.num_directions, batch_size, self.hidden_size)
+            cell = torch.zeros(self.num_directions, batch_size, self.hidden_size)
 
-            h = torch.zeros(2, batch_size, self.dim_out).to(feats.device)
-            c = torch.zeros(2, batch_size, self.dim_out).to(feats.device)
-            output = torch.zeros(batch_size, seq_length, 2 * self.dim_out).to(feats.device)
+            # Create a placeholder for the entire output sequence
+            out_feats = torch.zeros(batch_size, seq_length, self.dim_out)
 
-            # Forward
-            slices = range(0, seq_length, self.inf_len)
-            for start in slices:
-                end = start + self.inf_len
-                output[:, start : end, :], (h, c) = self.mlm(feats[:, start : end, :], (h, c))
+            # Add the LSTM states and output placeholder to the appropriate device
+            hidden = hidden.to(in_feats.device)
+            cell = cell.to(in_feats.device)
+            out_feats = out_feats.to(in_feats.device)
 
-            # Backward
-            h.zero_()
-            c.zero_()
+            # Determine the start and end of each chunk
+            starts = np.arange(0, seq_length, self.chunk_len)
+            ends = starts + self.chunk_len
 
-            for start in reversed(slices):
-                end = start + self.inf_len
-                result, (h, c) = self.mlm(feats[:, start : end, :], (h, c))
-                output[:, start : end, self.dim_out:] = result[:, :, self.dim_out:]
+            # Loop through each chunk in the forward direction
+            for start, end in zip(starts, ends):
+                # Chunk the input features
+                chunk_feats = in_feats[..., start : end, :]
+                # Process the chunk, using the previous hidden and cell state
+                chunk_out, (hidden, cell) = self.mlm(chunk_feats, (hidden, cell))
+                # Add the chunk's output to where it belongs in the placeholder
+                out_feats[..., start : end, :] = chunk_out
+
+            if self.mlm.bidirectional:
+                # Reset the hidden and cell state
+                hidden.zero_()
+                cell.zero_()
+
+                # Loop through each chunk in the backward direction. This needs
+                # to be done since, above, the reverse direction part was given
+                # the hidden and cell state with respect to the forward direction
+                for start, end in zip(reversed(starts), reversed(ends)):
+                    # Chunk the input features
+                    chunk_feats = in_feats[..., start : end, :]
+                    # Process the chunk, using the previous hidden and cell state
+                    chunk_out, (hidden, cell) = self.mlm(chunk_feats, (hidden, cell))
+                    # Overwrite the first half of the embeddings with the chunk's output
+                    out_feats[:, start : end, self.hidden_size:] = chunk_out[:, :, self.hidden_size:]
 
         return out_feats

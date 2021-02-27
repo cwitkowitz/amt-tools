@@ -103,6 +103,10 @@ class TabCNN(TranscriptionModel):
 
         batch = super().pre_proc(batch)
 
+        # Create a local copy of the batch so it is only modified within scope
+        # TODO
+        # batch = deepcopy(batch)
+
         # Extract the features from the batch as a NumPy array
         feats = tools.tensor_to_array(batch[tools.KEY_FEATS])
         # Window the features to mimic real-time operation

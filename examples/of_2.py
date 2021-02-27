@@ -1,6 +1,6 @@
 # My imports
 from amt_models.datasets import MAESTRO_V2
-from amt_models.models import OnsetsFrames
+from amt_models.models import OnsetsFrames2
 from amt_models.features import MelSpec
 from amt_models import train, validate
 
@@ -14,7 +14,7 @@ from sacred import Experiment
 import torch
 import os
 
-EX_NAME = '_'.join([OnsetsFrames.model_name(),
+EX_NAME = '_'.join([OnsetsFrames2.model_name(),
                     MAESTRO_V2.dataset_name(),
                     MelSpec.features_name()])
 
@@ -136,7 +136,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames2(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 

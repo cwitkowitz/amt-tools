@@ -419,7 +419,7 @@ class TranscriptionDataset(Dataset):
 
         # Add the track name and the .npz extension if a track was provided
         if track is not None:
-            path = os.path.join(path, track + tools.NPZ_EXT)
+            path = os.path.join(path, f'{track}.{tools.NPZ_EXT}')
 
         return path
 
@@ -443,7 +443,7 @@ class TranscriptionDataset(Dataset):
 
         # Add the track name and the .npz extension if a track was provided
         if track is not None:
-            path = os.path.join(path, track + tools.NPZ_EXT)
+            path = os.path.join(path, f'{track}.{tools.NPZ_EXT}')
 
         return path
 

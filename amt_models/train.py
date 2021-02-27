@@ -46,13 +46,13 @@ def validate(model, dataset, evaluator, estimator=None):
     dataset : TranscriptionDataset
       Dataset (partition) to use for validation or evaluation
     estimator : Estimator
-      TODO
+      Estimation protocol to use
     evaluator : Evaluator
-      TODO
+      Evaluation protocol to use
 
     Returns
     ----------
-    results : dict
+    average : dict
       Dictionary containing all relevant results averaged across all tracks
     """
 
@@ -65,22 +65,24 @@ def validate(model, dataset, evaluator, estimator=None):
         for track_id in dataset.tracks:
             # Obtain the track data
             track = dataset.get_track_data(track_id)
+
+            # Treat the track data as a batch
+            batch = tools.track_to_batch(track)
+
+            # Get the model predictions and convert them to NumPy arrays
+            predictions = tools.track_to_cpu(model.run_on_batch(batch))
+
             if estimator is not None:
-                # Transcribe the track
-                predictions = estimator.estimate(model, track)
-            else:
-                batch = track_to_batch(track)
-                predictions = model.run_on_batch(batch)
-                predictions = track_to_cpu(predictions)
-            # Evaluate the predictions
-            track_results = evaluator.evaluate(predictions, track)
-            # Add the results to the dictionary
-            results = append_results(results, track_results)
+                # Perform any estimation steps (e.g. note transcription)
+                predictions.update(estimator.process_track(predictions, track_id))
 
-    # Average the results from all tracks
-    results = average_results(results)
+            # Evaluate the predictions and track the results
+            evaluator.track_results(predictions, track, track_id)
 
-    return results
+    # Obtain the average results from this validation loop
+    average = evaluator.average_results()
+
+    return average
 
 
 def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.', scheduler=None,
@@ -113,9 +115,9 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
     val_set : TranscriptionDataset or None (optional)
       Dataset to use for validation loops
     estimator : Estimator
-      TODO
+      Estimation protocol to use during validation
     evaluator : Evaluator
-      TODO
+      Evaluation protocol to use during validation
     patterns : None or list of str
       String patterns for logging - only results with names containing these patterns will be logged
       If None, all results are logged
@@ -143,9 +145,9 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
         log_files = os.listdir(log_dir)
 
         # Extract and sort files pertaining to the model
-        model_files = sorted([path for path in log_files if 'model' in path], key=file_sort)
+        model_files = sorted([path for path in log_files if tools.PYT_MODEL in path], key=file_sort)
         # Extract and sort files pertaining to the optimizer state
-        optimizer_files = sorted([path for path in log_files if 'opt-state' in path], key=file_sort)
+        optimizer_files = sorted([path for path in log_files if tools.PYT_STATE in path], key=file_sort)
 
         # Check if any previous checkpoints exist
         if len(model_files) > 0 and len(optimizer_files) > 0:
@@ -182,7 +184,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # Get the predictions and loss for the batch
             preds = model.run_on_batch(batch)
             # Add the loss to the list of batch losses
-            batch_loss = preds['loss']
+            batch_loss = preds[tools.KEY_LOSS]
             train_loss.append(batch_loss.item())
             # Compute gradients
             batch_loss.backward()
@@ -202,8 +204,8 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
 
         # Average the loss from all of the batches within this loop
         train_loss = np.mean(train_loss)
-        # Log the loss
-        writer.add_scalar(f'train/loss', train_loss, global_step=global_iter+1)
+        # Log the training loss
+        writer.add_scalar(f'{tools.TRAIN}/{tools.KEY_LOSS}', train_loss, global_step=global_iter+1)
 
         # Local iteration of this training sequence
         local_iter = global_iter - start_iter
@@ -220,9 +222,11 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
         # If we are at a checkpoint, or we have finished training
         if checkpoint or done_training:
             # Save the model
-            torch.save(model, os.path.join(log_dir, f'model-{global_iter + 1}.pt'))
+            torch.save(model,
+                       os.path.join(log_dir, f'{tools.PYT_MODEL}-{global_iter + 1}.{tools.PYT_EXT}'))
             # Save the optimizer sate
-            torch.save(optimizer.state_dict(), os.path.join(log_dir, f'opt-state-{global_iter + 1}.pt'))
+            torch.save(optimizer.state_dict(),
+                       os.path.join(log_dir, f'{tools.PYT_STATE}-{global_iter + 1}.{tools.PYT_EXT}'))
 
             # If visualization protocol was specified, follow it
             if vis_fnc is not None:
@@ -232,6 +236,8 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             if checkpoint and val_set is not None and evaluator is not None:
                 # Validate the current model weights
                 validate(model, val_set, evaluator, estimator)
+                # Average the results, log them, and reset the tracking
+                evaluator.finalize(writer, global_iter + 1)
                 # Make sure the model is back in training mode
                 model.train()
 
