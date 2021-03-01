@@ -366,16 +366,17 @@ def write_and_print(file, text, verbose=True, end=''):
       Append this to the end of the text (e.g. for new line or no new line)
     """
 
+    # Append the ending to the text
+    text = text + end
+
     try:
-        # Append the ending to the text
-        text = text + end
         # Try to write the text to the file
         file.write(text)
     finally:
         # Check if the verbose flag is true
         if verbose:
             # Print the text to console
-            print(text, end=end)
+            print(text, end='')
 
 
 def write_pitch_list(times, pitches, path, places=3):

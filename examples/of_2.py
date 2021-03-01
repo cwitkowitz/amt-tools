@@ -1,8 +1,11 @@
 # My imports
-from amt_models.datasets import MAESTRO_V2
 from amt_models.models import OnsetsFrames2
+from amt_models.datasets import MAESTRO_V1
 from amt_models.features import MelSpec
+
 from amt_models import train, validate
+from amt_models.transcribe import *
+from amt_models.evaluate import *
 
 import amt_models.tools as tools
 
@@ -15,16 +18,16 @@ import torch
 import os
 
 EX_NAME = '_'.join([OnsetsFrames2.model_name(),
-                    MAESTRO_V2.dataset_name(),
+                    MAESTRO_V1.dataset_name(),
                     MelSpec.features_name()])
 
-ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAPS')
+ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAESTRO')
 
 
 @ex.config
 def config():
     # Number of samples per second of audio
-    sample_rate = 22050
+    sample_rate = 16000
 
     # Number of samples between frames
     hop_length = 512
@@ -36,19 +39,16 @@ def config():
     iterations = 10000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 200
+    checkpoints = 500
 
     # Number of samples to gather for a batch
-    batch_size = 15
+    batch_size = 8
 
     # The initial learning rate
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 0
-
-    # Flag to control whether sampled blocks of frames should avoid splitting notes
-    split_notes = False
+    gpu_id = 1
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different feature extraction parameters
@@ -67,14 +67,9 @@ def config():
 
 @ex.automain
 def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoints,
-                      batch_size, learning_rate, gpu_id, split_notes, reset_data, seed, root_dir):
+                      batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
     # Seed everything with the same seed
     tools.seed_everything(seed)
-
-    # Construct the MAESTRO splits
-    train_split = ['train']
-    val_split = ['validation']
-    test_split = ['test']
 
     # Initialize the default piano profile
     profile = tools.PianoProfile()
@@ -90,17 +85,32 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                         hop_length=hop_length,
                         htk=True)
 
+    # Initialize the estimation pipeline
+    validation_estimator = ComboEstimator([NoteTranscriber(profile=profile),
+                                           PitchListWrapper(profile=profile)])
+
+    # Initialize the evaluation pipeline
+    evaluators = {tools.KEY_LOSS : LossWrapper(),
+                  tools.KEY_MULTIPITCH : MultipitchEvaluator(),
+                  tools.KEY_NOTE_ON : NoteEvaluator(),
+                  tools.KEY_NOTE_OFF : NoteEvaluator(0.2)}
+    validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1'])
+
+    # Construct the MAESTRO splits
+    train_split = ['train']
+    val_split = ['validation']
+    test_split = ['test']
+
     print('Loading training partition...')
 
     # TODO - 119 MelSpec 2004 vs 120 gt 2004?
     # Create a dataset corresponding to the training partition
-    mstro_train = MAESTRO_V2(splits=train_split,
+    mstro_train = MAESTRO_V1(splits=train_split,
                              hop_length=hop_length,
                              sample_rate=sample_rate,
                              data_proc=data_proc,
                              profile=profile,
                              num_frames=num_frames,
-                             split_notes=split_notes,
                              reset_data=reset_data,
                              store_data=False)
 
@@ -114,19 +124,18 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Loading validation partition...')
 
     # Create a dataset corresponding to the validation partition
-    mstro_val = MAESTRO_V2(splits=val_split,
+    mstro_val = MAESTRO_V1(splits=val_split,
                            hop_length=hop_length,
                            sample_rate=sample_rate,
                            data_proc=data_proc,
                            profile=profile,
                            num_frames=num_frames,
-                           split_notes=split_notes,
                            store_data=False)
 
     print('Loading testing partition...')
 
     # Create a dataset corresponding to the testing partition
-    mstro_test = MAESTRO_V2(splits=test_split,
+    mstro_test = MAESTRO_V1(splits=test_split,
                             hop_length=hop_length,
                             sample_rate=sample_rate,
                             data_proc=data_proc,
@@ -159,11 +168,15 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     print('Transcribing and evaluating test partition...')
 
-    estim_dir = os.path.join(root_dir, 'estimated')
-    results_dir = os.path.join(root_dir, 'results')
+    # Add save directories to the estimators
+    validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated'), ['notes', 'pitch'])
+
+    # Add a save directory to the evaluators and reset the patterns
+    validation_evaluator.set_save_dir(os.path.join(root_dir, 'results'))
+    validation_evaluator.set_patterns(None)
 
     # Get the average results for the testing partition
-    results = validate(onsetsframes, mstro_test, estim_dir, results_dir)
+    results = validate(onsetsframes, mstro_test, evaluator=validation_evaluator, estimator=validation_estimator)
 
     # Log the average results in metrics.json
-    ex.log_scalar('results', results, 0)
+    ex.log_scalar('Final Results', results, 0)

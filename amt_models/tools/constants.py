@@ -26,7 +26,6 @@ DEFAULT_VISUALIZATION_DIR = os.path.join(DEFAULT_GENERATED_DIR, 'visualization')
 # FILE EXTENSIONS                                #
 ##################################################
 
-# TODO - remove '.' for better readability
 WAV_EXT = 'wav'
 MID_EXT = 'mid'
 MIDI_EXT = 'midi'
@@ -86,9 +85,6 @@ KEY_F1 = 'f1-score'
 
 KEY_NOTE_ON = 'note-on'
 KEY_NOTE_OFF = 'note-off'
-
-# TODO - KEY_TABLATURE - already used
-# TODO - KEY_MULTIPITCH - already used
 
 KEY_TDR = 'tdr'
 

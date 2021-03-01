@@ -14,139 +14,186 @@ import os
 
 EPSILON = sys.float_info.epsilon
 
+# TODO - add warning when unpack returns None
+# TODO - none of the stacked evaluators have been tested independently -
+#        they will likely encounter problems during append, average, log, write, etc.
 
-def framewise_multi(t_ref, p_ref, t_est, p_est, low):
-    multi_num = p_est.shape[0]
-
-    assert multi_num == p_ref.shape[0]
-
-    metrics = {}
-
-    for i in range(multi_num):
-        f_ref = pianoroll_to_pitchlist(p_ref[i], low)
-        f_est = pianoroll_to_pitchlist(p_est[i], low)
-        metrics = append_results(metrics, framewise(t_ref, f_ref, t_est, f_est))
-
-    metrics = average_results(metrics)
-
-    return metrics
+##################################################
+# HELPER FUNCTIONS / RESULTS DICTIONARY          #
+##################################################
 
 
-def framewise(t_ref, f_ref, t_est, f_est):
-    # Compare the ground-truth to the predictions to get the frame-wise metrics
-    frame_metrics = evaluate_frames(t_ref, f_ref, t_est, f_est)
+def average_results(results):
+    """
+    Obtain the average across all tracked results for each metric
+    in a results dictionary.
 
-    # Calculate frame-wise precision, recall, and f1 score
-    pr, re = frame_metrics['Precision'], frame_metrics['Recall']
-    f1 = hmean([pr + eps, re + eps]) - eps
+    Parameters
+    ----------
+    results : dictionary
+      Dictionary containing results of tracks arranged by metric
 
-    metrics = {
-        PR_KEY : pr,
-        RC_KEY : re,
-        F1_KEY : f1
-    }
+    Returns
+    ----------
+    average : dictionary
+      Dictionary with a single value for each metric
+    """
 
-    return metrics
+    # Only modify a local copy which will be returned
+    average = deepcopy(results)
 
-
-def notewise_multi(ref, est, offset_ratio=None):
-    multi_num = len(est)
-
-    assert multi_num == len(ref)
-
-    metrics = {}
-
-    for i in range(multi_num):
-        p_ref, i_ref = tuple(ref[i])
-        p_est, i_est = tuple(est[i])
-        metrics = append_results(metrics, notewise(i_ref, p_ref, i_est, p_est, offset_ratio))
-
-    metrics = average_results(metrics)
-
-    return metrics
-
-
-def notewise(i_ref, p_ref, i_est, p_est, offset_ratio=None):
-    # Calculate frame-wise precision, recall, and f1 score with or without offset
-    pr, re, f1, _ = evaluate_notes(i_ref, p_ref, i_est, p_est, offset_ratio=offset_ratio)
-
-    metrics = {
-        PR_KEY: pr,
-        RC_KEY: re,
-        F1_KEY: f1
-    }
-
-    return metrics
-
-
-def evaluate(prediction, reference, profile, log_dir=None, verbose=False):
-    results = {}
-
-    track_id = prediction[TR_ID]
-
-    assert track_id == reference[TR_ID]
-
-    if 'loss' in prediction.keys():
-        results['loss'] = prediction['loss']
-
-    # Frame-wise Multi-pitch Metrics
-    pitch_ref = reference[PITCH]
-    f_ref = pianoroll_to_pitchlist(to_single(pitch_ref, profile), profile.low)
-    t_ref = reference[TIMES]
-
-    pitch_est = prediction[SOLO_PITCH]
-    f_est = pianoroll_to_pitchlist(pitch_est, profile.low)
-    t_est = prediction[TIMES]
-
-    # Add the frame-wise metrics to the dictionary
-    results[PITCH] = framewise(t_ref[:-1], f_ref, t_est[:-1], f_est)
-
-    # Note-wise Multi-pitch Metrics
-    p_est, i_est = prediction[SOLO_NOTES]
-    p_ref, i_ref = arr_to_note_groups(reference[NOTES])
-
-    # Add the note-wise metrics to the dictionary
-    results[NOTE_ON] = notewise(i_ref, p_ref, i_est, p_est, offset_ratio=None)
-    results[NOTE_OFF] = notewise(i_ref, p_ref, i_est, p_est, offset_ratio=0.2)
-
-    if MULT_PITCH in prediction.keys() and MULT_NOTES in prediction.keys():
-        # Frame-wise Tab-pitch Metrics
-        pitch_multi_ref = to_multi(pitch_ref, profile)
-        pitch_multi_est = prediction[MULT_PITCH]
-        pitch_tab_results = framewise_multi(t_ref[:-1], pitch_multi_ref, t_est[:-1], pitch_multi_est, profile.low)
-        # TODO - TDR is not correct
-        if results[PITCH][PR_KEY]:
-            pitch_tdr = pitch_tab_results[PR_KEY] / results[PITCH][PR_KEY]
+    # Loop through the keys in the dictionary
+    for key in average.keys():
+        # Check if the entry is another dictionary
+        if isinstance(average[key], dict):
+            # Recursively call this function
+            average[key] = average_results(average[key])
         else:
-            pitch_tdr = 0
-        pitch_tab_results[TDR] = pitch_tdr
-        results[TAB_PITCH] = pitch_tab_results
+            # Check if the entry is a NumPy array or list - leave it alone otherwise
+            if isinstance(average[key], np.ndarray) or isinstance(average[key], list):
+                # Take the average of all entries and convert to float (necessary for logger)
+                average[key] = float(np.mean(average[key]))
 
-        # Note-wise Tab-pitch Metrics
-        onsets = None
-        if ONSET in reference.keys():
-            onsets = to_multi(reference[ONSET], profile)
-        notes_multi_ref = predict_multi(pitch_multi_ref, t_ref, profile.low, onsets)
-        notes_multi_est = prediction[MULT_NOTES]
-        notes_tab_results = notewise_multi(notes_multi_ref, notes_multi_est)
-        # TODO - TDR is not correct
-        if results[NOTE_ON][PR_KEY] != 0:
-            note_tdr = notes_tab_results[PR_KEY] / results[NOTE_ON][PR_KEY]
+    return average
+
+
+def append_results(tracked_results, new_results):
+    """
+    Combine two results dictionaries. This function is more general than
+    the signature suggests.
+
+    Parameters
+    ----------
+    tracked_results and new_results : dictionary
+      Dictionaries containing results of tracks arranged by metric
+
+    Returns
+    ----------
+    tracked_results : dictionary
+      Dictionary with all results appended along the metric
+    """
+
+    # Only modify a local copy which will be returned
+    tracked_results = deepcopy(tracked_results)
+
+    # Loop through the keys in the new dictionary
+    for key in new_results.keys():
+        # Check if the key already exists in the current dictionary
+        if key not in tracked_results.keys():
+            # Add the untracked entry
+            tracked_results[key] = new_results[key]
+        # Check if the entry is another dictionary
+        elif isinstance(new_results[key], dict):
+            # Recursively call this function
+            tracked_results[key] = append_results(tracked_results[key], new_results[key])
         else:
-            note_tdr = 0
-        notes_tab_results[TDR] = note_tdr
-        results[TAB_NOTES] = notes_tab_results
+            # Append the new entry (or entries) to the current entry
+            tracked_results[key] = np.append(tracked_results[key], new_results[key])
 
-    if log_dir is not None:
-        # Construct a path for the track's transcription and separation results
-        results_path = os.path.join(log_dir, f'{track_id}.txt')
-        write_results(results, results_path, verbose)
+    return tracked_results
 
-    if verbose:
-        # Add a newline to the console
-        print()
 
-    return results
+def log_results(results, writer, step=0, patterns=None, tag=''):
+    """
+    Log results using TensorBoardX.
+
+    Parameters
+    ----------
+    results : dictionary
+      Dictionary containing results of tracks arranged by metric
+    writer : tensorboardX.SummaryWriter
+      Writer object being used to log results
+    step : int
+      Current iteration in whatever process (e.g. training)
+    patterns : list of string or None (optional)
+      Only write metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
+    tag : string
+      Tag for organizing different types of results (e.g. 'validation')
+    """
+
+    # Loop through the keys in the dictionary
+    for key in results.keys():
+        # Extract the next entry
+        entry = results[key]
+
+        # Check if the entry is another dictionary
+        if isinstance(entry, dict):
+            # Add the key to the tag and call this function recursively
+            log_results(entry, writer, step, patterns, tag + f'/{key}')
+        else:
+            # Check if the key matches the specified patterns
+            if pattern_match(key, patterns) or patterns is None:
+                # Log the entry under the specified key
+                writer.add_scalar(f'{tag}/{key}', entry, global_step=step)
+
+
+def write_results(results, file, patterns=None, verbose=False):
+    """
+    Write result dictionary to a text file.
+
+    Parameters
+    ----------
+    results : dictionary
+      Dictionary containing results of tracks arranged by metric
+    file : TextIOWrapper
+      File open in write mode
+    patterns : list of string or None (optional)
+      Only write metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
+    verbose : bool
+      Whether to print to console whatever is written to the file
+    """
+
+    # Loop through the keys in the dictionary
+    for key in results.keys():
+        # Check if the key's entry is another dictionary
+        if isinstance(results[key], dict):
+            # Write a header to the file
+            tools.write_and_print(file, f'-----{key}-----', verbose, '\n')
+            # Call this function recursively
+            write_results(results[key], file, patterns, verbose)
+            # Write an empty line
+            tools.write_and_print(file, '', verbose, '\n')
+        else:
+            # Check if the key matches the specified patterns
+            if pattern_match(key, patterns) or patterns is None:
+                # Write the metric and corresponding result to the file
+                tools.write_and_print(file, f' {key} : {results[key]}', verbose, '\n')
+
+    # Write an empty line
+    tools.write_and_print(file, '', verbose, '\n')
+
+
+def pattern_match(query, patterns=None):
+    """
+    Simple helper function to see if a query matches a list of strings, even if partially.
+
+    Parameters
+    ----------
+    query : string
+      String to check for matches
+    patterns : list of string or None (optional)
+      Patterns to reference, return False if unspecified
+
+    Returns
+    ----------
+    match : bool
+      Whether the query matches some pattern, fully or partially
+    """
+
+    # Default the returned value
+    match = False
+
+    # Check if there are any patterns to analyze
+    if patterns is not None:
+        # Compare the query to each pattern
+        match = any([p in query for p in patterns])
+
+    return match
+
+
+##################################################
+# EVALUATORS                                     #
+##################################################
 
 
 class Evaluator(object):
@@ -154,13 +201,13 @@ class Evaluator(object):
     Implements a generic music information retrieval evaluator.
     """
 
-    def __init__(self, results_dir, patterns, verbose):
+    def __init__(self, save_dir, patterns, verbose):
         """
         Initialize parameters common to all evaluators and instantiate.
 
         Parameters
         ----------
-        results_dir : string or None (optional)
+        save_dir : string or None (optional)
           Directory where results for each track will be written
         patterns : list of string or None (optional)
           Only write/log metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
@@ -168,24 +215,65 @@ class Evaluator(object):
           Whether to print any written text to console as well
         """
 
-        self.results_dir = results_dir
-        self.patterns = patterns
-        self.verbose = verbose
+        self.save_dir = None
+        self.set_save_dir(save_dir)
 
-        if self.results_dir is not None:
-            # Create the specified directory if it does not already exist
-            os.makedirs(self.results_dir, exist_ok=True)
+        self.patterns = None
+        self.set_patterns(patterns)
+
+        self.verbose = None
+        self.set_verbose(verbose)
 
         # Initialize dictionary to track results
         self.results = None
         self.reset_results()
+
+    def set_save_dir(self, save_dir):
+        """
+        Simple helper function to set and create a new save directory.
+
+        Parameters
+        ----------
+        save_dir : string or None (optional)
+          Directory where estimates for each track will be written
+        """
+
+        self.save_dir = save_dir
+
+        if self.save_dir is not None:
+            # Create the specified directory if it does not already exist
+            os.makedirs(self.save_dir, exist_ok=True)
+
+    def set_patterns(self, patterns):
+        """
+        Simple helper function to set new patterns.
+
+        Parameters
+        ----------
+        patterns : list of string or None (optional)
+          Only write/log metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
+        """
+
+        self.patterns = patterns
+
+    def set_verbose(self, verbose):
+        """
+        Simple helper function to set a new verbose flag.
+
+        Parameters
+        ----------
+        verbose : bool
+          Whether to print any written text to console as well
+        """
+
+        self.verbose = verbose
 
     def reset_results(self):
         """
         Reset tracked results to empty dictionary.
         """
 
-        self.results = {}
+        self.results = dict()
 
     def average_results(self):
         """
@@ -267,7 +355,7 @@ class Evaluator(object):
     @abstractmethod
     def evaluate(self, estimated, reference):
         """
-        Evaluate one estimate with respect to a reference.
+        Evaluate an estimate with respect to a reference.
 
         Parameters
         ----------
@@ -279,46 +367,210 @@ class Evaluator(object):
 
         return NotImplementedError
 
-    def track_results(self, estimated, reference, track=None):
-        # Make sure the estimated and reference data are unpacked
-        estimated, reference = self.pre_proc(estimated, reference)
+    def write(self, results, track=None):
+        """
+        Write the results dictionary to a text file if a save directory was specified.
 
-        # Calculate the results
-        new_results = self.evaluate(estimated, reference)
+        Parameters
+        ----------
+        results : dictionary
+          Dictionary containing results of tracks arranged by metric
+        track : string
+          Name of the track being processed
+        """
 
-        # Add the results to the tracked dictionary
-        self.results = append_results(self.results, new_results)
-
-        if self.results_dir is not None:
+        if self.save_dir is not None:
             # Determine how to name the results
             tag = tools.get_tag(track)
 
+            if self.verbose:
+                # Print the track name to console as a header to the results
+                print(f'Evaluating track: {tag}')
+
             # Construct a path for the results
-            results_path = os.path.join(self.results_dir, f'{tag}.{tools.TXT_EXT}')
+            results_path = os.path.join(self.save_dir, f'{tag}.{tools.TXT_EXT}')
 
             # Open a file at the path with writing permissions
             with open(results_path, 'w') as results_file:
                 # Write the results to a text file
-                write_results(new_results, results_file, self.patterns, self.verbose)
+                write_results(results, results_file, self.patterns, self.verbose)
+
+    def get_track_results(self, estimated, reference, track=None):
+        """
+        Calculate the results, write them, and track them within the evaluator.
+
+        Parameters
+        ----------
+        estimated : object
+          Estimate relevant to the evaluation or the dictionary containing it
+        reference : object
+          Reference relevant to the evaluation or the dictionary containing it
+        track : string
+          Name of the track being processed
+
+        Returns
+        ----------
+        results : dictionary
+          Dictionary containing results of tracks arranged by metric
+        """
+
+        # Make sure the estimated and reference data are unpacked
+        estimated, reference = self.pre_proc(estimated, reference)
+
+        # Calculate the results
+        results = self.evaluate(estimated, reference)
+
+        # Add the results to the tracked dictionary
+        self.results = append_results(self.results, results)
+
+        # Write the results
+        self.write(results, track)
+
+        return results
 
     def finalize(self, writer, step=0):
+        """
+        Log the averaged results using TensorBoardX and reset the results tracking.
+
+        Parameters
+        ----------
+        writer : tensorboardX.SummaryWriter
+          Writer object being used to log results
+        step : int
+          Current iteration in whatever process (e.g. training)
+        """
+
         # Average the currently tracked results
         average = self.average_results()
 
         # Log the currently tracked results
-        log_results(average, writer, step, patterns=self.patterns)
+        log_results(average, writer, step, patterns=self.patterns, tag=tools.VAL)
 
         # Reset the tracked results
         self.reset_results()
 
 
-class StackedMultipitchEvaluator(Evaluator):
+class ComboEvaluator(Evaluator):
     """
-    Implements an evaluator for stacked multi pitch activation maps, i.e.
-    independent multi pitch estimations across degrees of freedom or instruments.
+    Packages multiple evaluators into one modules.
     """
 
-    def __init__(self, results_dir=None, patterns=None, verbose=False):
+    def __init__(self, evaluators, save_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
+
+        Parameters
+        ----------
+        See Evaluator class...
+
+        evaluators : dict of Evaluator
+          All of the evaluators to run, with key specifying the evaluator's tag
+        """
+
+        self.evaluators = evaluators
+
+        super().__init__(save_dir, patterns, verbose)
+
+    def reset_results(self):
+        """
+        Reset tracked results of each evaluator in the collection.
+        """
+
+        # Loop through the evaluators
+        for evaluator in self.evaluators.values():
+            # Reset the respective results dictionary so it is empty
+            evaluator.reset_results()
+
+    def average_results(self):
+        """
+        Return the average of the currently tracked results across all evaluators.
+
+        Returns
+        ----------
+        average : dictionary
+          Dictionary with results dictionary entries for each evaluator
+        """
+
+        # Initialize an empty dictionary for the average results
+        average = dict()
+
+        # Obtain a list of the evaluator keys
+        keys = list(self.evaluators.keys())
+
+        # Loop through the evaluator keys
+        for key in keys:
+            # Average the tracked results for the evaluator
+            # and place in average results under evaluator's key
+            average[key] = average_results(self.evaluators[key].results)
+
+        return average
+
+    @staticmethod
+    @abstractmethod
+    def get_key():
+        """
+        This should not be called directly on a ComboEvaluator.
+        """
+
+        return NotImplementedError
+
+    @abstractmethod
+    def evaluate(self, estimated, reference):
+        """
+        This should not be called directly on a ComboEvaluator.
+        """
+
+        return NotImplementedError
+
+    def get_track_results(self, estimated, reference, track=None):
+        """
+        Very similar to parent method, except file is written after results are
+        calculated for each evaluator and packaged into a single dictionary.
+
+        Parameters
+        ----------
+        estimated : object
+          Estimate relevant to the evaluation or the dictionary containing it
+        reference : object
+          Reference relevant to the evaluation or the dictionary containing it
+        track : string
+          Name of the track being processed
+
+        Returns
+        ----------
+        results : dictionary
+          Dictionary containing results of tracks arranged by metric
+        """
+
+        # Copy the raw output dictionary and use it to hold estimates
+        results = {}
+
+        # Obtain a list of the evaluator keys
+        keys = list(self.evaluators.keys())
+
+        # Loop through the evaluator keys
+        for key in keys:
+            # Make sure the estimated and reference data are unpacked
+            estimated_, reference_ = self.evaluators[key].pre_proc(estimated, reference)
+
+            # Calculate the results
+            results[key] = self.evaluators[key].evaluate(estimated_, reference_)
+
+            # Add the results to the tracked dictionary
+            self.evaluators[key].results = append_results(self.evaluators[key].results, results[key])
+
+        # Write the results
+        self.write(results, track)
+
+        return results
+
+
+class LossWrapper(Evaluator):
+    """
+    Simple wrapper for tracking, writing, and logging loss.
+    """
+
+    def __init__(self, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
@@ -327,7 +579,56 @@ class StackedMultipitchEvaluator(Evaluator):
         See Evaluator class...
         """
 
-        super().__init__(results_dir, patterns, verbose)
+        super().__init__(save_dir, patterns, verbose)
+
+    @staticmethod
+    def get_key():
+        """
+        Default key for loss.
+        """
+
+        return tools.KEY_LOSS
+
+    def evaluate(self, estimated, reference=None):
+        """
+        Simply return loss in a new results dictionary.
+
+        Parameters
+        ----------
+        estimated : ndarray
+          Single loss value in a NumPy array
+        reference : irrelevant
+
+        Returns
+        ----------
+        results : dict
+          Dictionary containing loss
+        """
+
+        # Package the results into a dictionary
+        results = {
+            self.get_key() : estimated,
+        }
+
+        return results
+
+
+class StackedMultipitchEvaluator(Evaluator):
+    """
+    Implements an evaluator for stacked multi pitch activation maps, i.e.
+    independent multi pitch estimations across degrees of freedom or instruments.
+    """
+
+    def __init__(self, save_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
+
+        Parameters
+        ----------
+        See Evaluator class...
+        """
+
+        super().__init__(save_dir, patterns, verbose)
 
     @staticmethod
     def get_key():
@@ -350,6 +651,7 @@ class StackedMultipitchEvaluator(Evaluator):
           T - number of frames
         reference : ndarray (S x F x T)
           Array of multiple discrete pitch activation maps
+          Dimensions same as estimated
 
         Returns
         ----------
@@ -361,17 +663,17 @@ class StackedMultipitchEvaluator(Evaluator):
         flatten_shape = estimated.shape[:-2] + tuple([-1])
 
         # Flatten the estimated and reference data
-        estimated = np.reshape(estimated, flatten_shape)
-        reference = np.reshape(reference, flatten_shape)
+        flattened_multi_pitch_est = np.reshape(estimated, flatten_shape)
+        flattened_multi_pitch_ref = np.reshape(reference, flatten_shape)
 
         # Determine the number of correct predictions,
         # where estimated activation lines up with reference
-        num_correct = np.sum(estimated * reference, axis=-1)
+        num_correct = np.sum(flattened_multi_pitch_est * flattened_multi_pitch_ref, axis=-1)
 
         # Count the number of activations predicted
-        num_predicted = np.sum(estimated, axis=-1)
+        num_predicted = np.sum(flattened_multi_pitch_est, axis=-1)
         # Count the number of activations referenced
-        num_ground_truth = np.sum(reference, axis=-1)
+        num_ground_truth = np.sum(flattened_multi_pitch_ref, axis=-1)
 
         # Calculate precision and recall
         precision = num_correct / (num_predicted + EPSILON)
@@ -380,7 +682,6 @@ class StackedMultipitchEvaluator(Evaluator):
         # Calculate the f1-score using the harmonic mean formula
         f_measure = hmean([precision + EPSILON, recall + EPSILON]) - EPSILON
 
-        # TODO - what will break if I don't average across dof?
         # Package the results into a dictionary
         results = {
             tools.KEY_PRECISION : precision,
@@ -396,7 +697,7 @@ class MultipitchEvaluator(StackedMultipitchEvaluator):
     Implements an evaluator for multi pitch activation maps.
     """
 
-    def __init__(self, results_dir=None, patterns=None, verbose=False):
+    def __init__(self, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
@@ -405,11 +706,11 @@ class MultipitchEvaluator(StackedMultipitchEvaluator):
         See Evaluator class...
         """
 
-        super().__init__(results_dir, patterns, verbose)
+        super().__init__(save_dir, patterns, verbose)
 
     def evaluate(self, estimated, reference):
         """
-        Evaluate a stacked multi pitch estimate with respect to a reference.
+        Evaluate a multi pitch estimate with respect to a reference.
 
         Parameters
         ----------
@@ -419,6 +720,7 @@ class MultipitchEvaluator(StackedMultipitchEvaluator):
           T - number of frames
         reference : ndarray (F x T)
           Ground-truth discrete pitch activation map
+          Dimensions same as estimated
 
         Returns
         ----------
@@ -427,12 +729,12 @@ class MultipitchEvaluator(StackedMultipitchEvaluator):
         """
 
         # Convert the multi pitch arrays to stacked multi pitch arrays
-        estimated = tools.multi_pitch_to_stacked_multi_pitch(estimated)
-        reference = tools.multi_pitch_to_stacked_multi_pitch(reference)
+        stacked_multi_pitch_est = tools.multi_pitch_to_stacked_multi_pitch(estimated)
+        stacked_multi_pitch_ref = tools.multi_pitch_to_stacked_multi_pitch(reference)
 
         # Call the parent class evaluate function. Multi pitch is just a special
         # case of stacked multi pitch, where there is only one degree of freedom
-        results = super().evaluate(estimated, reference)
+        results = super().evaluate(stacked_multi_pitch_est, stacked_multi_pitch_ref)
 
         # Average the results across the degree of freedom - i.e. collapse extraneous dimension
         results = average_results(results)
@@ -445,7 +747,7 @@ class StackedNoteEvaluator(Evaluator):
     Implements an evaluator for stacked (independent) note estimations.
     """
 
-    def __init__(self, offset_ratio=None, results_dir=None, patterns=None, verbose=False):
+    def __init__(self, offset_ratio=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
@@ -457,7 +759,7 @@ class StackedNoteEvaluator(Evaluator):
           Ratio of the reference note's duration used to define the offset tolerance
         """
 
-        super().__init__(results_dir, patterns, verbose)
+        super().__init__(save_dir, patterns, verbose)
 
         self.offset_ratio = offset_ratio
 
@@ -475,8 +777,10 @@ class StackedNoteEvaluator(Evaluator):
 
         Parameters
         ----------
-        estimated :
-        reference :
+        estimated : dict
+          Dictionary containing (slice -> (pitches, intervals)) pairs
+        reference : dict
+          Dictionary containing (slice -> (pitches, intervals)) pairs
 
         Returns
         ----------
@@ -484,16 +788,16 @@ class StackedNoteEvaluator(Evaluator):
           Dictionary containing precision, recall, and f-measure
         """
 
-        # Make sure the estimated and reference data are unpacked
-        estimated, reference = self.pre_proc(estimated, reference)
-
+        # Initialize empty arrays to hold results for each degree of freedom
         precision, recall, f_measure = np.empty(0), np.empty(0), np.empty(0)
 
         # Loop through the stack of notes
         for key in estimated.keys():
-            pitches_ref, intervals_ref = reference[key]
-            pitches_est, intervals_est = estimated[key]
+            # Extract the loose note groups from the stack
+            pitches_ref, intervals_ref = estimated[key]
+            pitches_est, intervals_est = reference[key]
 
+            # Convert notes to Hertz
             pitches_ref = tools.notes_to_hz(pitches_ref)
             pitches_est = tools.notes_to_hz(pitches_est)
 
@@ -504,11 +808,11 @@ class StackedNoteEvaluator(Evaluator):
                                         est_pitches=pitches_est,
                                         offset_ratio=self.offset_ratio)
 
+            # Add the results to the respective array
             precision = np.append(precision, p)
             recall = np.append(recall, r)
             f_measure = np.append(f_measure, f)
 
-        # TODO - what will break if I don't average across dof?
         # Package the results into a dictionary
         results = {
             tools.KEY_PRECISION : precision,
@@ -524,7 +828,7 @@ class NoteEvaluator(StackedNoteEvaluator):
     Implements an evaluator for notes.
     """
 
-    def __init__(self, offset_ratio=None, results_dir=None, patterns=None, verbose=False):
+    def __init__(self, offset_ratio=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
@@ -533,7 +837,7 @@ class NoteEvaluator(StackedNoteEvaluator):
         See StackedNoteEvaluator class...
         """
 
-        super().__init__(offset_ratio, results_dir, patterns, verbose)
+        super().__init__(offset_ratio, save_dir, patterns, verbose)
 
     def evaluate(self, estimated, reference):
         """
@@ -541,8 +845,12 @@ class NoteEvaluator(StackedNoteEvaluator):
 
         Parameters
         ----------
-        estimated :
-        reference :
+        estimated : ndarray (N x 3)
+          Array of estimated note intervals and pitches by row
+          N - number of notes
+        reference : ndarray (N x 3)
+          Array of ground-truth note intervals and pitches by row
+          N - number of notes
 
         Returns
         ----------
@@ -550,21 +858,16 @@ class NoteEvaluator(StackedNoteEvaluator):
           Dictionary containing precision, recall, and f-measure
         """
 
-        # Make sure the estimated and reference data are unpacked
-        estimated, reference = self.pre_proc(estimated, reference)
-
-        # TODO - should I be expecting batched notes or note groups?
-
         # Convert the batches notes to notes
-        estimated = tools.batched_notes_to_notes(estimated)
-        reference = tools.batched_notes_to_notes(reference)
+        notes_est = tools.batched_notes_to_notes(estimated)
+        notes_ref = tools.batched_notes_to_notes(reference)
 
         # Convert the notes to stacked notes
-        estimated = tools.notes_to_stacked_notes(*estimated)
-        reference = tools.notes_to_stacked_notes(*reference)
+        stacked_notes_est = tools.notes_to_stacked_notes(*notes_est)
+        stacked_notes_ref = tools.notes_to_stacked_notes(*notes_ref)
 
         # Call the parent class evaluate function
-        results = super().evaluate(estimated, reference)
+        results = super().evaluate(stacked_notes_est, stacked_notes_ref)
 
         # Average the results across the degree of freedom - i.e. collapse extraneous dimension
         results = average_results(results)
@@ -572,159 +875,141 @@ class NoteEvaluator(StackedNoteEvaluator):
         return results
 
 
-class PitchListEvaluator():
-    pass
-
-
-class ComboEvaluator():
-    pass
-
-
-##################################################
-# RESULTS DICTIONARY                             #
-##################################################
-
-
-def average_results(results):
+class StackedPitchListEvaluator(Evaluator):
     """
-    Obtain the average across all tracked results for each metric
-    in a results dictionary.
+    Implements an evaluator for stacked (independent) pitch list estimations.
 
-    Parameters
-    ----------
-    results : dictionary
-      Dictionary containing results of tracks arranged by metric
-
-    Returns
-    ----------
-    average : dictionary
-      Dictionary with a single value for each metric
+    This is equivalent to the discrete multi pitch evaluation protocol for
+    discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    # TODO - average along axis 0 for stacked representations?
+    def __init__(self, save_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
 
-    # Only modify a local copy which will be returned
-    average = deepcopy(results)
+        Parameters
+        ----------
+        See Evaluator class...
+        """
 
-    # Loop through the keys in the dictionary
-    for key in average.keys():
-        # Check if the entry is another dictionary
-        if isinstance(average[key], dict):
-            # Recursively call this function
-            average[key] = average_results(average[key])
-        else:
-            # Check if the entry is a NumPy array or list - leave it alone otherwise
-            if isinstance(average[key], np.ndarray) or isinstance(average[key], list):
-                # Take the average of all entries and convert to float (necessary for logger)
-                average[key] = float(np.mean(average[key]))
+        super().__init__(save_dir, patterns, verbose)
 
-    return average
+    @staticmethod
+    def get_key():
+        """
+        Default key for pitch lists.
+        """
+
+        return tools.KEY_PITCHLIST
+
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate stacked pitch list estimates with respect to a reference.
+
+        Parameters
+        ----------
+        estimated : dict
+          Dictionary containing (slice -> (times, pitch_list)) pairs
+        reference : dict
+          Dictionary containing (slice -> (times, pitch_list)) pairs
+
+        Returns
+        ----------
+        results : dict
+          Dictionary containing precision, recall, and f-measure
+        """
+
+        # Initialize empty arrays to hold results for each degree of freedom
+        precision, recall, f_measure = np.empty(0), np.empty(0), np.empty(0)
+
+        # Loop through the stack of pitch lists
+        for key in estimated.keys():
+            # Extract the pitch lists from the stack
+            times_ref, pitches_ref = estimated[key]
+            times_est, pitches_est = reference[key]
+
+            # Convert pitch lists to Hertz
+            pitches_ref = tools.pitch_list_to_hz(pitches_ref)
+            pitches_est = tools.pitch_list_to_hz(pitches_est)
+
+            # Calculate frame-wise precision, recall, and f1 score for continuous pitches
+            frame_metrics = evaluate_frames(times_ref, pitches_ref, times_est, pitches_est)
+
+            # Extract observation-wise precision and recall
+            p, r = frame_metrics['Precision'], frame_metrics['Recall']
+
+            # Calculate the f1-score using the harmonic mean formula
+            f = hmean([p + EPSILON, r + EPSILON]) - EPSILON
+
+            # Add the results to the respective array
+            precision = np.append(precision, p)
+            recall = np.append(recall, r)
+            f_measure = np.append(f_measure, f)
+
+        # Package the results into a dictionary
+        results = {
+            tools.KEY_PRECISION : precision,
+            tools.KEY_RECALL : recall,
+            tools.KEY_F1 : f_measure
+        }
+
+        return results
 
 
-def append_results(tracked_results, new_results):
+class PitchListEvaluator(StackedPitchListEvaluator):
     """
-    Combine two results dictionaries. This function is more general than
-    the signature suggests.
+    Evaluates pitch list estimates against a reference.
 
-    Parameters
-    ----------
-    tracked_results and new_results : dictionary
-      Dictionaries containing results of tracks arranged by metric
-
-    Returns
-    ----------
-    tracked_results : dictionary
-      Dictionary with all results appended along the metric
-    """
-
-    # Only modify a local copy which will be returned
-    tracked_results = deepcopy(tracked_results)
-
-    # Loop through the keys in the new dictionary
-    for key in new_results.keys():
-        # Check if the key already exists in the current dictionary
-        if key not in tracked_results.keys():
-            # Add the untracked entry
-            tracked_results[key] = new_results[key]
-        # Check if the entry is another dictionary
-        elif isinstance(new_results[key], dict):
-            # Recursively call this function
-            tracked_results[key] = append_results(tracked_results[key], new_results[key])
-        else:
-            # Append the new entry (or entries) to the current entry
-            tracked_results[key] = np.append(tracked_results[key], new_results[key])
-
-    return tracked_results
-
-
-def log_results(results, writer, step=0, patterns=None):
-    for type in results.keys():
-        if isinstance(results[type], dict):
-            for metric in results[type].keys():
-                if pattern_match(metric, patterns):
-                    writer.add_scalar(f'val/{type}/{metric}', results[type][metric], global_step=step)
-        else:
-            if patterns is None or type in patterns:
-                writer.add_scalar(f'val/{type}', results[type], global_step=step)
-
-
-def write_results(results, file, patterns=None, verbose=False):
-    """
-    Write result dictionary to a text file.
-
-    Parameters
-    ----------
-    results : dictionary
-      Dictionary containing results of tracks arranged by metric
-    file : TextIOWrapper
-      File open in write mode
-    patterns : list of string or None (optional)
-      Only write metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
-    verbose : bool
-      Whether to print to console whatever is written to the file
+    This is equivalent to the discrete multi pitch evaluation protocol for
+    discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    # Loop through the keys in the dictionary
-    for key in results.keys():
-        # Check if the key's entry is another dictionary
-        if isinstance(results[key], dict):
-            # Write a header to the file
-            tools.write_and_print(file, f'-----{key}-----\n', verbose)
-            # Call this function recursively
-            write_results(results[key, file, verbose])
-        else:
-            # Check if the key matches the specified patterns
-            if pattern_match(key, patterns):
-                # Write the metric and corresponding result to the file
-                tools.write_and_print(file, f' {key} : {results[key]}\n', verbose)
+    def __init__(self, save_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
 
-        # Write an empty line
-        tools.write_and_print(file, '', verbose, '\n')
+        Parameters
+        ----------
+        See Evaluator class...
+        """
 
+        super().__init__(save_dir, patterns, verbose)
 
-def pattern_match(query, patterns=None):
-    """
-    Simple helper function to see if a query matches a list of strings, even if partially.
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate pitch list estimates with respect to a reference.
 
-    Parameters
-    ----------
-    query : string
-      String to check for matches
-    patterns : list of string or None (optional)
-      Patterns to reference, return False if unspecified
+        Parameters
+        ----------
+        estimated : tuple containing
+          times : ndarray (N)
+            Time in seconds of beginning of each frame
+            N - number of time samples (frames)
+          pitch_list : list of ndarray (N x [...])
+            Array of pitches corresponding to notes
+            N - number of pitch observations (frames)
+        reference : tuple containing
+          times : ndarray (N)
+            Time in seconds of beginning of each frame
+            N - number of time samples (frames)
+          pitch_list : list of ndarray (N x [...])
+            Array of pitches corresponding to notes
+            N - number of pitch observations (frames)
 
-    Returns
-    ----------
-    match : bool
-      Whether the query matches some pattern, fully or partially
-    """
+        Returns
+        ----------
+        results : dict
+          Dictionary containing precision, recall, and f-measure
+        """
 
-    # Default the returned value
-    match = False
+        # Convert the pitch lists to stacked pitch lists
+        stacked_pitch_list_est = tools.pitch_list_to_stacked_pitch_list(*estimated)
+        stacked_pitch_list_ref = tools.pitch_list_to_stacked_pitch_list(*reference)
 
-    # Check if there are any patterns to analyze
-    if patterns is not None:
-        # Compare the query to each pattern
-        match = any([p in query for p in patterns])
+        # Call the parent class evaluate function
+        results = super().evaluate(stacked_pitch_list_est, stacked_pitch_list_ref)
 
-    return match
+        # Average the results across the degree of freedom - i.e. collapse extraneous dimension
+        results = average_results(results)
+
+        return results

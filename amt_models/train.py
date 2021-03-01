@@ -77,7 +77,7 @@ def validate(model, dataset, evaluator, estimator=None):
                 predictions.update(estimator.process_track(predictions, track_id))
 
             # Evaluate the predictions and track the results
-            evaluator.track_results(predictions, track, track_id)
+            evaluator.get_track_results(predictions, track, track_id)
 
     # Obtain the average results from this validation loop
     average = evaluator.average_results()

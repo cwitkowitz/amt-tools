@@ -222,7 +222,7 @@ class ComboEstimator(object):
         # Loop through all of the estimators
         for estimator in self.estimators:
             # Process the track with the estimator and update the estimate dictionary
-            output.update(estimator.process_track(raw_output, track))
+            output.update(estimator.process_track(output, track))
 
         return output
 
@@ -253,7 +253,7 @@ class ComboEstimator(object):
                 new_dir = os.path.join(save_dir, sub_dirs[i])
 
             # Update the save directory
-            estimator.save_dir = new_dir
+            estimator.set_save_dir(new_dir)
 
 
 class Estimator(object):
@@ -274,6 +274,20 @@ class Estimator(object):
         """
 
         self.profile = profile
+
+        self.save_dir = None
+        self.set_save_dir(save_dir)
+
+    def set_save_dir(self, save_dir):
+        """
+        Simple helper function to set and create a new save directory.
+
+        Parameters
+        ----------
+        save_dir : string or None (optional)
+          Directory where estimates for each track will be written
+        """
+
         self.save_dir = save_dir
 
         if self.save_dir is not None:
@@ -357,6 +371,7 @@ class Estimator(object):
 
         # Perform any pre-processing steps
         raw_output = self.pre_proc(raw_output)
+        # Obtain estimates for the track
         estimate = self.estimate(raw_output)
 
         if self.save_dir is not None:
@@ -450,8 +465,8 @@ class StackedNoteTranscriber(Estimator):
                 if onsets is None:
                     # Default the onsets if they were not provided
                     onsets = tools.multi_pitch_to_onsets(multi_pitch)
-                # Remove trailing onsets within inhibition window of a previous onset
-                onsets = tools.inhibit_activations(onsets, times, self.inhibition_window)
+                    # Remove trailing onsets within inhibition window of a previous onset
+                    onsets = tools.inhibit_activations(onsets, times, self.inhibition_window)
 
             # Transcribe this slice of activations
             pitches, intervals = multi_pitch_to_notes(multi_pitch, times, self.profile, onsets, offsets)

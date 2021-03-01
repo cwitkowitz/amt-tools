@@ -36,7 +36,7 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 350
+    iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 40
@@ -64,24 +64,15 @@ def config():
     # Add a file storage observer for the log directory
     ex.observers.append(FileStorageObserver(root_dir))
 
+
 @ex.automain
 def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoints,
                       batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
     # Seed everything with the same seed
     tools.seed_everything(seed)
 
-    # Get a list of the MAPS splits
-    splits = MAPS.available_splits()
-
     # Initialize the default piano profile
     profile = tools.PianoProfile()
-
-    # Initialize the testing splits as the real piano data
-    test_splits = ['ENSTDkAm', 'ENSTDkCl']
-    # Remove the real piano splits to get the training partition
-    train_splits = splits.copy()
-    for split in test_splits:
-        train_splits.remove(split)
 
     # Processing parameters
     dim_in = 229
@@ -94,16 +85,24 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Initialize the estimation pipeline
     validation_estimator = ComboEstimator([NoteTranscriber(profile=profile),
-                                           MultiPitchRefiner(profile=profile),
                                            PitchListWrapper(profile=profile)])
 
-    # Initialize the evaluation
-    validation_evaluator = MultipitchEvaluator(patterns=['f1'])
+    # Initialize the evaluation pipeline
+    evaluators = {tools.KEY_LOSS : LossWrapper(),
+                  tools.KEY_MULTIPITCH : MultipitchEvaluator(),
+                  tools.KEY_NOTE_ON : NoteEvaluator(),
+                  tools.KEY_NOTE_OFF : NoteEvaluator(0.2)}
+    validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1'])
 
-    # Initialize the evaluation pipeline for testing
-    results_dir = os.path.join(root_dir, 'results')
-    #test_evaluator = MultipitchEvaluator(results_dir=results_dir)
-    test_evaluator = NoteEvaluator(results_dir=results_dir)
+    # Get a list of the MAPS splits
+    splits = MAPS.available_splits()
+
+    # Initialize the testing splits as the real piano data
+    test_splits = ['ENSTDkAm', 'ENSTDkCl']
+    # Remove the real piano splits to get the training partition
+    train_splits = splits.copy()
+    for split in test_splits:
+        train_splits.remove(split)
 
     print('Loading training partition...')
 
@@ -166,10 +165,14 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Transcribing and evaluating test partition...')
 
     # Add save directories to the estimators
-    validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated'), ['notes', None, 'pitch'])
+    validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated'), ['notes', 'pitch'])
+
+    # Add a save directory to the evaluators and reset the patterns
+    validation_evaluator.set_save_dir(os.path.join(root_dir, 'results'))
+    validation_evaluator.set_patterns(None)
 
     # Get the average results for the testing partition
-    results = validate(onsetsframes, maps_test, evaluator=test_evaluator, estimator=validation_estimator)
+    results = validate(onsetsframes, maps_test, evaluator=validation_evaluator, estimator=validation_estimator)
 
     # Log the average results in metrics.json
     ex.log_scalar('Final Results', results, 0)

@@ -111,6 +111,9 @@ class MAPS(TranscriptionDataset):
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
 
+                # Create the path if it doesn't exist
+                os.makedirs(os.path.dirname(gt_path), exist_ok=True)
+
                 # Save the data as a NumPy zip file
                 keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_MULTIPITCH,
                         tools.KEY_ONSETS, tools.KEY_OFFSETS, tools.KEY_NOTES)
