@@ -36,10 +36,10 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 10000
+    iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 500
+    checkpoints = 200
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -164,7 +164,9 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          iterations=iterations,
                          checkpoints=checkpoints,
                          log_dir=model_dir,
-                         val_set=mstro_val)
+                         val_set=mstro_val,
+                         estimator=validation_estimator,
+                         evaluator=validation_evaluator)
 
     print('Transcribing and evaluating test partition...')
 

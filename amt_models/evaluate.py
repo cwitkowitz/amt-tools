@@ -1013,3 +1013,130 @@ class PitchListEvaluator(StackedPitchListEvaluator):
         results = average_results(results)
 
         return results
+
+
+class TablatureEvaluator(Evaluator):
+    """
+    Implements an evaluator for tablature.
+    """
+
+    def __init__(self, profile, save_dir=None, patterns=None, verbose=False):
+        """
+        Initialize parameters for the evaluator.
+
+        Parameters
+        ----------
+        See Evaluator class for others...
+
+        profile : InstrumentProfile (instrument.py)
+          Instrument profile detailing experimental setup
+        """
+
+        super().__init__(save_dir, patterns, verbose)
+
+        self.profile = profile
+
+    @staticmethod
+    def get_key():
+        """
+        Default key for tablature.
+        """
+
+        return tools.KEY_TABLATURE
+
+    def pre_proc(self, estimated, reference):
+        """
+        By default, we anticipate neither estimate
+        or reference to be in stacked multi pitch format.
+
+        TODO - do something similar for pitch list wrapper reference
+
+        Parameters
+        ----------
+        estimated : object
+          Dictionary containing ground-truth or the already-unpacked entry
+        reference : object
+          Dictionary containing model output or the already-unpacked entry
+
+        Returns
+        ----------
+        estimated : object
+          Estimate relevant to the evaluation
+        reference : object
+          Reference relevant to the evaluation
+        """
+
+        # Unpacked estimate and reference if dictionaries were provided
+        tablature_est, tablature_ref = super().pre_proc(estimated, reference)
+
+        # Convert from tablature format to stacked multi pitch format
+        tablature_est = tools.tablature_to_stacked_multi_pitch(tablature_est, self.profile)
+        tablature_ref = tools.tablature_to_stacked_multi_pitch(tablature_ref, self.profile)
+
+        return tablature_est, tablature_ref
+
+    def evaluate(self, estimated, reference):
+        """
+        Evaluate a stacked multi pitch tablature estimate with respect to a reference.
+
+        Parameters
+        ----------
+        estimated : ndarray (S x F x T)
+          Array of multiple discrete pitch activation maps
+          S - number of slices in stack
+          F - number of discrete pitches
+          T - number of frames
+        reference : ndarray (S x F x T)
+          Array of multiple discrete pitch activation maps
+          Dimensions same as estimated
+
+        Returns
+        ----------
+        results : dict
+          Dictionary containing precision, recall, f-measure, and tdr
+        """
+
+        # Flatten the estimated and reference data along the pitch and degree-of-freedom axis
+        flattened_tablature_est = estimated.flatten()
+        flattened_tablature_ref = reference.flatten()
+
+        # Count the number of activations predicted
+        num_predicted = np.sum(flattened_tablature_est, axis=-1)
+        # Count the number of activations referenced
+        num_ground_truth = np.sum(flattened_tablature_ref, axis=-1)
+
+        # Determine the number of correct tablature predictions,
+        # where estimated activation lines up with reference
+        num_correct_tablature = np.sum(flattened_tablature_est * flattened_tablature_ref, axis=-1)
+
+        # Calculate precision and recall
+        precision = num_correct_tablature / (num_predicted + EPSILON)
+        recall = num_correct_tablature / (num_ground_truth + EPSILON)
+
+        # Calculate the f1-score using the harmonic mean formula
+        f_measure = hmean([precision + EPSILON, recall + EPSILON]) - EPSILON
+
+        # Collapse the stacked multi pitch activations into a single representation
+        multi_pitch_est = tools.stacked_multi_pitch_to_multi_pitch(estimated)
+        multi_pitch_ref = tools.stacked_multi_pitch_to_multi_pitch(reference)
+
+        # Flatten the estimated and reference multi pitch activations
+        flattened_multi_pitch_est = multi_pitch_est.flatten()
+        flattened_multi_pitch_ref = multi_pitch_ref.flatten()
+
+        # Determine the number of correct predictions,
+        # where estimated activation lines up with reference
+        num_correct_multi_pitch = np.sum(flattened_multi_pitch_est * flattened_multi_pitch_ref, axis=-1)
+
+        # Calculate the tablature disambiguation rate
+        tdr = num_correct_tablature / (num_correct_multi_pitch + EPSILON)
+
+        # Package the results into a dictionary
+        results = {
+            tools.KEY_PRECISION : precision,
+            tools.KEY_RECALL : recall,
+            tools.KEY_F1 : f_measure,
+            tools.KEY_TDR : tdr
+        }
+
+        return results

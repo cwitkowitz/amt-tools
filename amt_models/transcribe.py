@@ -905,3 +905,79 @@ class PitchListWrapper(StackedPitchListWrapper):
 
         # Call the parent function
         super().write(stacked_pitch_list, track)
+
+
+class TablatureWrapper(Estimator):
+    """
+    Wrapper for converting tablature to multi pitch.
+    """
+
+    def __init__(self, profile, save_dir=None, stacked=False):
+        """
+        Initialize parameters for the estimator.
+
+        Parameters
+        ----------
+        See Estimator class...
+
+        stacked : bool
+          Whether to collapse into a single representation or leave stacked
+        """
+
+        super().__init__(profile, save_dir)
+
+        self.stacked = stacked
+
+    def get_key(self):
+        """
+        Default key for multi pitch activations.
+        """
+
+        return tools.KEY_MULTIPITCH
+
+    def estimate(self, raw_output):
+        """
+        Convert tablature into a single or stacked multi pitch activation map.
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        multi_pitch : ndarray ((S) x F x T)
+          Discrete pitch activation map
+          S - number of slices in stack - only if stacked=True
+          F - number of discrete pitches
+          T - number of frames
+        """
+
+        # Obtain the tablature
+        tablature = tools.unpack_dict(raw_output, tools.KEY_TABLATURE)
+
+        # Perform the conversion
+        multi_pitch = tools.tablature_to_stacked_multi_pitch(tablature, self.profile)
+
+        if not self.stacked:
+            multi_pitch = tools.stacked_multi_pitch_to_multi_pitch(multi_pitch)
+
+        return multi_pitch
+
+    def write(self, tablature, track):
+        """
+        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
+        A more appropriate action might be converting them to pitch lists and writing those.
+
+        Parameters
+        ----------
+        multi_pitch : ndarray ((S) x F x T)
+          Discrete pitch activation map
+          S - number of slices in stack - only if stacked=True
+          F - number of discrete pitches
+          T - number of frames
+        track : string
+          Name of the track being processed
+        """
+
+        pass

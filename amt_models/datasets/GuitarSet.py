@@ -98,6 +98,9 @@ class GuitarSet(TranscriptionDataset):
             # Convert the string-wise notes into a stacked multi pitch array
             stacked_multi_pitch = tools.stacked_notes_to_stacked_multi_pitch(stacked_notes, times, self.profile)
 
+            # Convert the stacked multi pitch array into a single representation
+            data[tools.KEY_MULTIPITCH] = tools.stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch)
+
             # Convert the stacked multi pitch array into tablature
             data[tools.KEY_TABLATURE] = tools.stacked_multi_pitch_to_tablature(stacked_multi_pitch, self.profile)
 
@@ -117,9 +120,12 @@ class GuitarSet(TranscriptionDataset):
                 gt_path = self.get_gt_dir(track)
 
                 # Save the data as a NumPy zip file
-                keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_TABLATURE, tools.KEY_ONSETS, tools.KEY_OFFSETS)
+                keys = (tools.KEY_FS, tools.KEY_AUDIO,
+                        tools.KEY_TABLATURE, tools.KEY_MULTIPITCH,
+                        tools.KEY_ONSETS, tools.KEY_OFFSETS)
                 tools.save_pack_npz(gt_path, keys, data[tools.KEY_FS], data[tools.KEY_AUDIO],
-                                    data[tools.KEY_TABLATURE], data[tools.KEY_ONSETS], data[tools.KEY_OFFSETS])
+                                    data[tools.KEY_TABLATURE], data[tools.KEY_MULTIPITCH],
+                                    data[tools.KEY_ONSETS], data[tools.KEY_OFFSETS])
 
         return data
 

@@ -169,13 +169,21 @@ class TranscriptionDataset(Dataset):
 
         # Get the name of the track
         track_id = self.tracks[index]
+
         # Slice the track's features and ground-truth
         data = self.get_track_data(track_id)
+
         # Convert all numpy arrays in the data dictionary to float32
         data = tools.track_to_dtype(data, dtype=tools.FLOAT32)
+
         # Remove any notes, as they cannot be batched
-        if tools.KEY_NOTES in data.keys():
+        if tools.query_dict(data, tools.KEY_NOTES):
             data.pop(tools.KEY_NOTES)
+
+        # Remove sampling rate - it can cause problems if it is not an ndarray. Sample rate
+        # should be able to be inferred from the dataset object, if no warnings are thrown
+        if tools.query_dict(data, tools.KEY_FS):
+            data.pop(tools.KEY_FS)
 
         return data
 
@@ -218,7 +226,6 @@ class TranscriptionDataset(Dataset):
             # Load supporting hyper-parameters
             fs = feats_dict[tools.KEY_FS].item()
             hop_length = feats_dict[tools.KEY_HOP].item()
-
         else:
             # If not, calculate the features
             feats = self.data_proc.process_audio(data[tools.KEY_AUDIO])

@@ -22,7 +22,7 @@ import os
 ##################################################
 
 
-def load_normalize_audio(wav_path, fs=None, norm=-1):
+def load_normalize_audio(wav_path, fs=None, norm=-1, res_type='kaiser_best'):
     """
     Load audio from a file and normalize it.
 
@@ -35,7 +35,9 @@ def load_normalize_audio(wav_path, fs=None, norm=-1):
     norm : float
       Type of normalization to perform
       -1 - root-mean-square
-      other - see librosa
+      See librosa for others...
+    res_type : string
+      See librosa... - this significantly affects the speed of resampling long audio files
 
     Returns
     ----------
@@ -47,7 +49,7 @@ def load_normalize_audio(wav_path, fs=None, norm=-1):
     """
 
     # Load the audio using librosa
-    audio, fs = librosa.load(wav_path, sr=fs, mono=True)
+    audio, fs = librosa.load(wav_path, sr=fs, mono=True, res_type=res_type)
 
     if norm == -1:
         # Perform root-mean-square normalization

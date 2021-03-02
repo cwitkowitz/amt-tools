@@ -2,7 +2,10 @@
 from amt_models.datasets import GuitarSet
 from amt_models.models import TabCNN
 from amt_models.features import CQT
+
 from amt_models import train, validate
+from amt_models.transcribe import *
+from amt_models.evaluate import *
 
 import amt_models.tools as tools
 
@@ -14,7 +17,9 @@ from sacred import Experiment
 import torch
 import os
 
-EX_NAME = '_'.join([TabCNN.model_name(), GuitarSet.dataset_name(), CQT.features_name()])
+EX_NAME = '_'.join([TabCNN.model_name(),
+                    GuitarSet.dataset_name(),
+                    CQT.features_name()])
 
 ex = Experiment('TabCNN w/ CQT on GuitarSet 6-fold Cross Validation')
 
@@ -31,10 +36,10 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 400
+    iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 8
+    checkpoints = 50
 
     # Number of samples to gather for a batch
     batch_size = 30
@@ -43,7 +48,7 @@ def config():
     learning_rate = 1.0
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different parameters
@@ -65,9 +70,6 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     # Seed everything with the same seed
     tools.seed_everything(seed)
 
-    # Get a list of the GuitarSet splits
-    splits = GuitarSet.available_splits()
-
     # Initialize the default guitar profile
     profile = tools.GuitarProfile()
 
@@ -80,6 +82,21 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                     hop_length=hop_length,
                     n_bins=dim_in,
                     bins_per_octave=24)
+
+    # Initialize the estimation pipeline
+    validation_estimator = ComboEstimator([TablatureWrapper(profile=profile)])
+
+    # Initialize the evaluation pipeline
+    evaluators = {tools.KEY_LOSS : LossWrapper(),
+                  tools.KEY_MULTIPITCH : MultipitchEvaluator(),
+                  tools.KEY_TABLATURE : TablatureEvaluator(profile=profile)}
+    validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1', 'tdr'])
+
+    # Get a list of the GuitarSet splits
+    splits = GuitarSet.available_splits()
+
+    # Initialize an empty dictionary to hold the average results across fold
+    results = dict()
 
     # Perform each fold of cross-validation
     for k in range(6):
@@ -113,7 +130,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         train_loader = DataLoader(dataset=gset_train,
                                   batch_size=batch_size,
                                   shuffle=True,
-                                  num_workers=16,
+                                  num_workers=0,
                                   drop_last=True)
 
         print('Loading validation partition...')
@@ -158,15 +175,27 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                        iterations=iterations,
                        checkpoints=checkpoints,
                        log_dir=model_dir,
-                       val_set=gset_val)
+                       val_set=gset_val,
+                       estimator=validation_estimator,
+                       evaluator=validation_evaluator)
 
         print('Transcribing and evaluating test partition...')
 
-        estim_dir = os.path.join(root_dir, 'estimated')
-        results_dir = os.path.join(root_dir, 'results')
+        # Add a save directory to the evaluators and reset the patterns
+        validation_evaluator.set_save_dir(os.path.join(root_dir, 'results'))
+        validation_evaluator.set_patterns(None)
 
         # Get the average results for the fold
-        fold_results = validate(tabcnn, gset_test, estim_dir, results_dir)
+        fold_results = validate(tabcnn, gset_test, evaluator=validation_evaluator, estimator=validation_estimator)
 
-        # Log the average results for the fold in metrics.json
+        # Add the results to the tracked fold results
+        results = append_results(results, fold_results)
+
+        # Reset the results for the next fold
+        validation_evaluator.reset_results()
+
+        # Log the fold results for the fold in metrics.json
         ex.log_scalar('fold_results', fold_results, k)
+
+    # Log the average results for the fold in metrics.json
+    ex.log_scalar('average_results', average_results(results), 0)
