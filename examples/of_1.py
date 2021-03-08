@@ -48,11 +48,11 @@ def config():
     learning_rate = 5e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 0
+    gpu_id = 1
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different feature extraction parameters
-    reset_data = False
+    reset_data = True
 
     # The random seed for this experiment
     seed = 0
@@ -139,7 +139,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, False, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 

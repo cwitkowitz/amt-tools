@@ -27,12 +27,6 @@ class LHVQT(FeatureModule):
           Class definition of chosen lower-level module
         """
 
-        # Default gamma using the procedure defined in
-        # librosa.filters.constant_q.vqt documentation
-        if gamma is None:
-            alpha = 2.0 ** (1.0 / bins_per_octave) - 1
-            gamma = 24.7 * alpha / 0.108
-
         # Default the class definition for the harmonic-level
         if lhvqt is None:
             # Original LVQT module

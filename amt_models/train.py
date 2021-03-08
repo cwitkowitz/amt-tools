@@ -1,4 +1,6 @@
 # My imports
+from amt_models import append_results, average_results, log_results
+
 import amt_models.tools as tools
 
 # Regular imports
@@ -175,19 +177,20 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
     model.train()
 
     for global_iter in tqdm(range(start_iter, iterations)):
-        # List of losses for each batch in the loop
-        train_loss = []
+        # Collection of losses for each batch in the loop
+        train_loss = dict()
         # Loop through the dataset
         for batch in train_loader:
             # Zero the accumulated gradients
             optimizer.zero_grad()
             # Get the predictions and loss for the batch
             preds = model.run_on_batch(batch)
-            # Add the loss to the list of batch losses
+            # Extract the loss from the output
             batch_loss = preds[tools.KEY_LOSS]
-            train_loss.append(batch_loss.item())
-            # Compute gradients
-            batch_loss.backward()
+            # Compute gradients based on total loss
+            batch_loss[tools.KEY_LOSS_TOTAL].backward()
+            # Add all of the losses to the collection
+            train_loss = append_results(train_loss, tools.track_to_cpu(batch_loss))
             # Perform gradient clipping
             # TODO = make optional
             #nn.utils.clip_grad_norm_(model.parameters(), 3)
@@ -203,9 +206,9 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
                 break
 
         # Average the loss from all of the batches within this loop
-        train_loss = np.mean(train_loss)
-        # Log the training loss
-        writer.add_scalar(f'{tools.TRAIN}/{tools.KEY_LOSS}', train_loss, global_step=global_iter+1)
+        train_loss = average_results(train_loss)
+        # Log the training loss(es)
+        log_results(train_loss, writer, step=global_iter+1, tag=f'{tools.TRAIN}/{tools.KEY_LOSS}')
 
         # Local iteration of this training sequence
         local_iter = global_iter - start_iter

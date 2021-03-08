@@ -68,7 +68,7 @@ class TabCNN(TranscriptionModel):
         # Determine the height, width, and total size of the feature map
         feat_map_height = (self.dim_in - 6) // 2
         feat_map_width = (self.frame_width - 6) // 2
-        feat_map_size = nf3 * feat_map_height * feat_map_width
+        self.feat_map_size = nf3 * feat_map_height * feat_map_width
 
         # Extract tablature parameters
         num_groups = self.profile.get_num_dofs()
@@ -76,7 +76,7 @@ class TabCNN(TranscriptionModel):
 
         self.dense = nn.Sequential(
             # 1st fully-connected
-            nn.Linear(feat_map_size, nn1),
+            nn.Linear(self.feat_map_size, nn1),
             # Activation function
             nn.ReLU(),
             # 2nd dropout
@@ -199,7 +199,8 @@ class TabCNN(TranscriptionModel):
         if tools.KEY_TABLATURE in batch.keys():
             # Extract the ground-truth, calculate the loss and add it to the dictionary
             tablature_ref = batch[tools.KEY_TABLATURE]
-            output[tools.KEY_LOSS] = tablature_output_layer.get_loss(tablature_est, tablature_ref)
+            tablature_loss = tablature_output_layer.get_loss(tablature_est, tablature_ref)
+            output[tools.KEY_LOSS] = {tools.KEY_LOSS_TOTAL : tablature_loss}
 
         # Finalize tablature estimation
         output[tools.KEY_TABLATURE] = tablature_output_layer.finalize_output(tablature_est)

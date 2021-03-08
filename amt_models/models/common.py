@@ -375,7 +375,6 @@ class SoftmaxGroups(OutputLayer):
         # Calculate the loss for the entire pseudo-batch
         loss = F.cross_entropy(estimated.float(), reference, reduction='none')
         loss = loss.view(batch_size, -1, self.num_groups)
-        # TODO - more appropriate to sum or average?
         # Average loss across degrees of freedom
         loss = torch.mean(loss, dim=-1)
         # Average loss across frames
@@ -508,7 +507,6 @@ class LogisticBank(OutputLayer):
 
         # Calculate the loss for the entire pseudo-batch
         loss = F.binary_cross_entropy(estimated.float(), reference.float(), reduction='none')
-        # TODO - more appropriate to sum or average?
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
         # Average loss across keys

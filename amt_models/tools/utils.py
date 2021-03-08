@@ -1992,14 +1992,19 @@ def track_to_cpu(track):
     """
 
     # Copy the dictionary to avoid hard assignment
-    track = deepcopy(track)
+    # TODO - can't copy tensors with gradients
+    #track = deepcopy(track)
 
     # Obtain a list of the dictionary keys
     keys = list(track.keys())
 
     # Loop through the dictionary keys
     for key in keys:
-        # Check if the dictionary entry is a tensor
+        # Check if the entry us another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = track_to_cpu(track[key])
+        # Check if the entry is a tensor
         if isinstance(track[key], torch.Tensor):
             # Squeeze the tensor and convert to ndarray and remove batch dimension
             track[key] = tensor_to_array(track[key].squeeze())

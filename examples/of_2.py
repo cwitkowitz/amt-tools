@@ -1,6 +1,6 @@
 # My imports
 from amt_models.models import OnsetsFrames2
-from amt_models.datasets import MAESTRO_V1
+from amt_models.datasets import MAESTRO_V1, MAPS
 from amt_models.features import MelSpec
 
 from amt_models import train, validate
@@ -36,10 +36,10 @@ def config():
     num_frames = 500
 
     # Number of training iterations to conduct
-    iterations = 2000
+    iterations = 1000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 200
+    checkpoints = 50
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -103,7 +103,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     print('Loading training partition...')
 
-    # TODO - 119 MelSpec 2004 vs 120 gt 2004?
     # Create a dataset corresponding to the training partition
     mstro_train = MAESTRO_V1(splits=train_split,
                              hop_length=hop_length,
@@ -132,9 +131,9 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                            num_frames=num_frames,
                            store_data=False)
 
-    print('Loading testing partition...')
+    print('Loading testing partitions...')
 
-    # Create a dataset corresponding to the testing partition
+    # Create a dataset corresponding to the MAESTRO testing partition
     mstro_test = MAESTRO_V1(splits=test_split,
                             hop_length=hop_length,
                             sample_rate=sample_rate,
@@ -142,10 +141,23 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                             profile=profile,
                             store_data=False)
 
+    # Initialize the MAPS testing splits as the real piano data
+    test_splits = ['ENSTDkAm', 'ENSTDkCl']
+
+    # Create a dataset corresponding to the MAPS testing partition
+    # Need to reset due to HTK Mel-Spectrogram spacing
+    maps_test = MAPS(splits=test_splits,
+                     hop_length=hop_length,
+                     sample_rate=sample_rate,
+                     data_proc=data_proc,
+                     profile=profile,
+                     store_data=False,
+                     reset_data=True)
+
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames2(dim_in, profile, data_proc.get_num_channels(), model_complexity, gpu_id)
+    onsetsframes = OnsetsFrames2(dim_in, profile, data_proc.get_num_channels(), model_complexity, True, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 
@@ -177,8 +189,17 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     validation_evaluator.set_save_dir(os.path.join(root_dir, 'results'))
     validation_evaluator.set_patterns(None)
 
-    # Get the average results for the testing partition
+    # Get the average results for the MAESTRO testing partition
     results = validate(onsetsframes, mstro_test, evaluator=validation_evaluator, estimator=validation_estimator)
 
     # Log the average results in metrics.json
-    ex.log_scalar('Final Results', results, 0)
+    ex.log_scalar('MAESTRO Results', results, 0)
+
+    # Reset the evaluator
+    validation_evaluator.reset_results()
+
+    # Get the average results for the MAPS testing partition
+    results = validate(onsetsframes, maps_test, evaluator=validation_evaluator, estimator=validation_estimator)
+
+    # Log the average results in metrics.json
+    ex.log_scalar('MAPS Results', results, 0)

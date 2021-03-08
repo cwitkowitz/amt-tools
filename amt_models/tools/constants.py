@@ -51,7 +51,13 @@ KEY_OFFSETS = 'offsets'
 KEY_TIMES = 'times'
 KEY_NOTES = 'notes'
 KEY_OUTPUT = 'model_output'
+
 KEY_LOSS = 'loss'
+KEY_LOSS_TOTAL = 'loss_total'
+KEY_LOSS_ONSETS = 'loss_onsets'
+KEY_LOSS_OFFSETS = 'loss_offsets'
+KEY_LOSS_PITCH = 'loss_pitch'
+KEY_LOSS_KLD = 'loss_kld'
 
 ##################################################
 # JAMS ATTRIBUTES                                #

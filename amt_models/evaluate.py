@@ -390,6 +390,9 @@ class Evaluator(object):
             # Construct a path for the results
             results_path = os.path.join(self.save_dir, f'{tag}.{tools.TXT_EXT}')
 
+            # Make sure all directories exist (there can be directories in the track name)
+            os.makedirs(os.path.dirname(results_path), exist_ok=True)
+
             # Open a file at the path with writing permissions
             with open(results_path, 'w') as results_file:
                 # Write the results to a text file
@@ -606,9 +609,7 @@ class LossWrapper(Evaluator):
         """
 
         # Package the results into a dictionary
-        results = {
-            self.get_key() : estimated,
-        }
+        results = estimated
 
         return results
 

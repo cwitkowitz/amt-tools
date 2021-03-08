@@ -11,7 +11,6 @@ import torch
 
 # TODO - velocity stuff
 # TODO - optional weighted frame loss
-# TODO - optionally stop gradient propagation into the onset subnetwork from the frame network
 
 
 class OnsetsFrames(TranscriptionModel):
@@ -19,16 +18,21 @@ class OnsetsFrames(TranscriptionModel):
     Implements the Onsets & Frames model (V1) (https://arxiv.org/abs/1710.11153).
     """
 
-    def __init__(self, dim_in, profile, in_channels=1, model_complexity=2, device='cpu'):
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=2, detach_heads=False, device='cpu'):
         """
         Initialize the model and establish parameter defaults in function signature.
 
         Parameters
         ----------
-        See TranscriptionModel class...
+        See TranscriptionModel class for others...
+
+        detach_heads : bool
+          Whether to feed the gradient of the pitch head back into the onset head
         """
 
         super().__init__(dim_in, profile, in_channels, model_complexity, device)
+
+        self.detach_heads = detach_heads
 
         # Number of output neurons for the acoustic models
         self.dim_am = 256 * self.model_complexity
@@ -118,6 +122,10 @@ class OnsetsFrames(TranscriptionModel):
         onsets = self.onset_head(feats)
         output[tools.KEY_ONSETS] = onsets
 
+        if self.detach_heads:
+            # Disconnect the onset head from the pitch head's graph
+            onsets = onsets.clone().detach()
+
         # Concatenate the above estimates
         joint = torch.cat((onsets, multi_pitch), -1)
 
@@ -155,9 +163,13 @@ class OnsetsFrames(TranscriptionModel):
 
         # Check to see if ground-truth multi pitch is available
         if tools.KEY_MULTIPITCH in batch.keys():
+            # Keep track of all losses
+            loss = dict()
+
             # Extract the ground-truth and calculate the multi pitch loss term
             multi_pitch_ref = batch[tools.KEY_MULTIPITCH]
             multi_pitch_loss = pitch_output_layer.get_loss(multi_pitch_est, multi_pitch_ref)
+            loss[tools.KEY_LOSS_PITCH] = multi_pitch_loss
 
             # Check to see if ground-truth onsets are available
             if tools.KEY_ONSETS in batch.keys():
@@ -169,9 +181,12 @@ class OnsetsFrames(TranscriptionModel):
 
             # Calculate the onsets loss term
             onsets_loss = onset_output_layer.get_loss(onsets_est, onsets_ref)
+            loss[tools.KEY_LOSS_ONSETS] = onsets_loss
 
             # Compute the total loss and add it to the output dictionary
-            output[tools.KEY_LOSS] = multi_pitch_loss + onsets_loss
+            total_loss = multi_pitch_loss + onsets_loss
+            loss[tools.KEY_LOSS_TOTAL] = total_loss
+            output[tools.KEY_LOSS] = loss
 
         # Finalize onset and pitch estimations
         output[tools.KEY_ONSETS] = onset_output_layer.finalize_output(onsets_est)
@@ -185,16 +200,16 @@ class OnsetsFrames2(OnsetsFrames):
     Implements the Onsets & Frames model (V2) (https://arxiv.org/abs/1810.12247).
     """
 
-    def __init__(self, dim_in, profile, in_channels=1, model_complexity=3, device='cpu'):
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=3, detach_heads=True, device='cpu'):
         """
         Initialize the model and establish parameter defaults in function signature.
 
         Parameters
         ----------
-        See TranscriptionModel class...
+        See OnsetsFrames class...
         """
 
-        super().__init__(dim_in, profile, in_channels, model_complexity, device)
+        super().__init__(dim_in, profile, in_channels, model_complexity, detach_heads, device)
 
         # Number of output neurons for each head's activations
         dim_out = self.profile.get_range_len()
@@ -246,6 +261,11 @@ class OnsetsFrames2(OnsetsFrames):
         offsets = self.offset_head(feats)
         output[tools.KEY_OFFSETS] = offsets
 
+        if self.detach_heads:
+            # Disconnect the onset/offset heads from the pitch head's graph
+            onsets = onsets.clone().detach()
+            offsets = offsets.clone().detach()
+
         # Concatenate the above estimates
         joint = torch.cat((onsets, offsets, multi_pitch), -1)
 
@@ -289,11 +309,16 @@ class OnsetsFrames2(OnsetsFrames):
                 # Obtain the offset labels from the reference multi pitch
                 offsets_ref = tools.multi_pitch_to_offsets(batch[tools.KEY_MULTIPITCH])
 
+            # Extract all of the losses
+            loss = output[tools.KEY_LOSS]
+
             # Calculate the offsets loss term
             offsets_loss = offset_output_layer.get_loss(offsets_est, offsets_ref)
+            loss[tools.KEY_LOSS_OFFSETS] = offsets_loss
 
             # Compute the total loss and add it to the output dictionary
-            output[tools.KEY_LOSS] += offsets_loss
+            loss[tools.KEY_LOSS_TOTAL] += offsets_loss
+            output[tools.KEY_LOSS] = loss
 
         # Finalize offset estimations
         output[tools.KEY_OFFSETS] = offset_output_layer.finalize_output(offsets_est)
@@ -458,7 +483,6 @@ class LanguageModel(nn.Module):
           Whether LSTM is bidirectional
         """
 
-        bidirectional=False
         super().__init__()
 
         self.dim_in = dim_in

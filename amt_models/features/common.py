@@ -53,6 +53,7 @@ class FeatureModule(object):
         """
 
         # Simply the number of hops plus one
+        # TODO - is this correct for empty arrays?
         num_frames = 1 + len(audio) // self.hop_length
 
         return num_frames
