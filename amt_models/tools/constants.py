@@ -57,6 +57,7 @@ KEY_LOSS_TOTAL = 'loss_total'
 KEY_LOSS_ONSETS = 'loss_onsets'
 KEY_LOSS_OFFSETS = 'loss_offsets'
 KEY_LOSS_PITCH = 'loss_pitch'
+KEY_LOSS_TABS = 'loss_tabs'
 KEY_LOSS_KLD = 'loss_kld'
 
 ##################################################

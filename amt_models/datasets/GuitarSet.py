@@ -110,10 +110,13 @@ class GuitarSet(TranscriptionDataset):
             # Obtain note onsets from the notes in tablature format
             stacked_onsets = tools.stacked_notes_to_stacked_onsets(stacked_notes, times, self.profile, ambiguity)
             data[tools.KEY_ONSETS] = tools.stacked_multi_pitch_to_tablature(stacked_onsets, self.profile)
+            #pitches, intervals = tools.stacked_notes_to_notes(stacked_notes)
+            #data[tools.KEY_ONSETS] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
 
             # Obtain note offsets from the notes in tablature format
             stacked_offsets = tools.stacked_notes_to_stacked_offsets(stacked_notes, times, self.profile, ambiguity)
             data[tools.KEY_OFFSETS] = tools.stacked_multi_pitch_to_tablature(stacked_offsets, self.profile)
+            #data[tools.KEY_OFFSETS] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
 
             if self.save_data:
                 # Get the appropriate path for saving the track data

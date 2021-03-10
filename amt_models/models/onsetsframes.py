@@ -316,7 +316,7 @@ class OnsetsFrames2(OnsetsFrames):
             offsets_loss = offset_output_layer.get_loss(offsets_est, offsets_ref)
             loss[tools.KEY_LOSS_OFFSETS] = offsets_loss
 
-            # Compute the total loss and add it to the output dictionary
+            # Compute the total loss and add it back to the output dictionary
             loss[tools.KEY_LOSS_TOTAL] += offsets_loss
             output[tools.KEY_LOSS] = loss
 

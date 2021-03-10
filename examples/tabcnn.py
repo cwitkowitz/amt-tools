@@ -21,7 +21,7 @@ EX_NAME = '_'.join([TabCNN.model_name(),
                     GuitarSet.dataset_name(),
                     CQT.features_name()])
 
-ex = Experiment('TabCNN w/ CQT on GuitarSet 6-fold Cross Validation')
+ex = Experiment('TabCNN w/ CQT on GuitarSet w/ 6-fold Cross Validation')
 
 
 @ex.config
@@ -87,10 +87,9 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     validation_estimator = ComboEstimator([TablatureWrapper(profile=profile)])
 
     # Initialize the evaluation pipeline
-    evaluators = {tools.KEY_LOSS : LossWrapper(),
-                  tools.KEY_MULTIPITCH : MultipitchEvaluator(),
-                  tools.KEY_TABLATURE : TablatureEvaluator(profile=profile)}
-    validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1', 'tdr'])
+    validation_evaluator = ComboEvaluator({tools.KEY_LOSS : LossWrapper(),
+                                           tools.KEY_MULTIPITCH : MultipitchEvaluator(),
+                                           tools.KEY_TABLATURE : TablatureEvaluator(profile=profile)})
 
     # Get a list of the GuitarSet splits
     splits = GuitarSet.available_splits()
@@ -168,6 +167,9 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         # Create a log directory for the training experiment
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
 
+        # Set validation patterns for training
+        validation_evaluator.set_patterns(['loss', 'f1', 'tdr'])
+
         # Train the model
         tabcnn = train(model=tabcnn,
                        train_loader=train_loader,
@@ -195,7 +197,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         validation_evaluator.reset_results()
 
         # Log the fold results for the fold in metrics.json
-        ex.log_scalar('fold_results', fold_results, k)
+        ex.log_scalar('Fold Results', fold_results, k)
 
     # Log the average results for the fold in metrics.json
-    ex.log_scalar('average_results', average_results(results), 0)
+    ex.log_scalar('Overall Results', average_results(results), 0)

@@ -5,7 +5,7 @@ from .common import FeatureModule
 from lhvqt.lhvqt_comb import LHVQT_COMB as lc_type
 from lhvqt.lhvqt import LHVQT as _LHVQT
 
-# TODO - different get_sample_range() behavior if padding vs. not padding for extra frame
+# TODO - get sample_range() is invalid (for non-divisible max_p) due to change in LVQT.get_expected_frames()
 
 
 class LHVQT(FeatureModule):
