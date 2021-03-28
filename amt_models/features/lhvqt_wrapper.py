@@ -13,8 +13,8 @@ class LHVQT(FeatureModule):
     Implements a Harmonic Variable-Q Transform wrapper.
     """
     def __init__(self, sample_rate=44100, hop_length=512, decibels=True, lhvqt=None, lvqt=None,
-                 fmin=None, harmonics=None, n_bins=84, bins_per_octave=12, gamma=None, random=False,
-                 max_p=1, batch_norm=True):
+                 fmin=None, harmonics=None, n_bins=84, bins_per_octave=12, gamma=None, max_p=1,
+                 random=False, update=True, batch_norm=True, var_drop=True):
         """
         Initialize parameters for the HVQT.
 
@@ -40,10 +40,13 @@ class LHVQT(FeatureModule):
                            n_bins=n_bins,
                            bins_per_octave=bins_per_octave,
                            gamma=gamma,
-                           random=random,
                            max_p=max_p,
+                           random=random,
+                           update=update,
                            to_db=decibels,
-                           batch_norm=batch_norm)
+                           db_to_prob=True,
+                           batch_norm=batch_norm,
+                           var_drop=var_drop)
 
         # If using harmonic comb variant of LHVQT, everything collapses to one channel
         num_channels = 1 if isinstance(self.lhvqt, lc_type) else len(self.lhvqt.harmonics)
