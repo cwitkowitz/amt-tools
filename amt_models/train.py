@@ -120,9 +120,6 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
       Estimation protocol to use during validation
     evaluator : Evaluator
       Evaluation protocol to use during validation
-    patterns : None or list of str
-      String patterns for logging - only results with names containing these patterns will be logged
-      If None, all results are logged
     vis_fnc : function(model, i)
       Function to perform any visualization steps during validation loop
 
@@ -204,6 +201,9 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             if single_batch:
                 # Move onto the next iteration after the first batch
                 break
+
+        # Increase the iteration count by one
+        model.iter += 1
 
         # Average the loss from all of the batches within this loop
         train_loss = average_results(train_loss)

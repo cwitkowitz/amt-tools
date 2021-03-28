@@ -45,6 +45,9 @@ class TranscriptionModel(nn.Module):
         self.model_complexity = model_complexity
         self.device = device
 
+        # Initialize a counter to keep track of how many iterations have been run
+        self.iter = 0
+
         # Placeholder for appending additional modules, such as learnable filterbanks
         self.frontend = nn.Sequential(
             nn.Identity()

@@ -7,6 +7,8 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
+# TODO - take squared modulus of some of these?
+
 
 class FeatureModule(object):
     """

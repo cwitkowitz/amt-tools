@@ -17,7 +17,8 @@ import os
 # TODO - more datasets - MusicNet, Slakh, Drums
 # TODO - optionally download datasets in flac to save memory
 # TODO - possible integration with mirdata
-# TODO - optionally avoud splitting notes
+# TODO - optionally avoud splitting notes...
+#      - see magenta/models/onsets_frames_transcription/audio_label_data_utils.py
 
 # TODO - get notes function?
 
