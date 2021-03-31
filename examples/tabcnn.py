@@ -36,7 +36,7 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 1000
+    iterations = 2500
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 50
@@ -87,9 +87,10 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     validation_estimator = ComboEstimator([TablatureWrapper(profile=profile)])
 
     # Initialize the evaluation pipeline
-    validation_evaluator = ComboEvaluator({tools.KEY_LOSS : LossWrapper(),
-                                           tools.KEY_MULTIPITCH : MultipitchEvaluator(),
-                                           tools.KEY_TABLATURE : TablatureEvaluator(profile=profile)})
+    validation_evaluator = ComboEvaluator([LossWrapper(),
+                                           MultipitchEvaluator(),
+                                           TablatureEvaluator(profile=profile),
+                                           SoftmaxAccuracy(key=tools.KEY_TABLATURE)])
 
     # Get a list of the GuitarSet splits
     splits = GuitarSet.available_splits()
@@ -101,17 +102,13 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     for k in range(6):
         # Determine the name of the splits being removed
         test_hold_out = '0' + str(k)
-        val_hold_out = '0' + str(5 - k)
 
         print('--------------------')
         print(f'Fold {test_hold_out}:')
 
-        # Remove the hold out splits to get the training partition
+        # Remove the hold out splits to get the partitions
         train_splits = splits.copy()
         train_splits.remove(test_hold_out)
-        train_splits.remove(val_hold_out)
-
-        val_splits = [val_hold_out]
         test_splits = [test_hold_out]
 
         print('Loading training partition...')
@@ -131,16 +128,6 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                                   shuffle=True,
                                   num_workers=0,
                                   drop_last=True)
-
-        print('Loading validation partition...')
-
-        # Create a dataset corresponding to the validation partition
-        gset_val = GuitarSet(splits=val_splits,
-                             hop_length=hop_length,
-                             sample_rate=sample_rate,
-                             data_proc=data_proc,
-                             profile=profile,
-                             store_data=True)
 
         print('Loading testing partition...')
 
@@ -162,13 +149,16 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         # Initialize a new optimizer for the model parameters
         optimizer = torch.optim.Adadelta(tabcnn.parameters(), learning_rate)
 
+        # Initialize a multiplicative schedule for more stable performance
+        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9999)
+
         print('Training model...')
 
         # Create a log directory for the training experiment
         model_dir = os.path.join(root_dir, 'models', 'fold-' + str(k))
 
         # Set validation patterns for training
-        validation_evaluator.set_patterns(['loss', 'f1', 'tdr'])
+        validation_evaluator.set_patterns(['loss', 'f1', 'tdr', 'acc'])
 
         # Train the model
         tabcnn = train(model=tabcnn,
@@ -177,7 +167,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
                        iterations=iterations,
                        checkpoints=checkpoints,
                        log_dir=model_dir,
-                       val_set=gset_val,
+                       val_set=gset_test,
                        estimator=validation_estimator,
                        evaluator=validation_evaluator)
 

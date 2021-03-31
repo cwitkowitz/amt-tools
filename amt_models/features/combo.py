@@ -139,7 +139,7 @@ class FeatureCombo(FeatureModule):
         num_frames = self.get_expected_frames(audio)
 
         # Check if the time arrays are all the same
-        if np.unique(times).size == (num_frames + 1):
+        if len(np.unique(times).size) == 1:
             # If so, collapse into one time array
             times = times[0]
 

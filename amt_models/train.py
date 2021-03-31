@@ -194,13 +194,13 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # Perform an optimization step
             optimizer.step()
 
-            if scheduler is not None:
-                # Perform a learning rate scheduler step
-                scheduler.step()
-
             if single_batch:
                 # Move onto the next iteration after the first batch
                 break
+
+        if scheduler is not None:
+            # Perform a learning rate scheduler step
+            scheduler.step()
 
         # Increase the iteration count by one
         model.iter += 1

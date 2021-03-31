@@ -252,3 +252,50 @@ class MAESTRO_V2(_MAESTRO):
 
         # Remove the out-of-the-box top-level directory from the path chain
         tools.change_base_dir(save_dir, old_dir)
+
+
+class MAESTRO_V3(_MAESTRO):
+    """
+    MAESTRO version 3.
+    """
+
+    def __init__(self, **kwargs):
+        """
+        Call the parent constructor.
+        """
+
+        super().__init__(**kwargs)
+
+    @staticmethod
+    def download(save_dir):
+        """
+        Download MAESTRO version 3 to a specified location.
+
+        Parameters
+        ----------
+        save_dir : string
+          Directory in which to save the contents of MAESTRO
+        """
+
+        # Reset the directory if it already exists
+        _MAESTRO.download(save_dir)
+
+        print(f'Downloading {MAESTRO_V3.dataset_name()}')
+
+        # URL pointing to the zip file
+        url = f'https://storage.googleapis.com/magentadata/datasets/maestro/v3.0.0/maestro-v3.0.0.zip'
+
+        # Construct a path for saving the file
+        save_path = os.path.join(save_dir, os.path.basename(url))
+
+        # Download the zip file
+        tools.stream_url_resource(url, save_path, 1000 * 1024)
+
+        # Unzip the downloaded file and remove it
+        tools.unzip_and_remove(save_path)
+
+        # Construct a path to the out-of-the-box top-level directory
+        old_dir = os.path.join(save_dir, 'maestro-v3.0.0/')
+
+        # Remove the out-of-the-box top-level directory from the path chain
+        tools.change_base_dir(save_dir, old_dir)

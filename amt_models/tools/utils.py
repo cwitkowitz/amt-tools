@@ -1794,6 +1794,37 @@ def seed_everything(seed):
     random.seed(seed)
 
 
+def estimate_hop_length(times):
+    """
+    Estimate hop length of a semi-regular but non-uniform series of times.
+    Taken from an mir_eval pull request.
+
+    Parameters
+    ----------
+    times : ndarray
+      Array of times corresponding to a time series
+
+    Returns
+    ----------
+    hop_length : float
+      Estimated hop length (seconds)
+    """
+
+    # Make sure the times are sorted
+    times = np.sort(times)
+
+    # Determine where there are no gaps
+    non_gaps = np.append([False], np.isclose(np.diff(times, n=2), 0))
+
+    if not np.sum(non_gaps):
+        raise ValueError("Time observations are too irregular.")
+
+    # Take the median of the time differences at non-gaps
+    hop_length = np.median(np.diff(times)[non_gaps])
+
+    return hop_length
+
+
 def tensor_to_array(tensor):
     """
     Simple helper function to convert a PyTorch tensor

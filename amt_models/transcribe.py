@@ -72,7 +72,7 @@ def multi_pitch_to_notes(multi_pitch, times, profile, onsets=None, offsets=None)
       F - number of discrete pitches
       T - number of frames
     offsets : ndarray (F x T) or None (Optional)
-      Where to stop considering notes "active"
+      Where to stop considering notes "active" - currently unused
       F - number of discrete pitches
       T - number of frames
 
@@ -86,27 +86,21 @@ def multi_pitch_to_notes(multi_pitch, times, profile, onsets=None, offsets=None)
       N - number of notes
     """
 
-    # TODO - seems like there are a lot of possibilities for
-    #        what could happen depending on what is provided
-
     if onsets is None:
         # Default the onsets if they were not provided
         onsets = tools.multi_pitch_to_onsets(multi_pitch)
 
-    if offsets is None:
-        # Default the offsets if they were not provided
-        offsets = tools.multi_pitch_to_offsets(multi_pitch)
+    # Make sure all onsets have corresponding pitch activations
+    multi_pitch = np.logical_or(onsets, multi_pitch).astype(tools.FLOAT32)
 
-    # Only keep onsets and offsets with corresponding pitch activations
-    onsets = np.logical_and(onsets, multi_pitch).astype(tools.FLOAT32)
-    offsets = np.logical_and(offsets, multi_pitch).astype(tools.FLOAT32)
-
-    # Turn onset and offset activations into impulses at starting frame
+    # Turn onset activations into impulses at starting frame
     onsets = tools.multi_pitch_to_onsets(onsets)
-    offsets = tools.multi_pitch_to_onsets(offsets)
 
     # Determine the total number of frames
-    num_frames = offsets.shape[-1]
+    num_frames = multi_pitch.shape[-1]
+
+    # Estimate the duration of the track (for bounding note offsets)
+    times = np.append(times, times[-1] + tools.estimate_hop_length(times))
 
     # Create empty lists for note pitches and their time intervals
     pitches, intervals = list(), list()
@@ -117,49 +111,36 @@ def multi_pitch_to_notes(multi_pitch, times, profile, onsets=None, offsets=None)
     # Loop through note beginnings
     for pitch, frame in zip(pitch_idcs, frame_idcs):
         # Mark onset and start offset counter
-        onset, offset = frame, frame
+        onset, offset = frame, frame + 1
 
         # Increment the offset counter until one of the following occurs:
         #  1. There are no more frames
         #  2. Pitch is no longer active in the multi pitch array
         #  3. A new onset occurs involving the current pitch
-        #  4. An offset occurs involving the current pitch
         while True:
-            # Whether this is the first iteration of the loop
-            first_frame = onset == offset
-
             # There are no more frames to count
-            maxed_out = offset + 1 == num_frames
+            maxed_out = offset == num_frames
 
             if maxed_out:
                 # Stop looping
                 break
 
             # There is an activation for the pitch at the next frame
-            active_pitch = multi_pitch[pitch, offset + 1]
+            active_pitch = multi_pitch[pitch, offset]
 
             if not active_pitch:
                 # Stop looping
                 break
 
-            # Include this frame in the count
-            offset += 1
-
-            # There is an onset for the pitch at the current
-            # frame and it's not the first iteration
-            new_onset = onsets[pitch, offset] and not first_frame
+            # There is an onset for the pitch at the next frame
+            new_onset = onsets[pitch, offset]
 
             if new_onset:
                 # Stop looping
                 break
 
-            # There is an offset for the pitch at the current
-            # frame and it's not the first iteration
-            active_offset = offsets[pitch, offset] and not first_frame
-
-            if active_offset:
-                # Stop looping
-                break
+            # Include the offset counter
+            offset += 1
 
         # Add the frequency to the list
         pitches.append(pitch + profile.low)
@@ -169,9 +150,6 @@ def multi_pitch_to_notes(multi_pitch, times, profile, onsets=None, offsets=None)
 
     # Convert the lists to numpy arrays
     pitches, intervals = np.array(pitches), np.array(intervals)
-
-    # Filter out zero-duration notes
-    pitches, intervals = filter_notes_by_duration(pitches, intervals)
 
     # Sort notes by onset just for the purpose of being neat
     pitches, intervals = tools.sort_notes(pitches, intervals)
@@ -964,7 +942,7 @@ class TablatureWrapper(Estimator):
 
         return multi_pitch
 
-    def write(self, tablature, track):
+    def write(self, multi_pitch, track):
         """
         Do nothing. There is no protocol for writing multi pitch activation maps to a file.
         A more appropriate action might be converting them to pitch lists and writing those.

@@ -33,7 +33,7 @@ def config():
     hop_length = 512
 
     # Number of consecutive frames within each example fed to the model
-    num_frames = 500
+    num_frames = 625
 
     # Number of training iterations to conduct
     iterations = 2000
@@ -45,7 +45,7 @@ def config():
     batch_size = 8
 
     # The initial learning rate
-    learning_rate = 5e-4
+    learning_rate = 6e-4
 
     # The id of the gpu to use, if available
     gpu_id = 1
@@ -88,10 +88,10 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                                            PitchListWrapper(profile=profile)])
 
     # Initialize the evaluation pipeline
-    evaluators = {tools.KEY_LOSS : LossWrapper(),
-                  tools.KEY_MULTIPITCH : MultipitchEvaluator(),
-                  tools.KEY_NOTE_ON : NoteEvaluator(),
-                  tools.KEY_NOTE_OFF : NoteEvaluator(0.2)}
+    evaluators = [LossWrapper(),
+                  MultipitchEvaluator(),
+                  NoteEvaluator(key=tools.KEY_NOTE_ON),
+                  NoteEvaluator(offset_ratio=0.2, key=tools.KEY_NOTE_OFF)]
     validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1'])
 
     # Get a list of the MAPS splits
@@ -146,6 +146,9 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     # Initialize a new optimizer for the model parameters
     optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
 
+    # Initialize a multiplicative schedule for more stable performance
+    # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9999)
+
     print('Training classifier...')
 
     # Create a log directory for the training experiment
@@ -157,10 +160,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          optimizer=optimizer,
                          iterations=iterations,
                          checkpoints=checkpoints,
-                         log_dir=model_dir,
-                         val_set=maps_test,
-                         estimator=validation_estimator,
-                         evaluator=validation_evaluator)
+                         log_dir=model_dir)
 
     print('Transcribing and evaluating test partition...')
 

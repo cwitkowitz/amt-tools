@@ -2,6 +2,7 @@
 from amt_models.tools.instrument import GuitarProfile
 
 # Regular imports
+from mpl_toolkits.axisartist.axislines import SubplotZero
 import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,20 +30,14 @@ def visualize_pitch_list(times, pitch_list, save_path=None):
     return plt
 
 
-def visualize_multi_pitch(multi_pitch, save_path=None):
-    #ax = plt.gca()
+def visualize_multi_pitch(multi_pitch, ax=None):
+    if ax is None:
+        ax = plt.gca()
 
-    plt.imshow(pianoroll, cmap='gray_r', vmin=0, vmax=1)
-    plt.gca().invert_yaxis()
-    #plt.ylabel('MIDI (R/E2)')
-    plt.xlabel('Frame')
-    #plt.grid()
+    ax.imshow(multi_pitch, cmap='gray_r', vmin=0, vmax=1)
+    ax.invert_yaxis()
 
-    plt.tight_layout()
-
-    plt.savefig(save_path) if save_path else plt.show()
-
-    return plt
+    return ax
 
 # TODO - this is mostly trash for now - I've yet to make an effort to reestablish this
 # TODO - see earlier commits to get started
