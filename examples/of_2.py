@@ -1,6 +1,6 @@
 # My imports
 from amt_models.models import OnsetsFrames2
-from amt_models.datasets import MAESTRO_V1, MAPS
+from amt_models.datasets import MAESTRO_V3, MAPS
 from amt_models.features import MelSpec
 
 from amt_models import train, validate
@@ -18,8 +18,9 @@ import torch
 import os
 
 EX_NAME = '_'.join([OnsetsFrames2.model_name(),
-                    MAESTRO_V1.dataset_name(),
-                    MelSpec.features_name()])
+                    MAESTRO_V3.dataset_name(),
+                    MelSpec.features_name(),
+                    'X'])
 
 ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAESTRO')
 
@@ -48,7 +49,7 @@ def config():
     learning_rate = 6e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different feature extraction parameters
@@ -58,7 +59,8 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    root_dir = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR, EX_NAME)
+    expr_cache = os.path.join(tools.HOME, 'amt_models', 'generated', 'experiments')
+    root_dir = os.path.join(expr_cache, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -101,17 +103,26 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     val_split = ['validation']
     test_split = ['test']
 
+    # Define expected path for raw datasets
+    base_dir_mstro = os.path.join('/', 'storage', 'frank', MAESTRO_V3.dataset_name())
+    base_dir_maps = os.path.join('/', 'storage', 'frank', MAPS.dataset_name())
+
+    # Define expected path for calculated features and ground-truth
+    features_gt_cache = os.path.join('/', 'storageNVME', 'frank')
+
     print('Loading training partition...')
 
     # Create a dataset corresponding to the training partition
-    mstro_train = MAESTRO_V1(splits=train_split,
+    mstro_train = MAESTRO_V3(base_dir=base_dir_mstro,
+                             splits=train_split,
                              hop_length=hop_length,
                              sample_rate=sample_rate,
                              data_proc=data_proc,
                              profile=profile,
                              num_frames=num_frames,
                              reset_data=reset_data,
-                             store_data=False)
+                             store_data=False,
+                             save_loc=features_gt_cache)
 
     # Create a PyTorch data loader for the dataset
     train_loader = DataLoader(dataset=mstro_train,
@@ -123,36 +134,44 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Loading validation partition...')
 
     # Create a dataset corresponding to the validation partition
-    mstro_val = MAESTRO_V1(splits=val_split,
+    mstro_val = MAESTRO_V3(base_dir=base_dir_mstro,
+                           splits=val_split,
                            hop_length=hop_length,
                            sample_rate=sample_rate,
                            data_proc=data_proc,
                            profile=profile,
                            num_frames=num_frames,
-                           store_data=False)
+                           reset_data=reset_data,
+                           store_data=False,
+                           save_loc=features_gt_cache)
 
     print('Loading testing partitions...')
 
     # Create a dataset corresponding to the MAESTRO testing partition
-    mstro_test = MAESTRO_V1(splits=test_split,
+    mstro_test = MAESTRO_V3(base_dir=base_dir_mstro,
+                            splits=test_split,
                             hop_length=hop_length,
                             sample_rate=sample_rate,
                             data_proc=data_proc,
                             profile=profile,
-                            store_data=False)
+                            reset_data=reset_data,
+                            store_data=False,
+                            save_loc=features_gt_cache)
 
     # Initialize the MAPS testing splits as the real piano data
     test_splits = ['ENSTDkAm', 'ENSTDkCl']
 
     # Create a dataset corresponding to the MAPS testing partition
     # Need to reset due to HTK Mel-Spectrogram spacing
-    maps_test = MAPS(splits=test_splits,
+    maps_test = MAPS(base_dir=base_dir_maps,
+                     splits=test_splits,
                      hop_length=hop_length,
                      sample_rate=sample_rate,
                      data_proc=data_proc,
                      profile=profile,
+                     reset_data=reset_data,
                      store_data=False,
-                     reset_data=True)
+                     save_loc=features_gt_cache)
 
     print('Initializing model...')
 

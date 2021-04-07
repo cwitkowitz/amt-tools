@@ -1,5 +1,5 @@
 # My imports
-from amt_models.datasets import MAESTRO_V1, MAPS
+from amt_models.datasets import MAESTRO_V3, MAPS
 from amt_models.features import MelSpec
 
 from amt_models import validate
@@ -13,10 +13,10 @@ import torch
 import os
 
 model_path = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR,
-                          'OnsetsFrames2_MAESTRO_V1_MelSpec',
-                          'models', 'model-840.pt')
+                          'OnsetsFrames2_MAESTRO_V3_MelSpec_X',
+                          'models', 'model-2000.pt')
 model = torch.load(model_path)
-model.change_device(0)
+#model.change_device(0)
 
 # Initialize the default piano profile
 profile = tools.PianoProfile()
