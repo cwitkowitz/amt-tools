@@ -1,13 +1,23 @@
-# Automatic Music Transcription Tools
-The purpose of this repository is to serve as a one-stop-shop for machine learning related approaches to music transcription.
+# Automatic Music Transcription (AMT) Tools
+Implements a customizable machine learning pipeline for AMT in PyTorch. This framework abstracts various elements of the AMT task, such as dataset usage, data formatting, feature extraction, model usage, output formatting, training, evaluation, and inference.
 
-The models and datasets are written in PyTorch.
+The framework is a work-in-progress. Its development is ongoing to meet my evolving research needs.
 
-Inspiration for this work came mostly from https://github.com/jongwook/onsets-and-frames, but also from my own research needs.
+# Installation
+##### Standard (PyPI)
+Recommended for standard/quick usage
+```
+pip install amt-tools
+```
 
-For now, the models and datasets are based on single-instrument transcription.
+##### Cloning Repository
+Recommended for running examples or making experimental changes.
+```
+git clone https://github.com/cwitkowitz/amt-tools
+pip install -e amt-tools
+```
 
-Run: tensorboard --logdir=<logdir>/models --port=6006+
-from the generated/experiments directory to visualize loss and validation
+# Usage
+This repository can be used for many different purposes. Please see each subpackage for more information.
 
-This is a HUGE work-in-progress. I have big plans, but my ground-up approach means that this repository will remain hacky for some time.
+Additionally, several papers are implemented under the ```examples``` subdirectory in standalone scripts which utilize the framework.

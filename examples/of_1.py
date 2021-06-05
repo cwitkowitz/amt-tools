@@ -1,3 +1,5 @@
+# Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
+
 # My imports
 from amt_models.models import OnsetsFrames
 from amt_models.features import MelSpec
@@ -48,7 +50,7 @@ def config():
     learning_rate = 6e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different feature extraction parameters
@@ -145,9 +147,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Initialize a new optimizer for the model parameters
     optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
-
-    # Initialize a multiplicative schedule for more stable performance
-    # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9999)
 
     print('Training classifier...')
 

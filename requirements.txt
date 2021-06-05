@@ -1,7 +1,7 @@
-librosa>=0.8.0
-matplotlib>= 3.4.1
 numpy>=1.17.2
+librosa>=0.8.0
 torch>=1.4.0
+matplotlib>= 3.4.1
 sacred>= 0.8.2
 mir_eval>=0.6
 jams>=0.3.4
@@ -12,4 +12,3 @@ tensorboardX>=2.1
 scipy>=1.6.2
 pandas>=1.2.3
 mirdata>=0.3.2
-git+https://github.com/cwitkowitz/LHVQT.git

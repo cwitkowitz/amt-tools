@@ -1,3 +1,5 @@
+# Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
+
 # My imports
 from amt_models.datasets import GuitarSet
 from amt_models.models import TabCNN
@@ -148,9 +150,6 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         # Initialize a new optimizer for the model parameters
         optimizer = torch.optim.Adadelta(tabcnn.parameters(), learning_rate)
-
-        # Initialize a multiplicative schedule for more stable performance
-        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9999)
 
         print('Training model...')
 
