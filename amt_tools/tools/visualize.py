@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_models.tools.instrument import GuitarProfile
+from amt_tools.tools.instrument import GuitarProfile
 
 # Regular imports
 from mpl_toolkits.axisartist.axislines import SubplotZero

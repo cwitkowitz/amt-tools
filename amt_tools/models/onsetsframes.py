@@ -3,7 +3,7 @@
 # My imports
 from .common import TranscriptionModel, LogisticBank
 
-import amt_models.tools as tools
+import amt_tools.tools as tools
 
 # Regular imports
 from torch import nn

@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-import amt_models.tools as tools
+import amt_tools.tools as tools
 
 # Regular imports
 from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes

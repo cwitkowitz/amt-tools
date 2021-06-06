@@ -1,15 +1,15 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_models.models import OnsetsFrames2
-from amt_models.datasets import MAESTRO_V3, MAPS
-from amt_models.features import VQT, MelSpec, FeatureCombo
+from amt_tools.models import OnsetsFrames2
+from amt_tools.datasets import MAESTRO_V3, MAPS
+from amt_tools.features import VQT, MelSpec, FeatureCombo
 
-from amt_models import train, validate
-from amt_models.transcribe import *
-from amt_models.evaluate import *
+from amt_tools import train, validate
+from amt_tools.transcribe import *
+from amt_tools.evaluate import *
 
-import amt_models.tools as tools
+import amt_tools.tools as tools
 
 # Regular imports
 from sacred.observers import FileStorageObserver

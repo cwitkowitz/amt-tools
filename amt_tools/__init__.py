@@ -1,15 +1,15 @@
 """
 Should be able to use the following import structures (e.g.):
 ------------------------------------------------------------
-import amt_models
-amt_models.train()
-amt_models.transcribe()
-amt_models.evaluate()
+import amt_tools
+amt_tools.train()
+amt_tools.transcribe()
+amt_tools.evaluate()
 ------------------------------------------------------------
-from amt_models import train
+from amt_tools import train
 train()
 ------------------------------------------------------------
-from amt_models.train import train
+from amt_tools.train import train
 train()
 """
 
@@ -19,7 +19,7 @@ from .transcribe import *
 
 """
 These are necessary in order to be able to access classes
-and functions in submodules using only 'import amt_models'
+and functions in submodules using only 'import amt_tools'
 """
 
 from . import datasets

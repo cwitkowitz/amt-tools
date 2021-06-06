@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-import amt_models.tools.constants as constants
+import amt_tools.tools.constants as constants
 
 # Regular imports
 from datetime import datetime

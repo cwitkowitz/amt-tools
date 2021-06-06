@@ -4,7 +4,7 @@
 from .common import TranscriptionDataset
 from .MAPS import MAPS
 
-import amt_models.tools as tools
+import amt_tools.tools as tools
 
 # Regular imports
 import pandas as pd

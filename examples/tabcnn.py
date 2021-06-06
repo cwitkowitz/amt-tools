@@ -1,15 +1,15 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_models.datasets import GuitarSet
-from amt_models.models import TabCNN
-from amt_models.features import CQT
+from amt_tools.datasets import GuitarSet
+from amt_tools.models import TabCNN
+from amt_tools.features import CQT
 
-from amt_models import train, validate
-from amt_models.transcribe import *
-from amt_models.evaluate import *
+from amt_tools import train, validate
+from amt_tools.transcribe import *
+from amt_tools.evaluate import *
 
-import amt_models.tools as tools
+import amt_tools.tools as tools
 
 # Regular imports
 from sacred.observers import FileStorageObserver

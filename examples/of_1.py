@@ -1,15 +1,15 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_models.models import OnsetsFrames
-from amt_models.features import MelSpec
-from amt_models.datasets import MAPS
+from amt_tools.models import OnsetsFrames
+from amt_tools.features import MelSpec
+from amt_tools.datasets import MAPS
 
-from amt_models import train, validate
-from amt_models.transcribe import *
-from amt_models.evaluate import *
+from amt_tools import train, validate
+from amt_tools.transcribe import *
+from amt_tools.evaluate import *
 
-import amt_models.tools as tools
+import amt_tools.tools as tools
 
 # Regular imports
 from sacred.observers import FileStorageObserver
@@ -159,7 +159,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          optimizer=optimizer,
                          iterations=iterations,
                          checkpoints=checkpoints,
-                         log_dir=model_dir)
+                         log_dir=model_dir,
+                         val_set=None)
 
     print('Transcribing and evaluating test partition...')
 

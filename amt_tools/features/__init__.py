@@ -1,22 +1,22 @@
 """
 Should be able to use the following import structures (e.g.):
 ------------------------------------------------------------
-import amt_models
-amt_models.features.VQT()
-amt_models.features.MelSpec()
+import amt_tools
+amt_tools.features.VQT()
+amt_tools.features.MelSpec()
 ------------------------------------------------------------
-import amt_models.features as f
+import amt_tools.features as f
 f.VQT()
 f.MelSpec()
 ------------------------------------------------------------
-from amt_models.features import *
+from amt_tools.features import *
 VQT()
 MelSpec()
 ------------------------------------------------------------
-from amt_models.features import VQT
+from amt_tools.features import VQT
 VQT()
 ------------------------------------------------------------
-from amt_models.features.vqt import VQT
+from amt_tools.features.vqt import VQT
 VQT()
 """
 
