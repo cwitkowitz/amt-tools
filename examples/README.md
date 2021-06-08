@@ -1,8 +1,8 @@
 ## Examples
 This subdirectory contains standalone scripts which implement the following papers:
- - [Onsets & Frames](https://arxiv.org/abs/1710.11153) (of_1.py)
- - [Onsets & Frames 2](https://arxiv.org/abs/1810.12247) (of_2.py)
- - [TabCNN](https://archives.ismir.net/ismir2019/paper/000033.pdf) (tabcnn.py)
+ - [Onsets & Frames](https://arxiv.org/abs/1710.11153) (```of_1.py```)
+ - [Onsets & Frames 2](https://arxiv.org/abs/1810.12247) (```of_2.py```)
+ - [TabCNN](https://archives.ismir.net/ismir2019/paper/000033.pdf) (```tabcnn.py```)
 
 Each script instantiates, trains, and evaluates the respective model on the respective dataset.
 
@@ -34,11 +34,12 @@ Execution of a script will generate the following under ```<root_dir>```:
 
  - ```estimated/```
 
-    TODO
+    Folder containing frame-level and note-level predictions for all tracks in the test set.
+    Predictions are organized within ```.txt``` files according to [MIREX I/O](https://www.music-ir.org/mirex/wiki/2020:Multiple_Fundamental_Frequency_Estimation_%26_Tracking) specifications for transcription.
 
  - ```results/```
 
-    TODO
+    Folder containing individual evaluation results for each track within the test set.
 
  - ```_sources/```
 

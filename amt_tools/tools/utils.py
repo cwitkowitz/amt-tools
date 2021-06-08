@@ -152,7 +152,7 @@ def batched_notes_to_notes(batched_notes):
     Parameters
     ----------
     batched_notes : ndarray (N x 3)
-      Array of note pitches and intervals by row
+      Array of note intervals and pitches by row
       N - number of notes
 
     Returns
