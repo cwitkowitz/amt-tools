@@ -1,5 +1,6 @@
 # Automatic Music Transcription (AMT) Tools
 Implements a customizable machine learning pipeline for AMT in PyTorch. This framework abstracts various elements of the AMT task, such as dataset usage, data formatting, feature extraction, model usage, output formatting, training, evaluation, and inference.
+This makes for easy modification and extension through inheritance.
 
 The framework is a work-in-progress. Its development is ongoing to meet my evolving research needs.
 

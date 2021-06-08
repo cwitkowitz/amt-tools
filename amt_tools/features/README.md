@@ -12,4 +12,4 @@ When used in this way, the instantiated feature extraction protocol can be reuse
 
 See ```common.py``` for more details.
 
-Concatenation or stacking of features produced from multiple protocols will be fully supported in the future, but the code is currently incomplete and may produce unexpected behavior.
+Concatenation or stacking of features produced from multiple protocols will be supported in the future, but the code is currently incomplete and may produce unexpected behavior.

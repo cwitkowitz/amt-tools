@@ -3,7 +3,7 @@
 # My imports
 from amt_tools.models import OnsetsFrames2
 from amt_tools.datasets import MAESTRO_V3, MAPS
-from amt_tools.features import VQT, MelSpec, FeatureCombo
+from amt_tools.features import MelSpec, FeatureCombo
 
 from amt_tools import train, validate
 from amt_tools.transcribe import *
@@ -21,10 +21,9 @@ import os
 
 EX_NAME = '_'.join([OnsetsFrames2.model_name(),
                     MAESTRO_V3.dataset_name(),
-                    FeatureCombo.features_name(),
-                    '40'])
+                    FeatureCombo.features_name()])
 
-ex = Experiment('Onsets & Frames 2 w/ FeatureCombo on MAESTRO')
+ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAESTRO')
 
 
 @ex.config
@@ -51,7 +50,7 @@ def config():
     learning_rate = 6e-4
 
     # The id of the gpu to use, if available
-    gpu_id = 1
+    gpu_id = 0
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different feature extraction parameters
@@ -61,8 +60,7 @@ def config():
     seed = 0
 
     # Create the root directory for the experiment to hold train/transcribe/evaluate materials
-    expr_cache = os.path.join(tools.HOME, 'amt_models', 'generated', 'experiments')
-    root_dir = os.path.join(expr_cache, EX_NAME)
+    root_dir = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
     # Add a file storage observer for the log directory
@@ -80,7 +78,6 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Processing parameters
     dim_in = 229
-    dim_out = profile.get_range_len()
     model_complexity = 3
 
     # Create the mel spectrogram data processing module

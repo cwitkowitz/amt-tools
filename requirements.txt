@@ -1,3 +1,4 @@
+# TODO - probably want to whittle these down as much as possible
 numpy>=1.17.2
 librosa>=0.8.0
 torch>=1.4.0

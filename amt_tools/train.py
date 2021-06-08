@@ -164,9 +164,11 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # Make sure these iterations match
             assert start_iter == optimizer_iter
 
+            # Determine the device to use
+            device = model.device
             # Load the latest model and replace the parameterized version
-            model = torch.load(model_path)
-            # TODO - map location and change device to parameterized model's device
+            model = torch.load(model_path, map_location=device)
+            model.change_device(device)
             # Replace the randomly initialized parameters with the saved parameters
             # TODO - allow for saving/loading of optimizer with multiple parameter groups
             super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)

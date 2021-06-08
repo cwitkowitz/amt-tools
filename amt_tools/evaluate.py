@@ -18,7 +18,7 @@ EPSILON = sys.float_info.epsilon
 
 # TODO - add warning when unpack returns None
 # TODO - none of the stacked evaluators have been tested independently
-#      - they will likely encounter problems during append, average, log, write, etc.
+#      - they will likely break during append, average, log, write, etc.
 
 ##################################################
 # HELPER FUNCTIONS / RESULTS DICTIONARY          #

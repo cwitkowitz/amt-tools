@@ -9,7 +9,7 @@ Each script instantiates, trains, and evaluates the respective model on the resp
 ## Usage
 Each script can be run from the command line as follows:
 ```
-python <script>.py
+python <path_to_script>/<script>.py
 ```
 
 Parameters for each experiment are defined at the top of the script. 
@@ -26,7 +26,7 @@ Execution of a script will generate the following under ```<root_dir>```:
      - ```metrics.json``` - evaluation results for the experiment
      - ```run.json``` system and experiment information
 
-    An additional folder (```n += 1```) with experiment files is created for each run where the name of the sacred experiment is the same. 
+    An additional folder (```n += 1```) with experiment files is created for each run where the name of the [sacred](https://sacred.readthedocs.io/en/stable/quickstart.html) experiment is the same. 
 
  - ```models/```
 
@@ -35,7 +35,7 @@ Execution of a script will generate the following under ```<root_dir>```:
  - ```estimated/```
 
     Folder containing frame-level and note-level predictions for all tracks in the test set.
-    Predictions are organized within ```.txt``` files according to [MIREX I/O](https://www.music-ir.org/mirex/wiki/2020:Multiple_Fundamental_Frequency_Estimation_%26_Tracking) specifications for transcription.
+    Predictions are organized within ```.txt``` files according to the [MIREX I/O format](https://www.music-ir.org/mirex/wiki/2020:Multiple_Fundamental_Frequency_Estimation_%26_Tracking) for transcription.
 
  - ```results/```
 

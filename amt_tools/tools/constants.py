@@ -14,7 +14,7 @@ ROOT_DIR = os.path.dirname(os.path.join(SCPT_DIR))
 # DEFAULT PATHS                                  #
 ##################################################
 
-# TODO - should I highlight DIR vs. PATH?
+# TODO - should I explicitly state DIR vs. PATH?
 HOME = os.path.expanduser('~')
 DEFAULT_DATASETS_DIR = os.path.join(HOME, 'Desktop', 'Datasets')
 DEFAULT_GENERATED_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'generated'))

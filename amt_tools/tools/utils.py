@@ -16,7 +16,6 @@ import torch
 
 
 # TODO - torch Tensor compatibility
-# TODO - description of data formats in headings
 # TODO - try to ensure these won't break if extra dimensions (e.g. batch) are included
 # TODO - make sure there are no hard assignments (make return copies instead of original where necessary)
 

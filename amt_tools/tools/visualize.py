@@ -10,9 +10,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import librosa
 
-profile = GuitarProfile()
-
-
 def visualize_pitch_list(times, pitch_list, save_path=None):
     plt.figure()
 

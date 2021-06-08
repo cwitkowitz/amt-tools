@@ -17,7 +17,7 @@ Here, ```NoteTranscriber``` performs this transformation using basic heuristics 
 Most ```Estimator``` objects can be parameterized to some degree.
 
 When more than one procedure is to be performed, ```Estimator``` objects can be stacked sequentially within a ```ComboEstimator```.
-For instance, a ```MultiPitchRefiner``` can be placed after a ```NoteTranscriber``` in order to overwrite raw multipitch salience maps with the multipitch activations derived from final note predictions.
+For instance, a ```MultiPitchRefiner``` can be placed after a ```NoteTranscriber``` in order to overwrite raw multipitch salience maps with the multipitch activations derived from the note predictions.
 
 See ```transcribe.py``` for more details.
 

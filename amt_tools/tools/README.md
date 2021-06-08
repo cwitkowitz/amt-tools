@@ -58,6 +58,7 @@ The following formats exist for representing pitch activity (including onsets an
 The pitch activity data formats assume there is a corresponding array ```times``` of size ```(T)``` which contains the start time of each frame.
 
 Most data formats can also be placed within ```stacked``` representations, where the same-format data for multiple sources (e.g. strings) is held in a single ```dict```.
+However, the ```stacked``` variant of ```multipitch``` is simply a size ```(S x F x T)``` array.
 
 In representations where frequency is explicitly defined, either MIDI or Hertz can be used, and there are functions to convert between them.
 
@@ -73,7 +74,7 @@ Several functions exist to manipulate data in the following ways:
 See ```utils.py``` for more details.
 
 ### Utility
-The rest of the utility functions help make the framework more neat and readable. Many are concerned with handling ```dict``` objects, which are used heavily across the framework
+The rest of the utility functions help make the framework more neat and readable. Many are concerned with handling ```dict``` objects, which are used heavily across the framework.
 
 See ```utils.py``` for more details.
 

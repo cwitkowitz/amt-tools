@@ -9,7 +9,6 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
-# TODO - turn this file into classes.py and add estimator + evaluator?
 # TODO - some sort of combo class for multi-instrument transcription?
 
 

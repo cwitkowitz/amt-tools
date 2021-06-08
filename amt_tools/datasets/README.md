@@ -12,8 +12,8 @@ The ground truth and features will be saved under the directory specified by ```
 As long as the data exists under ```save_loc```, it will be read in.
 However, if ```store_data=True``` all ground_truth and features will be stored in RAM for quick access.
 
-By specifying ```reset_data=True```, e.g. if the feature extraction protocol changes or the sampling rate is modified, saved data will be overwritten with freshly computed features and ground truth.
+By specifying ```reset_data=True```, e.g. if the feature extraction protocol changes, saved data will be overwritten with freshly computed features and ground truth.
 
 See ```common.py``` for more details.
 
-Sampling from a combination of datasets will be fully supported in the future, but the code is currently incomplete and untested.
+Sampling from a combination of datasets will be supported in the future, but the code is currently incomplete and untested.
