@@ -3,8 +3,8 @@ Should be able to use the following import structures (e.g.):
 ------------------------------------------------------------
 import amt_tools
 amt_tools.train()
-amt_tools.transcribe()
-amt_tools.evaluate()
+amt_tools.Estimator()
+amt_tools.Evaluator()
 ------------------------------------------------------------
 from amt_tools import train
 train()

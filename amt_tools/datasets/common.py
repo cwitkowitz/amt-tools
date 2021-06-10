@@ -1,9 +1,8 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_tools.features.stft import STFT
-
-import amt_tools.tools as tools
+from ..features.stft import STFT
+from .. import tools
 
 # Regular imports
 from torch.utils.data import Dataset

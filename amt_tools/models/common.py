@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-import amt_tools.tools as tools
+from .. import tools
 
 # Regular imports
 from abc import abstractmethod

@@ -3,8 +3,7 @@
 # My imports
 from .common import TranscriptionDataset
 from .MAPS import MAPS
-
-import amt_tools.tools as tools
+from .. import tools
 
 # Regular imports
 import pandas as pd

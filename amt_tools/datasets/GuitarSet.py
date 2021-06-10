@@ -2,8 +2,7 @@
 
 # My imports
 from .common import TranscriptionDataset
-
-import amt_tools.tools as tools
+from .. import tools
 
 # Regular imports
 from mirdata.datasets import guitarset

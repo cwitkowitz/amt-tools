@@ -1,9 +1,8 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_tools import append_results, average_results, log_results
-
-import amt_tools.tools as tools
+from . import append_results, average_results, log_results
+from . import tools
 
 # Regular imports
 from tensorboardX import SummaryWriter

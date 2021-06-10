@@ -2,8 +2,7 @@
 
 # My imports
 from .common import TranscriptionModel, SoftmaxGroups
-
-import amt_tools.tools as tools
+from .. import tools
 
 # Regular imports
 from torch import nn

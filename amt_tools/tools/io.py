@@ -1,8 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-import amt_tools.tools.utils as utils
-import amt_tools.tools.constants as constants
+from . import utils, constants
 
 # Regular imports
 from mir_eval.multipitch import resample_multipitch
