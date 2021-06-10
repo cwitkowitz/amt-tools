@@ -14,7 +14,7 @@ setup(
                       'sacred', 'mir_eval', 'jams', 'mido', 'requests',
                       'tqdm', 'tensorboardX', 'scipy', 'pandas', 'mirdata'],
     #scripts=['examples/of_1.py', 'examples/of_2.py', 'examples/tabcnn.py'],
-    version='0.1.1',
+    version='0.1.2',
     license='MIT',
     description='Machine learning tools and framework for automatic music transcription',
     long_description=open('README.md').read(),
