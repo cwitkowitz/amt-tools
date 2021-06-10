@@ -123,6 +123,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
     evaluator : Evaluator
       Evaluation protocol to use during validation
     vis_fnc : function(model, i)
+      TODO - generalize to any extra validation steps
       Function to perform any visualization steps during validation loop
 
     Returns
@@ -173,7 +174,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # TODO - allow for saving/loading of optimizer with multiple parameter groups
             super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
             # Load the latest optimizer state into the parameterized version
-            optimizer.load_state_dict(torch.load(optimizer_path))
+            optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
 
     # Make sure the model is in training mode
     model.train()

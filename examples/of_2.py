@@ -3,7 +3,7 @@
 # My imports
 from amt_tools.models import OnsetsFrames2
 from amt_tools.datasets import MAESTRO_V3, MAPS
-from amt_tools.features import MelSpec, FeatureCombo
+from amt_tools.features import MelSpec
 
 from amt_tools import train, validate
 from amt_tools.transcribe import *
@@ -21,7 +21,7 @@ import os
 
 EX_NAME = '_'.join([OnsetsFrames2.model_name(),
                     MAESTRO_V3.dataset_name(),
-                    FeatureCombo.features_name()])
+                    MelSpec.features_name()])
 
 ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAESTRO')
 
@@ -154,7 +154,7 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                      sample_rate=sample_rate,
                      data_proc=data_proc,
                      profile=profile,
-                     reset_data=reset_data,
+                     reset_data=True,
                      store_data=False)
 
     print('Initializing model...')
