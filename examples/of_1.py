@@ -5,7 +5,7 @@ from amt_tools.models import OnsetsFrames
 from amt_tools.features import MelSpec
 from amt_tools.datasets import MAPS
 
-from amt_tools import train, validate
+from amt_tools.train import train, validate
 from amt_tools.transcribe import *
 from amt_tools.evaluate import *
 
