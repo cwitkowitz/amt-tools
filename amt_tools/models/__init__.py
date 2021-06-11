@@ -1,26 +1,24 @@
 """
-Should be able to use the following import structures (e.g.):
+Should be able to use the following import patterns (e.g.):
 ------------------------------------------------------------
 import amt_tools
-amt_tools.models.TranscriptionModel()
-amt_tools.models.LogisticBank()
-amt_tools.models.OnsetsFrames()
+amt_tools.models.TabCNN()
 ------------------------------------------------------------
-import amt_tools.models as m
-m.TranscriptionModel()
-m.LogisticBank()
-m.OnsetsFrames()
+import amt_tools.models as md
+md.OnsetsFrames()
+------------------------------------------------------------
+from amt_tools import models
+models.OnsetsFrames2()
 ------------------------------------------------------------
 from amt_tools.models import *
-TranscriptionModel()
+AcousticModel()
+------------------------------------------------------------
+from amt_tools.models import LanguageModel
+LanguageModel()
+------------------------------------------------------------
+from amt_tools.models.common import LogisticBank, SoftmaxGroups
 LogisticBank()
-OnsetsFrames()
-------------------------------------------------------------
-from amt_tools.models import OnsetsFrames
-OnsetsFrames()
-------------------------------------------------------------
-from amt_tools.models.onsetsframes import OnsetsFrames
-OnsetsFrames()
+SoftmaxGroups()
 """
 
 from .common import *

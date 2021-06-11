@@ -1,23 +1,23 @@
 """
-Should be able to use the following import structures (e.g.):
+Should be able to use the following import patterns (e.g.):
 ------------------------------------------------------------
 import amt_tools
-amt_tools.features.VQT()
-amt_tools.features.MelSpec()
+amt_tools.features.STFT()
 ------------------------------------------------------------
-import amt_tools.features as f
-f.VQT()
-f.MelSpec()
+import amt_tools.features as ft
+ft.CQT()
+------------------------------------------------------------
+from amt_tools import features
+features.VQT()
 ------------------------------------------------------------
 from amt_tools.features import *
-VQT()
 MelSpec()
 ------------------------------------------------------------
-from amt_tools.features import VQT
-VQT()
+from amt_tools.features import HCQT
+HCQT()
 ------------------------------------------------------------
-from amt_tools.features.vqt import VQT
-VQT()
+from amt_tools.features.hvqt import HVQT
+HVQT()
 """
 
 from .combo import *

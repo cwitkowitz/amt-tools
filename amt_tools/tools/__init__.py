@@ -1,25 +1,23 @@
 """
-Should be able to use the following import structures (e.g.):
+Should be able to use the following import patterns (e.g.):
 ------------------------------------------------------------
 import amt_tools
-amt_tools.tools.rms_norm()
 amt_tools.tools.load_normalize_audio()
 ------------------------------------------------------------
-import amt_tools.tools as t
-t.rms_norm()
-t.load_normalize_audio()
-t.KEY_AUDIO
+import amt_tools.tools as tools
+tools.load_notes_midi()
+------------------------------------------------------------
+from amt_tools import tools
+tools.array_to_tensor()
 ------------------------------------------------------------
 from amt_tools.tools import *
-rms_norm()
-load_normalize_audio()
+notes_to_multi_pitch()
+------------------------------------------------------------
+from amt_tools.tools import GuitarProfile
+GuitarProfile()
+------------------------------------------------------------
+from amt_tools.tools.constants import KEY_AUDIO
 KEY_AUDIO
-------------------------------------------------------------
-from amt_tools.tools import rms_norm
-rms_norm()
-------------------------------------------------------------
-from amt_tools.tools.utils import rms_norm
-rms_norm()
 """
 
 from .constants import *

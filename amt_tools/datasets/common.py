@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from ..features.stft import STFT
+from ..features import STFT
 from .. import tools
 
 # Regular imports

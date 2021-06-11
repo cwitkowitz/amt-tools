@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from . import append_results, average_results, log_results
+from .evaluate import append_results, average_results, log_results
 from . import tools
 
 # Regular imports

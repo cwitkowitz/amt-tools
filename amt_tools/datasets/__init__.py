@@ -1,23 +1,23 @@
 """
-Should be able to use the following import structures (e.g.):
+Should be able to use the following import patterns (e.g.):
 ------------------------------------------------------------
 import amt_tools
 amt_tools.datasets.GuitarSet()
-amt_tools.datasets.MAESTRO_V2()
 ------------------------------------------------------------
-import amt_tools.datasets as d
-d.GuitarSet()
-d.MAESTRO_V2()
+import amt_tools.datasets as dt
+dt.GuitarSet()
+------------------------------------------------------------
+from amt_tools import datasets
+datasets.MAESTRO_V3()
 ------------------------------------------------------------
 from amt_tools.datasets import *
-GuitarSet()
-MAESTRO_V2()
+MAESTRO_V3()
 ------------------------------------------------------------
-from amt_tools.datasets import GuitarSet
-GuitarSet()
+from amt_tools.datasets import MAPS
+MAPS()
 ------------------------------------------------------------
-from amt_tools.datasets.GuitarSet import GuitarSet
-GuitarSet()
+from amt_tools.datasets.MAPS import MAPS
+MAPS()
 """
 
 from .combo import *
