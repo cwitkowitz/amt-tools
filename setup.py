@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 # TODO - default paths (generated) may be no bueno for usage with pip installation
 # TODO - sacred in extras require specifying dependencies for /examples?
@@ -8,13 +8,13 @@ setup(
     url='https://github.com/cwitkowitz/amt-tools',
     author='Frank Cwitkowitz',
     author_email='fcwitkow@ur.rochester.edu',
-    packages=['amt_tools'],
+    packages=find_packages(),
     python_requires='>=3.7',
     install_requires=['numpy', 'librosa', 'torch', 'matplotlib',
                       'sacred', 'mir_eval', 'jams', 'mido', 'requests',
                       'tqdm', 'tensorboardX', 'scipy', 'pandas', 'mirdata'],
     #scripts=['examples/of_1.py', 'examples/of_2.py', 'examples/tabcnn.py'],
-    version='0.1.3',
+    version='0.1.4',
     license='MIT',
     description='Machine learning tools and framework for automatic music transcription',
     long_description=open('README.md').read(),
