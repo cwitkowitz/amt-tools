@@ -22,10 +22,7 @@ class TabCNN(TranscriptionModel):
         See TranscriptionModel class for others...
         """
 
-        super().__init__(dim_in, profile, in_channels, model_complexity, device)
-
-        # Number of frames required for a prediction
-        self.frame_width = 9
+        super().__init__(dim_in, profile, in_channels, model_complexity, 9, device)
 
         # Number of filters for each stage
         nf1 = 32 * self.model_complexity

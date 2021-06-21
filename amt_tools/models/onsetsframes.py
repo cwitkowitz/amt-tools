@@ -31,7 +31,7 @@ class OnsetsFrames(TranscriptionModel):
           Whether to feed the gradient of the pitch head back into the onset head
         """
 
-        super().__init__(dim_in, profile, in_channels, model_complexity, device)
+        super().__init__(dim_in, profile, in_channels, model_complexity, 1, device)
 
         self.detach_heads = detach_heads
 
