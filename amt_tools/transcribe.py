@@ -493,6 +493,44 @@ class StackedNoteTranscriber(Estimator):
             tools.write_notes(pitches, intervals, path)
 
 
+class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
+    """
+    TODO
+    """
+
+    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
+        """
+        TODO
+        """
+
+        super().__init__(profile, save_dir, inhibition_window, minimum_duration)
+
+        self.previous_activations = np.zeros(profile.get_range_len())
+
+        self.active_pitches
+
+    def estimate(self, raw_output):
+        """
+        TODO
+        """
+
+        pass
+
+    def estimate(self, raw_output):
+        """
+        TODO
+        """
+
+        pass
+
+    def write(self, stacked_notes, track):
+        """
+        TODO
+        """
+
+        pass
+
+
 class NoteTranscriber(StackedNoteTranscriber):
     """
     Estimate notes from a multi pitch activation map.

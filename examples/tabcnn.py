@@ -5,7 +5,7 @@ from amt_tools.datasets import GuitarSet
 from amt_tools.models import TabCNN
 from amt_tools.features import CQT
 
-from amt_tools.train import train, validate
+from amt_tools.train import train
 from amt_tools.transcribe import *
 from amt_tools.evaluate import *
 
@@ -38,13 +38,13 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 2500
+    iterations = 50
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 50
 
     # Number of samples to gather for a batch
-    batch_size = 30
+    batch_size = 10
 
     # The initial learning rate
     learning_rate = 1.0
@@ -133,7 +133,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         print('Loading testing partition...')
 
-        # Create a dataset corresponding to the training partition
+        # Create a dataset corresponding to the testing partition
         gset_test = GuitarSet(splits=test_splits,
                               hop_length=hop_length,
                               sample_rate=sample_rate,
@@ -177,7 +177,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         validation_evaluator.set_patterns(None)
 
         # Get the average results for the fold
-        fold_results = validate(tabcnn, gset_test, evaluator=validation_evaluator, estimator=validation_estimator)
+        fold_results = validate(tabcnn, gset_test, evaluator=validation_evaluator, estimator=validation_estimator, online=False)
 
         # Add the results to the tracked fold results
         results = append_results(results, fold_results)

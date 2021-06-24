@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from .evaluate import append_results, average_results, log_results
+from .evaluate import validate, append_results, average_results, log_results
 from . import tools
 
 # Regular imports
@@ -35,57 +35,6 @@ def file_sort(file_name):
     sort_name = str(len(file_name)) + file_name
 
     return sort_name
-
-
-def validate(model, dataset, evaluator, estimator=None):
-    """
-    Implements the validation or evaluation loop for a model and dataset partition.
-    Optionally save predictions and log results.
-
-    Parameters
-    ----------
-    model : TranscriptionModel
-      Model to validate or evalaute
-    dataset : TranscriptionDataset
-      Dataset (partition) to use for validation or evaluation
-    estimator : Estimator
-      Estimation protocol to use
-    evaluator : Evaluator
-      Evaluation protocol to use
-
-    Returns
-    ----------
-    average : dict
-      Dictionary containing all relevant results averaged across all tracks
-    """
-
-    # Make sure the model is in evaluation mode
-    model.eval()
-
-    # Turn off gradient computation
-    with torch.no_grad():
-        # Loop through the validation track ids
-        for track_id in dataset.tracks:
-            # Obtain the track data
-            track = dataset.get_track_data(track_id)
-
-            # Treat the track data as a batch
-            batch = tools.track_to_batch(track)
-
-            # Get the model predictions and convert them to NumPy arrays
-            predictions = tools.track_to_cpu(model.run_on_batch(batch))
-
-            if estimator is not None:
-                # Perform any estimation steps (e.g. note transcription)
-                predictions.update(estimator.process_track(predictions, track_id))
-
-            # Evaluate the predictions and track the results
-            evaluator.get_track_results(predictions, track, track_id)
-
-    # Obtain the average results from this validation loop
-    average = evaluator.average_results()
-
-    return average
 
 
 def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.', scheduler=None,
@@ -169,6 +118,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # Load the latest model and replace the parameterized version
             model = torch.load(model_path, map_location=device)
             model.change_device(device)
+            model.train()
             # Replace the randomly initialized parameters with the saved parameters
             # TODO - allow for saving/loading of optimizer with multiple parameter groups
             super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
@@ -192,7 +142,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # Compute gradients based on total loss
             batch_loss[tools.KEY_LOSS_TOTAL].backward()
             # Add all of the losses to the collection
-            train_loss = append_results(train_loss, tools.track_to_cpu(batch_loss))
+            train_loss = append_results(train_loss, tools.dict_to_array(batch_loss))
             # Perform gradient clipping
             # TODO = make optional
             #nn.utils.clip_grad_norm_(model.parameters(), 3)

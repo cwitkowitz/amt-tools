@@ -108,7 +108,8 @@ class TabCNN(TranscriptionModel):
         # Extract the features from the batch as a NumPy array
         feats = tools.tensor_to_array(batch[tools.KEY_FEATS])
         # Window the features to mimic real-time operation
-        feats = tools.framify_activations(feats, self.frame_width)
+        # TODO - padding check is kind of hacky
+        feats = tools.framify_activations(feats, self.frame_width, pad=(feats.shape[-1] > self.frame_width))
         # Convert the features back to PyTorch tensor and add to device
         feats = tools.array_to_tensor(feats, self.device)
         # Switch the sequence-frame and feature axes

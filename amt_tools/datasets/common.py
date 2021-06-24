@@ -176,7 +176,7 @@ class TranscriptionDataset(Dataset):
         data = self.get_track_data(track_id)
 
         # Convert all numpy arrays in the data dictionary to float32
-        data = tools.track_to_dtype(data, dtype=tools.FLOAT32)
+        data = tools.dict_to_dtype(data, dtype=tools.FLOAT32)
 
         # Remove any notes, as they cannot be batched
         if tools.query_dict(data, tools.KEY_NOTES):

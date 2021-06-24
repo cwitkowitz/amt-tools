@@ -54,9 +54,7 @@ class TranscriptionModel(nn.Module):
         self.iter = 0
 
         # Placeholder for appending additional modules, such as learnable filterbanks
-        self.frontend = nn.Sequential(
-            nn.Identity()
-        )
+        self.frontend = nn.Sequential()
 
         self.change_device()
 
@@ -106,29 +104,21 @@ class TranscriptionModel(nn.Module):
         # batch = deepcopy(batch)
 
         # Make sure all data is on correct device
-        batch = tools.track_to_device(batch, self.device)
+        batch = tools.dict_to_device(batch, self.device)
 
-        # Extract input audio and add a channel dimension
-        input_audio = batch[tools.KEY_AUDIO].unsqueeze(-2)
+        # Try to extract audio and features from the input data
+        audio = tools.unpack_dict(batch, tools.KEY_AUDIO)
+        feats = tools.unpack_dict(batch, tools.KEY_FEATS)
 
-        # Run audio through the feature extraction module, which does nothing by default
-        auto_feats = self.frontend(input_audio)
+        if audio is not None and len(self.frontend):
+            # Add a channel dimension to the audio
+            audio = audio.unsqueeze(-2)
+            # Run audio through the frontend module, which does nothing by default
+            frontend_feats = self.frontend(audio)
+            # Append precomputed features to the frontend output if they exist
+            feats = frontend_feats if feats is None else torch.cat((feats, frontend_feats), dim=1)
 
-        # If features exist, extract them
-        # TODO - this logic could probably be simplified
-        if tools.KEY_FEATS in batch.keys():
-            # Obtain any fixed features
-            feats = batch[tools.KEY_FEATS]
-            # Check if any features were calculated automatically
-            if not auto_feats.equal(input_audio):
-                # If so, add to fixed features (number of frames must match)
-                feats = torch.cat((feats, auto_feats), dim=1)
-        else:
-            # Otherwise we assume features were calculated automatically
-            # - if feature extraction module was left as
-            #   identity, our features are the audio itself
-            feats = auto_feats
-
+        # Add the features back to the input data
         batch[tools.KEY_FEATS] = feats
 
         return batch
@@ -189,8 +179,9 @@ class TranscriptionModel(nn.Module):
         # Post-process batch
         output = self.post_proc(batch)
 
-        # Add the frame times to the output
-        output[tools.KEY_TIMES] = batch[tools.KEY_TIMES]
+        # Add the frame times to the output if they exist
+        if tools.query_dict(batch, tools.KEY_TIMES):
+            output[tools.KEY_TIMES] = batch[tools.KEY_TIMES]
 
         return output
 

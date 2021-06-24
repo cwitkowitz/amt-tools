@@ -1,6 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
+import amt_tools.tools
 from . import constants
 
 # Regular imports
@@ -1888,14 +1889,14 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
     return new_times, new_values
 
 
-def tensor_to_array(tensor):
+def tensor_to_array(data):
     """
     Simple helper function to convert a PyTorch tensor
     into a NumPy array in order to keep code readable.
 
     Parameters
     ----------
-    tensor : PyTorch tensor
+    data : PyTorch tensor
       Tensor to convert to array
 
     Returns
@@ -1904,22 +1905,24 @@ def tensor_to_array(tensor):
       Converted array
     """
 
-    # Change device to CPU,
-    # detach from gradient graph,
-    # and convert to NumPy array
-    array = tensor.cpu().detach().numpy()
+    # Make sure the input is a PyTorch tensor
+    if isinstance(data, torch.Tensor):
+        # Change device to CPU,
+        # detach from gradient graph,
+        # and convert to NumPy array
+        data = data.cpu().detach().numpy()
 
-    return array
+    return data
 
 
-def array_to_tensor(array, device=None):
+def array_to_tensor(data, device=None):
     """
     Simple helper function to convert a NumPy array
     into a PyTorch tensor in order to keep code readable.
 
     Parameters
     ----------
-    array : NumPy ndarray
+    data : NumPy ndarray
       Array to convert to tensor
     device : string, or None (optional)
       Add tensor to this device, if specified
@@ -1930,14 +1933,16 @@ def array_to_tensor(array, device=None):
       Converted tensor
     """
 
-    # Convert to PyTorch tensor
-    tensor = torch.from_numpy(array)
+    # Make sure the input is a NumPy array
+    if isinstance(data, np.ndarray):
+        # Convert to PyTorch tensor
+        data = torch.from_numpy(data)
 
-    # Add tensor to device, if specified
-    if device is not None:
-        tensor = tensor.to(device)
+        # Add tensor to device, if specified
+        if device is not None:
+            data = data.to(device)
 
-    return tensor
+    return data
 
 
 def save_pack_npz(path, keys, *args):
@@ -1999,7 +2004,7 @@ def load_unpack_npz(path):
     return data
 
 
-def track_to_dtype(track, dtype):
+def dict_to_dtype(track, dtype):
     """
     Convert all ndarray entries in a dictionary to a specified type.
 
@@ -2025,8 +2030,12 @@ def track_to_dtype(track, dtype):
 
     # Loop through the dictionary keys
     for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_to_dtype(track[key], dtype)
         # Check if the dictionary entry is an ndarray
-        if isinstance(track[key], np.ndarray):
+        elif isinstance(track[key], np.ndarray):
             # Convert the ndarray to the specified type
             track[key] = track[key].astype(dtype)
 
@@ -2037,7 +2046,7 @@ def track_to_dtype(track, dtype):
     return track
 
 
-def track_to_device(track, device):
+def dict_to_device(track, device):
     """
     Add all tensor entries in a dictionary to a specified device.
 
@@ -2062,15 +2071,19 @@ def track_to_device(track, device):
 
     # Loop through the dictionary keys
     for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_to_device(track[key], device)
         # Check if the dictionary entry is a tensor
-        if isinstance(track[key], torch.Tensor):
+        elif isinstance(track[key], torch.Tensor):
             # Add the tensor to the specified device
             track[key] = track[key].to(device)
 
     return track
 
 
-def track_to_cpu(track):
+def dict_to_array(track):
     """
     Convert all tensor entries in a dictionary to ndarray.
 
@@ -2094,19 +2107,71 @@ def track_to_cpu(track):
 
     # Loop through the dictionary keys
     for key in keys:
-        # Check if the entry us another dictionary
+        # Check if the entry is another dictionary
         if isinstance(track[key], dict):
             # Call this function recursively
-            track[key] = track_to_cpu(track[key])
+            track[key] = dict_to_array(track[key])
         # Check if the entry is a tensor
-        if isinstance(track[key], torch.Tensor):
-            # Squeeze the tensor and convert to ndarray and remove batch dimension
-            track[key] = tensor_to_array(track[key].squeeze())
+        elif isinstance(track[key], torch.Tensor):
+            # Convert the tensor to an array
+            track[key] = tensor_to_array(track[key])
 
     return track
 
 
-def track_to_batch(track):
+def dict_to_tensor(track):
+    """
+    TODO
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    # TODO - can't copy tensors with gradients
+    #track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_to_tensor(track[key])
+        # Check if the entry is an array
+        elif isinstance(track[key], np.ndarray):
+            # Convert the array to a tensor
+            track[key] = array_to_tensor(track[key])
+
+    return track
+
+
+def dict_squeeze(track):
+    """
+    TODO
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    # TODO - can't copy tensors with gradients
+    #track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_squeeze(track[key])
+        # Check if the entry is a tensor
+        elif isinstance(track[key], torch.Tensor) or isinstance(track[key], np.ndarray):
+            # Squeeze the tensor
+            track[key] = track[key].squeeze()
+
+    return track
+
+
+def dict_unsqueeze(track):
     """
     Treat track data as a batch of size one.
 
@@ -2129,10 +2194,45 @@ def track_to_batch(track):
 
     # Loop through the dictionary keys
     for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_unsqueeze(track[key])
         # Check if the dictionary entry is an ndarray
-        if isinstance(track[key], np.ndarray):
-            # Convert to tensor and add batch dimension
-            track[key] = array_to_tensor(track[key]).unsqueeze(0)
+        elif isinstance(track[key], torch.Tensor):
+            # Add a new dimension
+            track[key] = track[key].unsqueeze(0)
+        # Check if the entry is a tensor
+        elif isinstance(track[key], np.ndarray):
+            # TODO
+            track[key] = np.expand_dims(track[key], axis=0)
+
+    return track
+
+
+def dict_append(track, additions, dim=-1):
+    """
+    TODO - maybe be repeat of function defined in evaluate.py
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(additions.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        if key not in track:
+            track[key] = additions[key]
+        # Check if the dictionary entry is an ndarray
+        elif isinstance(additions[key], np.ndarray):
+            # Convert the ndarray to the specified type
+            track[key] = np.append(track[key], additions[key], axis=dim)
+        # Check if the dictionary entry is a tensor
+        elif isinstance(additions[key], torch.Tensor):
+            # Convert the ndarray to the specified type
+            track[key] = torch.cat((track[key], additions[key]), dim=dim)
 
     return track
 
@@ -2186,6 +2286,7 @@ def unpack_dict(data, key):
     """
 
     # Default the entry
+    # TODO - better to use None or False?
     entry = None
 
     # Check if a dictionary was provided and if the key is in the dictionary
@@ -2288,11 +2389,3 @@ def slice_track(track, start, stop, skip=None):
             track[key] = track[key][..., start : stop]
 
     return track
-
-
-def feats_to_batch(feats, times):
-    # TODO - a function which accepts only feats (for deployment)
-    # TODO - I don't think I need this at all if fwd accepts raw features
-    # TODO - in pre_proc, catch non-dict and call this?
-    # TODO - while num_dims < 4: feats.unsqueeze(0)
-    pass
