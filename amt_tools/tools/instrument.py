@@ -9,7 +9,7 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
-# TODO - some sort of combo class for multi-instrument transcription?
+# TODO - some sort of combo class for multi-instrument transcription? - Tablature can be used?
 
 
 class InstrumentProfile(object):

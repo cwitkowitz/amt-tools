@@ -38,7 +38,7 @@ def config():
     num_frames = 200
 
     # Number of training iterations to conduct
-    iterations = 50
+    iterations = 2500
 
     # How many equally spaced save/validation checkpoints - 0 to disable
     checkpoints = 50
@@ -177,7 +177,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
         validation_evaluator.set_patterns(None)
 
         # Get the average results for the fold
-        fold_results = validate(tabcnn, gset_test, evaluator=validation_evaluator, estimator=validation_estimator, online=False)
+        fold_results = validate(tabcnn, gset_test, evaluator=validation_evaluator, estimator=validation_estimator)
 
         # Add the results to the tracked fold results
         results = append_results(results, fold_results)

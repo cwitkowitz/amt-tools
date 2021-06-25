@@ -35,7 +35,7 @@ def validate(model, dataset, evaluator, estimator=None, online=False):
     Parameters
     ----------
     model : TranscriptionModel
-      Model to validate or evalaute
+      Model to validate or evaluate
     dataset : TranscriptionDataset
       Dataset (partition) to use for validation or evaluation
     estimator : Estimator

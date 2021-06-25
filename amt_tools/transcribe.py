@@ -495,40 +495,100 @@ class StackedNoteTranscriber(Estimator):
 
 class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
     """
-    TODO
+    Estimate stacked notes from stacked multi pitch activation maps, one frame at a time.
     """
 
     def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
         """
-        TODO
+        Initialize parameters for the estimator.
+
+        Parameters
+        ----------
+        See StackedNoteTranscriber class...
         """
 
         super().__init__(profile, save_dir, inhibition_window, minimum_duration)
 
-        self.previous_activations = np.zeros(profile.get_range_len())
+        # Create an array to keep track of the previous pitch activations
+        self.previous_activations = np.zeros((profile.get_num_dofs(), profile.get_range_len(), 1))
 
-        self.active_pitches
-
-    def estimate(self, raw_output):
-        """
-        TODO
-        """
-
-        pass
+        # Create an array to keep track of onset times for active pitches
+        self.active_pitches = np.zeros(self.previous_activations.shape)
 
     def estimate(self, raw_output):
         """
-        TODO
+        TODO - verify transcription results are the same
+        TODO - how to deal with active pitches when last frame is given
         """
 
-        pass
+        # Obtain the multi pitch activation maps to transcribe
+        stacked_multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
 
-    def write(self, stacked_notes, track):
-        """
-        TODO
-        """
+        # Determine the number of slices in the stacked multi pitch array
+        stack_size = stacked_multi_pitch.shape[-3]
 
-        pass
+        # Obtain the frame time associated with the activation maps
+        time = tools.unpack_dict(raw_output, tools.KEY_TIMES)[-1:].item()
+
+        # Obtain the onsets and offsets from the raw output if they exist
+        stacked_onsets = tools.unpack_dict(raw_output, tools.KEY_ONSETS)
+        stacked_offsets = tools.unpack_dict(raw_output, tools.KEY_OFFSETS)
+
+        # Append the new pitch activations to the last frame of activations
+        activations = np.concatenate((self.previous_activations, stacked_multi_pitch), axis=-1)
+
+        # If no onsets were provided, obtain them from the pitch activations
+        if stacked_onsets is None:
+            stacked_onsets = tools.stacked_multi_pitch_to_stacked_onsets(activations)[..., -1:]
+
+        # If no offsets were provided, obtain them from the pitch activations
+        if stacked_offsets is None:
+            stacked_offsets = tools.stacked_multi_pitch_to_stacked_offsets(activations)[..., :-1]
+
+        # Consider onsets where pitch is already active as offsets
+        stacked_offsets = np.logical_or(stacked_offsets,
+                                        np.logical_and(stacked_onsets, self.active_pitches)).astype(tools.FLOAT)
+
+        # Initialize a dictionary to hold the notes
+        stacked_notes = dict()
+
+        # Loop through the slices of the stack
+        for slc in range(stack_size):
+            # Obtain the transcription information for this slice
+            onsets, offsets = stacked_onsets[slc], stacked_offsets[slc]
+
+            if self.inhibition_window is not None:
+                # TODO
+                pass
+
+            # Obtain the indices of pitches which are no longer active
+            offsets = offsets.squeeze() == 1
+            # Determine the pitches which are no longer active
+            pitches = self.profile.get_midi_range()[offsets]
+            # Obtain the note onsets of these pitches
+            intervals = self.active_pitches[slc, offsets]
+            # Append the current time to get the note interval
+            intervals = np.concatenate((intervals, time * np.ones(intervals.shape)), axis=-1)
+
+            if self.minimum_duration is not None:
+                # Filter the notes by duration
+                pitches, intervals = filter_notes_by_duration(pitches, intervals, self.minimum_duration)
+
+            # Convert to batched notes
+            batched_notes = tools.notes_to_batched_notes(pitches, intervals)
+
+            # Add the notes to the stacked notes dictionary under the slice key
+            stacked_notes.update(tools.batched_notes_to_stacked_notes(batched_notes, True, slc))
+
+        # Clear the onset times
+        self.active_pitches[stacked_offsets == 1] = 0.
+        # Add current time as onset of newly active pitches
+        self.active_pitches[stacked_onsets == 1] = time
+
+        # Update the previous activations
+        self.previous_activations = stacked_multi_pitch
+
+        return stacked_notes
 
 
 class NoteTranscriber(StackedNoteTranscriber):
@@ -615,6 +675,65 @@ class NoteTranscriber(StackedNoteTranscriber):
 
         # Call the parent function
         super().write(stacked_notes, track)
+
+
+class IterativeNoteTranscriber(IterativeStackedNoteTranscriber):
+    """
+    Estimate notes from a multi pitch activation map, one frame at a time.
+    """
+
+    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
+        """
+        Initialize parameters for the estimator.
+
+        Parameters
+        ----------
+        See NoteTranscriber class...
+        """
+
+        super().__init__(profile, save_dir, inhibition_window, minimum_duration)
+
+        # Create an array to keep track of the previous pitch activations
+        self.previous_activations = np.zeros((1, profile.get_range_len(), 1))
+
+        # Create an array to keep track of onset times for active pitches
+        self.active_pitches = np.zeros(self.previous_activations.shape)
+
+    def estimate(self, raw_output):
+        """
+        TODO - verify transcription results are the same
+        TODO - how to deal with active pitches when last frame is given
+        """
+
+        # Perform any pre-processing steps
+        raw_output = self.pre_proc(raw_output)
+
+        # Obtain the multi pitch activation map to transcribe
+        multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
+
+        # Convert the multi pitch array to a stacked multi pitch array
+        raw_output[tools.KEY_MULTIPITCH] = tools.multi_pitch_to_stacked_multi_pitch(multi_pitch)
+
+        # Obtain onsets and offsets from output if they exist
+        onsets = tools.unpack_dict(raw_output, tools.KEY_ONSETS)
+        offsets = tools.unpack_dict(raw_output, tools.KEY_OFFSETS)
+
+        if onsets is not None:
+            # Convert onsets to a stacked onset activation map
+            raw_output[tools.KEY_ONSETS] = tools.multi_pitch_to_stacked_multi_pitch(onsets)
+
+        if offsets is not None:
+            # Convert offsets to a stacked offset activation map
+            raw_output[tools.KEY_OFFSETS] = tools.multi_pitch_to_stacked_multi_pitch(offsets)
+
+        # Call the parent class estimate function. Multi pitch is just a special
+        # case of stacked multi pitch, where there is only one degree of freedom
+        stacked_notes = super().estimate(raw_output)
+
+        # Unpack the batched notes
+        batched_notes = tools.stacked_notes_to_batched_notes(stacked_notes, True)
+
+        return batched_notes
 
 
 class StackedMultiPitchRefiner(StackedNoteTranscriber):

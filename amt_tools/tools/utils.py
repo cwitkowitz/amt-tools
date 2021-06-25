@@ -58,6 +58,56 @@ def notes_to_batched_notes(pitches, intervals):
     return batched_notes
 
 
+def transpose_batched_notes(batched_notes):
+    """
+    Switch the axes of batched notes.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (3 x N) or (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3) or (3 x N)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+    """
+
+    # Transpose the last two axes
+    batched_notes = np.transpose(batched_notes, (-1, -2))
+
+    return batched_notes
+
+
+def stacked_notes_to_batched_notes(stacked_notes, transposed=False):
+    """
+    Convert a dictionary of stacked notes into a single representation.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> batched_notes) pairs
+    transposed : bool
+      Whether the axes of the batched notes were transposed before they were added
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row
+      N - number of notes
+    """
+
+    # Obtain the batched note entries from the dictionary values
+    entries = list(stacked_notes.values())
+
+    # Concatenate all groups of batched notes
+    batched_notes = np.concatenate([entry for entry in entries], axis=int(transposed))
+
+    return batched_notes
+
+
 def batched_notes_to_hz(batched_notes):
     """
     Convert batched notes from MIDI to Hertz.
@@ -284,6 +334,41 @@ def notes_to_stacked_notes(pitches, intervals, i=0):
 
     # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
     stacked_notes[i] = sort_notes(pitches, intervals)
+
+    return stacked_notes
+
+
+def batched_notes_to_stacked_notes(batched_notes, transposed=False, i=0):
+    """
+    Convert a collection of (batched) notes into a dictionary of stacked notes.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row
+      N - number of notes
+    transposed : bool
+      Whether to switch the axes of the batched notes before adding them
+    i : int
+      Slice key to use
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> batched_notes)
+    """
+
+    # Initialize a dictionary to hold the notes
+    stacked_notes = dict()
+
+    batched_notes = sort_batched_notes(batched_notes)
+
+    if transposed:
+        # Switch the axes
+        batched_notes = transpose_batched_notes(batched_notes)
+
+    # Add the batched notes to the stacked notes dictionary under the slice key
+    stacked_notes[i] = batched_notes
 
     return stacked_notes
 
@@ -2121,59 +2206,7 @@ def dict_to_array(track):
 
 def dict_to_tensor(track):
     """
-    TODO
-    """
-
-    # Copy the dictionary to avoid hard assignment
-    # TODO - can't copy tensors with gradients
-    #track = deepcopy(track)
-
-    # Obtain a list of the dictionary keys
-    keys = list(track.keys())
-
-    # Loop through the dictionary keys
-    for key in keys:
-        # Check if the entry is another dictionary
-        if isinstance(track[key], dict):
-            # Call this function recursively
-            track[key] = dict_to_tensor(track[key])
-        # Check if the entry is an array
-        elif isinstance(track[key], np.ndarray):
-            # Convert the array to a tensor
-            track[key] = array_to_tensor(track[key])
-
-    return track
-
-
-def dict_squeeze(track):
-    """
-    TODO
-    """
-
-    # Copy the dictionary to avoid hard assignment
-    # TODO - can't copy tensors with gradients
-    #track = deepcopy(track)
-
-    # Obtain a list of the dictionary keys
-    keys = list(track.keys())
-
-    # Loop through the dictionary keys
-    for key in keys:
-        # Check if the entry is another dictionary
-        if isinstance(track[key], dict):
-            # Call this function recursively
-            track[key] = dict_squeeze(track[key])
-        # Check if the entry is a tensor
-        elif isinstance(track[key], torch.Tensor) or isinstance(track[key], np.ndarray):
-            # Squeeze the tensor
-            track[key] = track[key].squeeze()
-
-    return track
-
-
-def dict_unsqueeze(track):
-    """
-    Treat track data as a batch of size one.
+    Convert all ndarray entries in a dictionary to tensors.
 
     Parameters
     ----------
@@ -2197,22 +2230,116 @@ def dict_unsqueeze(track):
         # Check if the entry is another dictionary
         if isinstance(track[key], dict):
             # Call this function recursively
-            track[key] = dict_unsqueeze(track[key])
-        # Check if the dictionary entry is an ndarray
-        elif isinstance(track[key], torch.Tensor):
-            # Add a new dimension
-            track[key] = track[key].unsqueeze(0)
-        # Check if the entry is a tensor
+            track[key] = dict_to_tensor(track[key])
+        # Check if the entry is an array
         elif isinstance(track[key], np.ndarray):
-            # TODO
-            track[key] = np.expand_dims(track[key], axis=0)
+            # Convert the array to a tensor
+            track[key] = array_to_tensor(track[key])
+
+    return track
+
+
+def dict_squeeze(track, dim=None):
+    """
+    Collapse unnecessary dimensions of an array or tensor.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    dim : int or None
+      Dimension to collapse (any single dimensions if unspecified)
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    # TODO - can't copy tensors with gradients
+    #track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_squeeze(track[key])
+        # Check if the entry is a tensor or array
+        elif isinstance(track[key], torch.Tensor) or isinstance(track[key], np.ndarray):
+            if dim is None:
+                # Squeeze all unnecessary dimensions of the tensor or array
+                track[key] = track[key].squeeze()
+            else:
+                # Squeeze the chosen dimension of the tensor or array
+                track[key] = track[key].squeeze(dim)
+
+    return track
+
+
+def dict_unsqueeze(track, dim=0):
+    """
+    Add a new dimension to an array or tensor.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    dim : int
+      Insertion point of new dimension
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_unsqueeze(track[key])
+        # Check if the dictionary entry is a Tensor
+        elif isinstance(track[key], torch.Tensor):
+            # Add a new dimension at the insertion point
+            track[key] = track[key].unsqueeze(dim)
+        # Check if the entry is an ndarray
+        elif isinstance(track[key], np.ndarray):
+            # Add a new dimension at the insertion point
+            track[key] = np.expand_dims(track[key], axis=dim)
 
     return track
 
 
 def dict_append(track, additions, dim=-1):
     """
+    Append together matching entries of two dictionaries.
     TODO - maybe be repeat of function defined in evaluate.py
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    additions : dict
+      Dictionary containing new data
+    dim : int
+      Dimension on which to append
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
     """
 
     # Copy the dictionary to avoid hard assignment
@@ -2223,15 +2350,21 @@ def dict_append(track, additions, dim=-1):
 
     # Loop through the dictionary keys
     for key in keys:
+        # Check if the entry exists
         if key not in track:
+            # Add the new entry to the current dictionary
             track[key] = additions[key]
+        # Check if the entry is another dictionary
+        elif isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_append(track[key], additions[key], dim)
         # Check if the dictionary entry is an ndarray
         elif isinstance(additions[key], np.ndarray):
-            # Convert the ndarray to the specified type
+            # Use the NumPy append function
             track[key] = np.append(track[key], additions[key], axis=dim)
         # Check if the dictionary entry is a tensor
         elif isinstance(additions[key], torch.Tensor):
-            # Convert the ndarray to the specified type
+            # Use the Torch cat function
             track[key] = torch.cat((track[key], additions[key]), dim=dim)
 
     return track
