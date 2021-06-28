@@ -13,3 +13,7 @@ tensorboardX>=2.1
 scipy>=1.6.2
 pandas>=1.2.3
 mirdata>=0.3.2
+# TODO - extras - examples?
+# TODO - extras - streaming?
+# TODO - pyaudio
+# TODO - sounddevice

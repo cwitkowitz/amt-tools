@@ -9,9 +9,6 @@ import numpy as np
 import argparse
 import torch
 
-# TODO - turn this into an executable with parameterizable model and stream (or audio)
-# TODO - add capability for realtime plotting of results
-
 
 def run_offline(track_data, model, estimator=None):
     """
@@ -132,14 +129,6 @@ def run_online(track_data, model, estimator=None):
         predictions = run_single_frame(batch, model, predictions, estimator)
 
     return predictions
-
-
-def stream(stream, model):
-    """
-    TODO - keep track of a buffer of size frame_width and feed into model
-    """
-
-    pass
 
 
 """
