@@ -2274,7 +2274,7 @@ def dict_squeeze(track, dim=None):
             if dim is None:
                 # Squeeze all unnecessary dimensions of the tensor or array
                 track[key] = track[key].squeeze()
-            else:
+            elif track[key].shape[dim] == 1:
                 # Squeeze the chosen dimension of the tensor or array
                 track[key] = track[key].squeeze(dim)
 
