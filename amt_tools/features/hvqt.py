@@ -164,3 +164,17 @@ class HVQT(FeatureModule):
         times = self.modules[-1].get_times(audio)
 
         return times
+
+    def get_feature_size(self):
+        """
+        Helper function to access dimensionality of features.
+
+        Returns
+        ----------
+        feature_size : int
+          Dimensionality along feature axis
+        """
+
+        feature_size = self.n_bins
+
+        return feature_size

@@ -27,4 +27,5 @@ from .hcqt import *
 from .hvqt import *
 from .mel import *
 from .stft import *
+from .stream import *
 from .vqt import *

@@ -226,6 +226,14 @@ class FeatureModule(object):
 
         return num_channels
 
+    @abstractmethod
+    def get_feature_size(self):
+        """
+        Helper function to access dimensionality of features.
+        """
+
+        return NotImplementedError
+
     @classmethod
     def features_name(cls):
         """

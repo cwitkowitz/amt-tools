@@ -188,3 +188,17 @@ class VQT(FeatureModule):
         feats = super().post_proc(vqt)
 
         return feats
+
+    def get_feature_size(self):
+        """
+        Helper function to access dimensionality of features.
+
+        Returns
+        ----------
+        feature_size : int
+          Dimensionality along feature axis
+        """
+
+        feature_size = self.n_bins
+
+        return feature_size

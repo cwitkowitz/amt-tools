@@ -62,3 +62,18 @@ class STFT(FeatureModule):
         spec = super().post_proc(spec)
 
         return spec
+
+    def get_feature_size(self):
+        """
+        Helper function to access dimensionality of features.
+
+        Returns
+        ----------
+        feature_size : int
+          Dimensionality along feature axis
+        """
+
+        # TODO - check this
+        feature_size = self.n_fft // 2 + 1
+
+        return feature_size

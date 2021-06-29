@@ -17,3 +17,4 @@ mirdata>=0.3.2
 # TODO - extras - streaming?
 # TODO - pyaudio
 # TODO - sounddevice
+# TODO - sudo apt-get install tensorboard, libportaudio2

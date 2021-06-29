@@ -89,3 +89,17 @@ class MelSpec(FeatureModule):
         feats = librosa.core.power_to_db(feats, ref=np.max)
 
         return feats
+
+    def get_feature_size(self):
+        """
+        Helper function to access dimensionality of features.
+
+        Returns
+        ----------
+        feature_size : int
+          Dimensionality along feature axis
+        """
+
+        feature_size = self.n_mels
+
+        return feature_size

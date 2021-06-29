@@ -32,10 +32,11 @@ def load_normalize_audio(wav_path, fs=None, norm=-1, res_type='kaiser_best'):
       Path to audio file to read
     fs : int or float or None (optional)
       Desired sampling rate
-    norm : float
+    norm : float or None
       Type of normalization to perform
       -1 - root-mean-square
       See librosa for others...
+        - None case is handled here
     res_type : string
       See librosa... - this significantly affects the speed of resampling long audio files
 
