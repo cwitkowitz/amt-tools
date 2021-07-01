@@ -104,6 +104,14 @@ class HVQT(FeatureModule):
 
         return sample_range
 
+    def get_num_samples_required(self):
+        """
+        Determine the number of samples required to extract one full frame of features.
+        """
+
+        # TODO - write this function
+        return NotImplementedError
+
     def process_audio(self, audio):
         """
         Get the VQT features stacked across harmonics for a piece of audio.

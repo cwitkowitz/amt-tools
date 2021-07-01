@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-# None of my imports used
+from .. import tools
 
 # Regular imports
 from abc import abstractmethod
@@ -56,9 +56,12 @@ class FeatureModule(object):
           Number of frames expected
         """
 
-        # Simply the number of hops plus one
-        # TODO - is this correct for empty arrays?
-        num_frames = 1 + len(audio) // self.hop_length
+        # Default the number of frames
+        num_frames = 0
+
+        if audio.shape[-1] != 0:
+            # Simply the number of hops plus one
+            num_frames = 1 + len(audio) // self.hop_length
 
         return num_frames
 
@@ -80,14 +83,53 @@ class FeatureModule(object):
           Valid audio signal lengths to obtain queried number of frames
         """
 
-        # Calculate the boundaries
-        max_samples = num_frames * self.hop_length - 1
-        min_samples = max(1, max_samples - self.hop_length + 1)
+        # Default the sample range
+        sample_range = np.array([0])
 
-        # Construct an array ranging between the minimum and maximum number of samples
-        sample_range = np.arange(min_samples, max_samples + 1)
+        if num_frames > 0:
+            # Calculate the boundaries
+            max_samples = num_frames * self.hop_length - 1
+            min_samples = max(1, max_samples - self.hop_length + 1)
+
+            # Construct an array ranging between the minimum and maximum number of samples
+            sample_range = np.arange(min_samples, max_samples + 1)
 
         return sample_range
+
+    @abstractmethod
+    def get_num_samples_required(self):
+        """
+        Determine the number of samples required to extract one full frame of features.
+        """
+
+        return NotImplementedError
+
+    @staticmethod
+    def pad_audio(audio, divisor):
+        """
+        Pad audio such that is is divisible by the specified divisor.
+
+        Parameters
+        ----------
+        audio : ndarray
+          Mono-channel audio
+        divisor : int
+          Number by which the amount of audio samples should be divisible
+
+        Returns
+        ----------
+        audio : ndarray
+          Audio padded such that it is divisible by the specified divisor
+        """
+
+        # Determine how many samples would be needed such that the audio is evenly divisible
+        pad_amt = divisor - (audio.shape[-1] % divisor)
+
+        if pad_amt > 0 and pad_amt != divisor:
+            # Pad the audio for divisibility
+            audio = np.append(audio, np.zeros(pad_amt).astype(tools.FLOAT32), axis=-1)
+
+        return audio
 
     @abstractmethod
     def process_audio(self, audio):
@@ -147,9 +189,6 @@ class FeatureModule(object):
             # Assuming range of -80 to 0 dB, scale between 0 and 1
             feats = feats / 80
             feats = feats + 1
-        else:
-            # TODO - should anything be done here? - would I ever not want decibels?
-            pass
 
         # Add a channel dimension
         feats = np.expand_dims(feats, axis=0)

@@ -9,7 +9,6 @@ from abc import abstractmethod
 
 import sounddevice as sd
 import numpy as np
-import time as t
 
 #import pyaudio
 import threading
@@ -62,7 +61,7 @@ class FeatureStream(object):
         """
 
         # Start tracking time
-        self.start_time = self.get_current_time()
+        self.start_time = tools.get_current_time()
 
     def stop_streaming(self):
         """
@@ -103,21 +102,6 @@ class FeatureStream(object):
         """
 
         return NotImplementedError
-
-    def get_num_samples_required(self):
-        """
-        Determine the number of samples required to extract one frame of features.
-
-        Returns
-        ----------
-        samples_required : int
-          Number of samples
-        """
-
-        # Take the maximum amount of samples which will result in one frame
-        samples_required = self.module.get_sample_range(1)[-1]
-
-        return samples_required
 
     def buffer_new_frame(self, frame=None):
         """
@@ -224,27 +208,6 @@ class FeatureStream(object):
 
         return features
 
-    @staticmethod
-    def get_current_time(decimals=3):
-        """
-        Determine the current system time.
-
-        Parameters
-        ----------
-        decimals : int
-          Number of digits to keep when rounding
-
-        Returns
-        ----------
-        current_time : float
-          Current system time
-        """
-
-        # Get the current time and round to the specified number of digits
-        current_time = round(t.time(), decimals)
-
-        return current_time
-
     def get_elapsed_time(self, decimals=3):
         """
         Determine the amount of time elapsed since the start of streaming.
@@ -265,7 +228,7 @@ class FeatureStream(object):
 
         if self.start_time is not None:
             # Compute the difference between the current time and start time
-            elapsed_time = self.get_current_time(decimals) - self.start_time
+            elapsed_time = tools.get_current_time(decimals) - self.start_time
 
             # Round to the specified number of digits
             elapsed_time = round(elapsed_time, decimals)
@@ -491,7 +454,7 @@ class AudioStream(FeatureStream):
         # Start tracking time
         super().start_streaming()
 
-        if self.playback and self.real_time and self.audio is not None:
+        if self.playback and self.audio is not None:
             # Play the audio
             sd.play(self.audio, self.module.sample_rate)
 
@@ -503,7 +466,7 @@ class AudioStream(FeatureStream):
         # Stop tracking time
         super().stop_streaming()
 
-        if self.playback and self.real_time:
+        if self.playback:
             # Stop playing audio
             sd.stop(ignore_errors=True)
 
@@ -523,7 +486,7 @@ class AudioStream(FeatureStream):
         # Check if the stream is active and if there are more features to acquire
         if self.query_active() and not self.query_finished():
             # Determine the nominal time of the last sample needed to extract the frame
-            sample_time = (self.current_sample + self.get_num_samples_required()) / self.module.sample_rate
+            sample_time = (self.current_sample + self.module.get_num_samples_required()) / self.module.sample_rate
 
             if self.real_time:
                 # Wait until it is time to acquire the next frame
@@ -532,7 +495,7 @@ class AudioStream(FeatureStream):
                     continue
 
             # Slice the audio at the boundaries
-            audio = self.audio[..., self.current_sample : self.current_sample + self.get_num_samples_required()]
+            audio = self.audio[..., self.current_sample : self.current_sample + self.module.get_num_samples_required()]
 
             # Perform feature extraction
             features = self.module.process_audio(audio)

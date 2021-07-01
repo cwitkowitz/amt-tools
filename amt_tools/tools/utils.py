@@ -14,6 +14,7 @@ import warnings
 import librosa
 import random
 import torch
+import time
 
 
 # TODO - torch Tensor compatibility
@@ -2522,3 +2523,81 @@ def slice_track(track, start, stop, skip=None):
             track[key] = track[key][..., start : stop]
 
     return track
+
+
+def get_current_time(decimals=3):
+    """
+    Determine the current system time.
+
+    Parameters
+    ----------
+    decimals : int
+      Number of digits to keep when rounding
+
+    Returns
+    ----------
+    current_time : float
+      Current system time
+    """
+
+    # Get the current time and round to the specified number of digits
+    current_time = round(time.time(), decimals)
+
+    return current_time
+
+
+def print_time(t, label=None):
+    """
+    Print a time to the console.
+
+    Parameters
+    ----------
+    t : float
+      Arbitrary time
+    label : string or None (Optional)
+      Label for the time print statement
+    """
+
+    # Begin constructing the string
+    string = 'Time'
+
+    if label is not None:
+        # Add the label if it was specified
+        string += f' ({label})'
+
+    # Add the time to the string
+    string += f' : {t}'
+
+    # Print the constructed string
+    print(string)
+
+
+def compute_time_difference(start_time, decimals=3, pr=True, label=None):
+    """
+    Obtain the time elapsed since the given system time.
+
+    Parameters
+    ----------
+    start_time : float
+      Arbitrary system time
+    decimals : int
+      Number of digits to keep when rounding
+    pr : bool
+      Whether to print the time difference to the console
+    label : string or None (Optional)
+      Label for the optional print statement
+
+    Returns
+    ----------
+    elapsed_time : float
+      Time elapsed since specified time
+    """
+
+    # Take the difference between the current time and the paramterized time
+    elapsed_time = round(get_current_time() - start_time, decimals)
+
+    if pr:
+        # Print to console
+        print_time(elapsed_time, label)
+
+    return elapsed_time
