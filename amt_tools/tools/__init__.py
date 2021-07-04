@@ -24,4 +24,4 @@ from .constants import *
 from .instrument import *
 from .io import *
 from .utils import *
-#from .visualize import *
+from .visualize import *

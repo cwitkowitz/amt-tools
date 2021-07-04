@@ -10,14 +10,8 @@ from abc import abstractmethod
 import sounddevice as sd
 import numpy as np
 
-#import pyaudio
 import threading
 import warnings
-import datetime
-
-
-from mpl_toolkits.axisartist.axislines import SubplotZero
-import matplotlib.pyplot as plt
 
 
 class FeatureStream(object):
@@ -52,11 +46,11 @@ class FeatureStream(object):
         Perform any steps to reset the stream.
         """
 
-        # Clear the buffer
-        self.frame_buffer = list()
-
         # Perform any steps to stop streaming
         self.stop_streaming()
+
+        # Clear the buffer
+        self.frame_buffer = list()
 
     @abstractmethod
     def start_streaming(self):
@@ -130,8 +124,10 @@ class FeatureStream(object):
 
         # Check if the buffer has exceeded capacity
         if self.query_frame_buffer_full():
-            # Remove the earliest frame
-            self.frame_buffer = self.frame_buffer[-self.frame_buffer_size + 1:]
+            # Index where frames should start being retained
+            start_idx = len(self.frame_buffer) - self.frame_buffer_size + 1
+            # Remove the earliest frame(s)
+            self.frame_buffer = self.frame_buffer[start_idx:]
 
         # Add the new frame to the buffer
         self.frame_buffer += [frame]
@@ -245,74 +241,135 @@ class MicrophoneStream(FeatureStream, threading.Thread):
     """
     Implements a streaming wrapper which interfaces with a microphone.
     """
-    def __init__(self, module, frame_buffer_size=1, sample_buffer_size=None, device=None, enforce_continuity=True):
+    def __init__(self, module, frame_buffer_size=1, audio_buffer_size=None, device=None, enforce_continuity=True):
         """
         Initialize parameters for the microphone streaming interface.
 
         Parameters
         ----------
         See FeatureStream class for others...
-        device : TODO
-          TODO - not sure
-        sample_buffer_size : TODO
-          TODO - not sure
-        enforce_continuity : TODO
-          TODO - not sure
+        device : int or None (Optional)
+          Index of the device to use for data input (see query_devices() for options...)
+        audio_buffer_size : int
+          Size (in samples) of the audio buffer
+        enforce_continuity : bool
+          TODO - bring this functionality into a separate class (no current_sample, buffer_size = samples_required)
+          Whether to extract frames according to explicit hops or by using the most recent samples
         """
 
         FeatureStream.__init__(self, module, frame_buffer_size)
         threading.Thread.__init__(self)
+
+        # Kill this thread when the invoking process is complete
         self.setDaemon(daemonic=True)
 
+        # Field for the audio stream
         self.stream = None
 
-        if sample_buffer_size is None:
-            sample_buffer_size = 10 * self.module.get_num_samples_required()
-        self.sample_buffer = np.zeros(sample_buffer_size)
+        # Create the audio buffer
+        if audio_buffer_size is None:
+            # Default the audio buffer size
+            audio_buffer_size = 4 * self.module.get_num_samples_required()
+        self.audio_buffer = np.zeros(audio_buffer_size)
 
-        # TODO parameters
+        # Select the chosen or default device
         self.device = None
         self.select_device(device)
+
+        # Instant vs. continuous streaming
         self.enforce_continuity = enforce_continuity
 
+        # Streaming parameters
         self.previous_time = None
         self.current_sample = None
 
-        # TODO
+        # Use this flag to indicate when the thread is to be stopped
+        self.killed = False
+
+        # Reset buffers and streaming markers
         self.reset_stream()
+
+        # Start the thread
         self.start()
 
     @staticmethod
     def query_devices(verbose=True):
+        """
+        Obtain a collection of available input and output devices.
+
+        Parameters
+        ----------
+        verbose : bool
+          Flag for printing out device information
+
+        Returns
+        ----------
+        devices : list of int OR dict of device information
+          Available devices as integers or a dictionary of relevant information
+        """
+
+        # Query devices using sounddevice library
         devices = sd.query_devices()
 
         if not verbose:
+            # Reduce to a list of indexes
             devices = [idx for idx in range(len(devices))]
 
         return devices
 
     def select_device(self, idx=None):
+        """
+        Choose the device to use when opening the microphone stream.
+
+        Parameters
+        ----------
+        idx : int or None (Optional)
+          Device index - if unspecified, default device is chosen
+        """
+
+        # Get a list of possible devices
         available_devices = self.query_devices(False)
 
+        # Make sure the chosen device is valid
         if idx is None or idx in available_devices:
+            # Update the corresponding field
             self.device = idx
 
     def get_current_device(self):
-        if self.device is not None:
-            device = sd.query_devices(self.device)
-        else:
+        """
+        Obtain information about the device currently chosen.
+
+        Returns
+        ----------
+        device : dict
+          Device information tracked by sounddevice library
+        """
+
+        if self.device is None:
+            # Default input device
             device = sd.query_devices(kind='input')
+        else:
+            # Query the current device
+            device = sd.query_devices(self.device)
 
         return device
 
     def reset_stream(self):
-        # Clear the feature buffer and stop streaming
+        """
+        Clear everything related to any previous streams.
+        """
+
+        # TODO - check self.killed
+
+        # Stop streaming and clear the feature buffer
         super().reset_stream()
 
-        self.sample_buffer[:] = 0
+        # Reset streaming parameters
+        self.audio_buffer[:] = 0
         self.previous_time = None
-        self.current_sample = len(self.sample_buffer)
+        self.current_sample = len(self.audio_buffer)
 
+        # Re-initialize the stream
         self.stream = sd.InputStream(samplerate=self.module.sample_rate,
                                      blocksize=None,
                                      device=self.device,
@@ -320,90 +377,168 @@ class MicrophoneStream(FeatureStream, threading.Thread):
                                      dtype=None)
 
     def start_streaming(self):
+        """
+        Begin streaming audio from the microphone.
+        """
+
+        # TODO - check self.killed
+
+        # Check if the microphone stream was previously closed
         if self.query_finished():
+            # If so, reset the stream
             self.reset_stream()
 
         # Start tracking time
         super().start_streaming()
 
         if self.stream is not None:
+            # If a stream exists, start it
             self.stream.start()
 
     def stop_streaming(self, pause=False):
+        """
+        Stop streaming audio from the microphone.
+
+        Parameters
+        ----------
+        pause : bool
+          Whether to pause the stream instead of terminating it
+        """
+
+        # Keep track of how much time has passed so far
         self.previous_time = self.get_elapsed_time()
 
         # Stop tracking time
         super().stop_streaming()
 
         if self.stream is not None:
+            # If a stream exists, stop it
             self.stream.stop()
+
             if not pause:
+                # Terminate the stream
                 self.stream.close()
 
     def run(self):
-        while self.query_active():
-            print('In Thread')
-            num_samples_available = self.stream.read_available
-            # assert numOfAvailableSamples <= self.bufferLen
+        """
+        Thread execution method to continually update the audio buffer when the stream is active.
+        """
 
-            if num_samples_available > 0:
-                # TODO - abstract normalization type
-                new_audio = tools.rms_norm(self.stream.read(num_samples_available)[0][:, 0])
+        # Run the thread until it is killed
+        while not self.killed:
+            # Check if the microphone stream is active
+            if self.query_active():
+                # Determine how many samples can be read (assumed to be less than the total audio buffer size)
+                num_samples_available = self.stream.read_available
 
-                self.sample_buffer = np.roll(self.sample_buffer, -num_samples_available)
-                self.sample_buffer[-num_samples_available:] = new_audio
+                if num_samples_available > 0:
+                    # Read the available samples (mono-channel) and normalize them
+                    # TODO - abstract normalization type
+                    #new_audio = tools.rms_norm(self.stream.read(num_samples_available)[0][:, 0])
+                    new_audio = self.stream.read(num_samples_available)[0][:, 0]
 
-                if self.enforce_continuity:
-                    self.current_sample = min(0, self.current_sample - num_samples_available)
+                    # Advance the buffer by the amount of new samples
+                    self.audio_buffer = np.roll(self.audio_buffer, -num_samples_available)
+                    # Overwrite the oldest samples in the buffer with the new audio
+                    self.audio_buffer[-num_samples_available:] = new_audio
 
-                    # TODO - add warning when model is not fast enough for real-time (current_sample <= 0)
+                    if self.enforce_continuity:
+                        # Update the pointer to the next frame start, clipping it at the oldest sample
+                        self.current_sample = max(0, self.current_sample - num_samples_available)
+                        # TODO - warning when not fast enough for real-time (current_sample <= 0) or MIC_LAG_TOL
 
     def extract_frame_features(self):
         """
-        #fig = plt.figure()
-        #ax = SubplotZero(fig, 111)
-        #fig.add_subplot(ax)
-        #plt.show()
-        while True:
-            print(self.sample_buffer[:])
-            #ax.cla()
-            #ax.plot(self.sample_buffer)
-        print('Not supposed to be here')
+        Acquire the next frame of features from the stream.
+
+        Returns
+        ----------
+        features : ndarray
+          Features for one frame of audio
         """
+
         if self.enforce_continuity:
-            while self.current_sample > len(self.sample_buffer) - self.module.get_num_samples_required():
+            # Wait until there are enough new samples in the buffer for an entire frame
+            while self.current_sample > len(self.audio_buffer) - self.module.get_num_samples_required():
                 continue
-            audio = self.sample_buffer[self.current_sample : self.current_sample + self.module.get_num_samples_required()]
-            self.current_sample += self.module.get_hop_length()
+
+            # Take a full frame of audio starting at the current pointer
+            audio = self.audio_buffer[self.current_sample :
+                                      self.current_sample + self.module.get_num_samples_required()]
+            # Update the sampler pointer to the next hop
+            self.current_sample = self.current_sample + 2048#self.module.get_hop_length()
         else:
-            audio = self.sample_buffer[-self.module.get_num_samples_required():]
+            # Simply take the most recent samples in the buffer
+            audio = self.audio_buffer[-self.module.get_num_samples_required():]
 
         # Perform feature extraction
-        features = self.module.process_audio(audio)
-
-        #features = np.zeros((self.module.get_num_channels(), self.module.get_feature_size(), 1)).astype(tools.FLOAT32)
+        #features = self.module.process_audio(audio)
+        features = audio
 
         return features
 
     def query_active(self):
+        """
+        Determine if the stream is currently active.
+
+        Returns
+        ----------
+        active : bool
+          Flag indicating the stream has been started
+        """
+
         active = self.stream.active
 
         return active
 
     def query_finished(self):
+        """
+        Determine if the stream has finished.
+
+        Returns
+        ----------
+        finished : bool
+          Flag indicating the stream was terminated (closed)
+        """
+
         finished = self.stream.closed
 
         return finished
 
     def get_elapsed_time(self, decimals=3):
+        """
+        Determine the cumulative amount of time elapsed during the
+        (potentially more than one) active phase of the stream.
+
+        Parameters
+        ----------
+        decimals : int
+          Number of digits to keep when rounding
+
+        Returns
+        ----------
+        elapsed_time : float
+          Amount of time passed across while stream active
+        """
+
+        # Get the amount of time passed since the last stream start
         elapsed_time = super().get_elapsed_time()
 
         if self.previous_time is not None:
+            # Add time when the stream was last paused
             elapsed_time += self.previous_time
 
+        # Round the elapsed time
         elapsed_time = round(elapsed_time, decimals)
 
         return elapsed_time
+
+    def kill_thread(self):
+        """
+        Indicate that the thread should stop running.
+        """
+
+        self.killed = True
 
 
 class AudioStream(FeatureStream):
@@ -448,7 +583,7 @@ class AudioStream(FeatureStream):
           Mono-channel audio to stream (replaces existing audio)
         """
 
-        # Clear the feature buffer and stop streaming
+        # Stop streaming and clear the feature buffer
         super().reset_stream()
 
         # Reset the current sample
