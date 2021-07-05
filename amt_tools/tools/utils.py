@@ -641,6 +641,37 @@ def cat_pitch_list(times, pitch_list, new_times, new_pitch_list):
     return times, pitch_list
 
 
+def unroll_pitch_list(times, pitch_list):
+    """
+    Make a time-pitch pair for each active pitch in each frame.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+
+    Returns
+    ----------
+    times : ndarray (L)
+      Time in seconds corresponding to pitch observations
+      L - number of pitch observations
+    pitches : ndarray (L)
+      Array of pitch observations
+    """
+
+    # Repeat a frame time once for every active pitch in the frame and collapse into a single ndarray
+    times = np.concatenate([[times[i]] * len(pitch_list[i]) for i in range(len(pitch_list))])
+
+    # Collapse pitch list into a single ndarray
+    pitches = np.concatenate(pitch_list, axis=-1)
+
+    return times, pitches
+
+
 ##################################################
 # TO STACKED PITCH LIST                          #
 ##################################################
@@ -834,7 +865,7 @@ def cat_stacked_pitch_list(stacked_pitch_list, new_stacked_pitch_list):
 
     # Loop through the stack of pitch lists
     for slc in stacked_pitch_list.keys():
-        # Add grouped slice back to stack
+        # Group the two pitch_lists at the slice and add back to stack
         stacked_pitch_list[slc] = cat_pitch_list(*(stacked_pitch_list[slc] + new_stacked_pitch_list[slc]))
 
     return stacked_pitch_list

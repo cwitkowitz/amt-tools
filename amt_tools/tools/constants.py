@@ -103,6 +103,7 @@ KEY_TDR = 'tdr'
 ##################################################
 
 # Guitar
+DEFAULT_GUITAR_LABELS = ['E', 'A', 'D', 'G', 'B', 'e']
 DEFAULT_GUITAR_TUNING = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4']
 DEFAULT_GUITAR_NUM_FRETS = 19
 
