@@ -270,7 +270,7 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         if audio_buffer_size is None:
             # Default the audio buffer size
             audio_buffer_size = 4 * self.module.get_num_samples_required()
-        self.audio_buffer = np.zeros(audio_buffer_size)
+        self.audio_buffer = np.zeros(audio_buffer_size).astype(tools.FLOAT32)
 
         # Select the chosen or default device
         self.device = None
@@ -374,7 +374,7 @@ class MicrophoneStream(FeatureStream, threading.Thread):
                                      blocksize=None,
                                      device=self.device,
                                      channels=1,
-                                     dtype=None)
+                                     dtype=tools.FLOAT32)
 
     def start_streaming(self):
         """
@@ -434,8 +434,7 @@ class MicrophoneStream(FeatureStream, threading.Thread):
                 if num_samples_available > 0:
                     # Read the available samples (mono-channel) and normalize them
                     # TODO - abstract normalization type
-                    #new_audio = tools.rms_norm(self.stream.read(num_samples_available)[0][:, 0])
-                    new_audio = self.stream.read(num_samples_available)[0][:, 0]
+                    new_audio = tools.rms_norm(self.stream.read(num_samples_available)[0][:, 0])
 
                     # Advance the buffer by the amount of new samples
                     self.audio_buffer = np.roll(self.audio_buffer, -num_samples_available)
@@ -466,14 +465,13 @@ class MicrophoneStream(FeatureStream, threading.Thread):
             audio = self.audio_buffer[self.current_sample :
                                       self.current_sample + self.module.get_num_samples_required()]
             # Update the sampler pointer to the next hop
-            self.current_sample = self.current_sample + 2048#self.module.get_hop_length()
+            self.current_sample = self.current_sample + self.module.get_hop_length()
         else:
             # Simply take the most recent samples in the buffer
             audio = self.audio_buffer[-self.module.get_num_samples_required():]
 
         # Perform feature extraction
-        #features = self.module.process_audio(audio)
-        features = audio
+        features = self.module.process_audio(audio)
 
         return features
 
@@ -533,9 +531,10 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
         return elapsed_time
 
-    def kill_thread(self):
+    def stop_thread(self):
         """
-        Indicate that the thread should stop running.
+        Indicate that the thread should stop running. Only call this if you are
+        completely finished with the thread, since it cannot be started again.
         """
 
         self.killed = True

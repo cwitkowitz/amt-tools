@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_tools.tools.instrument import GuitarProfile
+from . import utils
 
 # Regular imports
 from abc import abstractmethod
@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import librosa
+
+# TODO - move to pyqtgraph
 
 
 def global_toolbar_disable():
@@ -23,7 +25,7 @@ class Visualizer(object):
     Implements a generic visualizer.
     """
 
-    def __init__(self, figsize=None, include_axis=True):
+    def __init__(self, figsize=None, include_axis=True, plot_frequency=None):
         """
         Initialize parameters common to all visualizers.
 
@@ -36,10 +38,17 @@ class Visualizer(object):
         # TODO - these parameters here or in plot call?
         self.include_axis = include_axis
 
+        if plot_frequency is None:
+            plot_frequency = 1
+        self.plot_frequency = plot_frequency
+
+        if self.plot_frequency > 1:
+            self.frame_counter = 0
+
         self.fig = self.initialize_figure(figsize, True)
 
     @staticmethod
-    def initialize_figure(figsize, interactive=False):
+    def initialize_figure(figsize=None, interactive=False):
         if interactive and not plt.isinteractive():
             # Make sure pyplot is in interactive mode
             plt.ion()
@@ -51,6 +60,18 @@ class Visualizer(object):
             plt.show(block=False)
 
         return fig
+
+    def query_plot(self):
+        flag = False
+        if self.plot_frequency > 1:
+            self.frame_counter += 1
+
+            if self.frame_counter % self.plot_frequency:
+                flag = False
+            else:
+                flag = True
+
+        return flag
 
     @abstractmethod
     def update(self):
@@ -66,7 +87,7 @@ class Visualizer(object):
         pass
 
     def post_update(self):
-        self.fig.canvas.draw()
+        self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
         # Remove extraneous whitespace
@@ -87,7 +108,7 @@ def plot_waveform(samples, times=None, include_axes=True, ylim=None, color='k', 
     """
 
     if fig is None:
-        fig = Visualizer.initialize_figure(False)
+        fig = Visualizer.initialize_figure(interactive=False)
 
     ax = fig.gca()
 
@@ -104,7 +125,7 @@ def plot_waveform(samples, times=None, include_axes=True, ylim=None, color='k', 
 
     ax.set_xlim([np.min(times), np.max(times)])
 
-    if not ylim:
+    if ylim is None:
         ylim = ax.get_ylim()
         min_y = min(ylim[0], 1.05 * np.min(samples))
         max_y = max(ylim[1], 1.05 * np.max(samples))
@@ -124,8 +145,8 @@ class WaveformVisualizer(Visualizer):
     """
     Implements an iterative waveform visualizer.
     """
-    def __init__(self, figsize=None, include_axis=True, sample_rate=44100, time_window=1):
-        super().__init__(figsize, include_axis)
+    def __init__(self, figsize=None, include_axis=True, plot_frequency=None, sample_rate=44100, time_window=1):
+        super().__init__(figsize, include_axis, plot_frequency)
 
         self.sample_rate = sample_rate
 
@@ -137,7 +158,6 @@ class WaveformVisualizer(Visualizer):
         self.current_sample = 0
 
     def update(self, samples):
-        self.pre_update()
 
         num_samples = len(samples)
 
@@ -150,28 +170,128 @@ class WaveformVisualizer(Visualizer):
         self.time_buffer = np.roll(self.time_buffer, -num_samples)
         self.time_buffer[-num_samples:] = times
 
+        if not self.query_plot():
+            return
+
+        self.pre_update()
         self.fig = plot_waveform(self.sample_buffer, self.time_buffer, fig=self.fig)
-
+        t = utils.get_current_time()
         self.post_update()
+        utils.compute_time_difference(t, True, 'Post Update')
 
 
-def visualize_pitch_list(times, pitch_list, save_path=None):
-    plt.figure()
+def plot_pitch_list(times, pitch_list, include_axes=True, xlim=None, color='k', k=0, fig=None):
+    if fig is None:
+        fig = Visualizer.initialize_figure(interactive=False)
 
     times = np.concatenate([[times[i]] * len(pitch_list[i]) for i in range(len(pitch_list))])
     pitches = np.concatenate(pitch_list)
 
-    plt.scatter(times, pitches, s=5, c='k')
+    ax = fig.gca()
 
-    plt.xlabel('Time (s)')
-    plt.ylabel('Pitch')
-    plt.xlim(0, 25)
+    collections = ax.collections
 
-    plt.tight_layout()
+    if len(collections) and k < len(collections):
+        collections[k].set_offsets(np.c_[times, pitches])
+    else:
+        ax.scatter(times, pitches, s=5, color=color)
 
-    plt.savefig(save_path) if save_path else plt.show()
+    if xlim is not None:
+        ax.set_xlim(xlim)
 
-    return plt
+    # TODO - turn into function clip_y()
+    ylim = ax.get_ylim()
+    if len(pitches) > 0:
+        min_y = min(ylim[0], 1.05 * np.min(pitches))
+        max_y = max(ylim[1], 1.05 * np.max(pitches))
+        ylim = [min_y, max_y]
+    ax.set_ylim(ylim)
+
+    if not include_axes:
+        ax.axis('off')
+    else:
+        ax.set_ylabel('Pitch (MIDI)')
+        ax.set_xlabel('Time (s)')
+
+    return fig
+
+
+def plot_stacked_pitch_list(stacked_pitch_list, include_axes=True, xlim=None, colors=None, fig=None):
+    """
+    TODO
+    """
+
+    if fig is None:
+        fig = Visualizer.initialize_figure(interactive=False)
+
+    # Loop through the stack of pitch lists
+    for i, slc in enumerate(stacked_pitch_list.keys()):
+        # Get the times and pitches from the slice
+        times, pitch_list = stacked_pitch_list[slc]
+        color = 'k' if colors is None else colors[i]
+        fig = plot_pitch_list(times, pitch_list, include_axes, xlim, color=color, k=i, fig=fig)
+
+    #ax = fig.gca()
+
+    #if times is None:
+    #    times = np.arange(len(samples))
+
+    #lines = ax.get_lines()
+
+    #if len(lines):
+    #    lines[0].set_xdata(times)
+    #    lines[0].set_ydata(samples)
+    #else:
+    #    ax.plot(times, samples, color=color)
+
+    #ax.set_xlim([np.min(times), np.max(times)])
+
+    #if not ylim:
+    #    ylim = ax.get_ylim()
+    #    min_y = min(ylim[0], 1.05 * np.min(samples))
+    #    max_y = max(ylim[1], 1.05 * np.max(samples))
+    #    ylim = [min_y, max_y]
+    #ax.set_ylim(ylim)
+
+    #if not include_axes:
+    #    ax.axis('off')
+    #else:
+    #    ax.set_ylabel('Pitch (MIDI)')
+    #    ax.set_xlabel('Time (s)')
+
+    return fig
+
+
+class StackedPitchListVisualizer(Visualizer):
+    """
+    Implements an iterative stacked pitch list visualizer.
+    """
+    def __init__(self, figsize=None, include_axis=True, plot_frequency=None, time_window=1):
+        super().__init__(figsize, include_axis, plot_frequency)
+
+        self.time_window = time_window
+
+        self.stacked_pitch_list = None
+
+    def update(self, current_time, stacked_pitch_list):
+        time_window_start = current_time - self.time_window
+
+        if self.stacked_pitch_list is None:
+            self.stacked_pitch_list = stacked_pitch_list
+        else:
+            self.stacked_pitch_list = utils.cat_stacked_pitch_list(self.stacked_pitch_list, stacked_pitch_list)
+
+        self.stacked_pitch_list = utils.slice_stacked_pitch_list(self.stacked_pitch_list,
+                                                                 time_window_start,
+                                                                 current_time)
+
+        if not self.query_plot():
+            return
+
+        self.pre_update()
+        xlim = [time_window_start, current_time]
+        self.fig = plot_stacked_pitch_list(self.stacked_pitch_list, xlim=xlim, fig=self.fig)
+        self.post_update()
 
 
 def visualize_multi_pitch(multi_pitch, ax=None):

@@ -45,7 +45,7 @@ def run_offline(track_data, model, estimator=None):
     return predictions
 
 
-def run_single_frame(track_data, model, predictions={}, estimator=None):
+def run_single_frame(track_data, model, estimator=None):
     """
     Perform inference on a single frame.
 
@@ -55,8 +55,6 @@ def run_single_frame(track_data, model, predictions={}, estimator=None):
       Dictionary containing relevant features for a track
     model : TranscriptionModel
       Model to use for inference
-    predictions : dict
-      Dictionary containing predictions for a track
     estimator : Estimator
       Estimation protocol to use
 
@@ -69,9 +67,8 @@ def run_single_frame(track_data, model, predictions={}, estimator=None):
     # Obtain the name of the track if it exists
     track_id = tools.unpack_dict(track_data, tools.KEY_TRACK)
 
-    # Make sure the track data and predictions consist of tensors
-    # TODO - make sure these don't take much extra time
-    track_data, predictions = tools.dict_to_tensor(track_data), tools.dict_to_tensor(predictions)
+    # Make sure the track data consists of tensors
+    track_data = tools.dict_to_tensor(track_data)
 
     # Run the frame group through the model
     new_predictions = tools.dict_squeeze(tools.dict_to_array(model.run_on_batch(track_data)), dim=0)
@@ -80,10 +77,7 @@ def run_single_frame(track_data, model, predictions={}, estimator=None):
         # Perform any estimation steps (e.g. note transcription)
         new_predictions.update(estimator.process_track(new_predictions, track_id))
 
-    # Append the results
-    predictions = tools.dict_append(predictions, new_predictions)
-
-    return predictions
+    return new_predictions
 
 
 def run_online(track_data, model, estimator=None):
@@ -126,6 +120,8 @@ def run_online(track_data, model, estimator=None):
         batch = tools.dict_unsqueeze({tools.KEY_FEATS : features[..., i, :],
                                       tools.KEY_TIMES : times[..., i : i+1]})
         # Perform inference on a single frame
-        predictions = run_single_frame(batch, model, predictions, estimator)
+        new_predictions = run_single_frame(batch, model, estimator)
+        # Append the new predictions
+        predictions = tools.dict_append(predictions, new_predictions)
 
     return predictions

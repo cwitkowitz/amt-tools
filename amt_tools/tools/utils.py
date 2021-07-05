@@ -571,6 +571,76 @@ def pitch_list_to_midi(pitch_list):
     return pitch_list
 
 
+def slice_pitch_list(times, pitch_list, start_time, stop_time):
+    """
+    Retain pitch observations within a time window.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+    start_time : float
+      Earliest time for observations to keep
+    stop_time : float
+      Latest time for observations to keep
+
+    Returns
+    ----------
+    times : ndarray (L)
+      Time in seconds of beginning of each frame
+      L - number of time samples (frames)
+    pitch_list : list of ndarray (L x [...])
+      Array of pitches active during each frame
+      L - number of pitch observations (frames)
+    """
+
+    # Obtain a collection of valid indices for the slicing
+    valid_idcs = np.logical_and((times >= start_time), (times <= stop_time))
+    # Throw away observations occurring before the start time and after the stop time
+    times, pitch_list = times[valid_idcs], [pitch_list[idx] for idx in np.where(valid_idcs)[0]]
+
+    return times, pitch_list
+
+
+def cat_pitch_list(times, pitch_list, new_times, new_pitch_list):
+    """
+    Retain pitch observations within a time window.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+    new_times : ndarray (L)
+      Time in seconds of beginning of each frame
+      L - number of time samples (frames)
+    new_pitch_list : list of ndarray (L x [...])
+      Array of pitches active during each frame
+      L - number of pitch observations (frames)
+
+    Returns
+    ----------
+    times : ndarray (N+L)
+      Time in seconds of beginning of each frame
+      N+L - number of time samples (frames)
+    pitch_list : list of ndarray (N+L x [...])
+      Array of pitches active during each frame
+      N+L - number of pitch observations (frames)
+    """
+
+    # Concatenate the observations of both stacked pitch lists
+    times, pitch_list = np.append(times, new_times, axis=-1), pitch_list + new_pitch_list
+
+    return times, pitch_list
+
+
 ##################################################
 # TO STACKED PITCH LIST                          #
 ##################################################
@@ -641,10 +711,10 @@ def stacked_multi_pitch_to_stacked_pitch_list(stacked_multi_pitch, times, profil
         slice_multi_pitch = stacked_multi_pitch[slc]
 
         # Convert the multi pitch array to a pitch list
-        slice_pitch_list = multi_pitch_to_pitch_list(slice_multi_pitch, profile)
+        slice_pitch_list_ = multi_pitch_to_pitch_list(slice_multi_pitch, profile)
 
         # Add the pitch list to the stacked pitch list dictionary under the slice key
-        stacked_pitch_list.update(pitch_list_to_stacked_pitch_list(times, slice_pitch_list, slc))
+        stacked_pitch_list.update(pitch_list_to_stacked_pitch_list(times, slice_pitch_list_, slc))
 
     return stacked_pitch_list
 
@@ -705,6 +775,67 @@ def stacked_pitch_list_to_midi(stacked_pitch_list):
         pitch_list = pitch_list_to_midi(pitch_list)
         # Add converted slice back to stack
         stacked_pitch_list[slc] = times, pitch_list
+
+    return stacked_pitch_list
+
+
+def slice_stacked_pitch_list(stacked_pitch_list, start_time, stop_time):
+    """
+    Retain pitch observations within a time window.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    start_time : float
+      Earliest time for observations to keep
+    stop_time : float
+      Latest time for observations to keep
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for slicing
+    stacked_pitch_list = deepcopy(stacked_pitch_list)
+
+    # Loop through the stack of pitch lists
+    for slc in stacked_pitch_list.keys():
+        # Get the times and pitches from the slice
+        times, pitch_list = stacked_pitch_list[slc]
+        # Slice the pitch list for this slice
+        stacked_pitch_list[slc] = slice_pitch_list(times, pitch_list, start_time, stop_time)
+
+    return stacked_pitch_list
+
+
+def cat_stacked_pitch_list(stacked_pitch_list, new_stacked_pitch_list):
+    """
+    Concatenate two stacked pitch lists.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    new_stacked_pitch_list : dict
+      Same as stacked_pitch_list
+      Note: must also have same number of slices
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for concatenation
+    stacked_pitch_list = deepcopy(stacked_pitch_list)
+
+    # Loop through the stack of pitch lists
+    for slc in stacked_pitch_list.keys():
+        # Add grouped slice back to stack
+        stacked_pitch_list[slc] = cat_pitch_list(*(stacked_pitch_list[slc] + new_stacked_pitch_list[slc]))
 
     return stacked_pitch_list
 
@@ -776,6 +907,7 @@ def pitch_list_to_multi_pitch(times, pitch_list, profile, tolerance=0.5):
     Parameters
     ----------
     times : ndarray (N)
+      TODO - this shouldn't be necessary
       Time in seconds of beginning of each frame
       N - number of time samples (frames)
     pitch_list : list of ndarray (N x [...])
@@ -2325,7 +2457,8 @@ def dict_unsqueeze(track, dim=0):
 
 def dict_append(track, additions, dim=-1):
     """
-    Append together matching entries of two dictionaries.
+    Append together matching entries of two dictionaries. This
+    will deliberately skip tuples, as in stacked representations.
     TODO - maybe be repeat of function defined in evaluate.py
 
     Parameters
@@ -2359,6 +2492,10 @@ def dict_append(track, additions, dim=-1):
         elif isinstance(track[key], dict):
             # Call this function recursively
             track[key] = dict_append(track[key], additions[key], dim)
+        # Check if the entry is a list
+        elif isinstance(additions[key], list):
+            # Add the contents of the lists together
+            track[key] += additions[key]
         # Check if the dictionary entry is an ndarray
         elif isinstance(additions[key], np.ndarray):
             # Use the NumPy append function
@@ -2367,6 +2504,10 @@ def dict_append(track, additions, dim=-1):
         elif isinstance(additions[key], torch.Tensor):
             # Use the Torch cat function
             track[key] = torch.cat((track[key], additions[key]), dim=dim)
+        # Check if the dictionary entry is a tuple
+        elif isinstance(additions[key], tuple):
+            # Insert a None to show we saw the tuple but refuse to process it
+            track[key] = None
 
     return track
 
@@ -2572,7 +2713,7 @@ def print_time(t, label=None):
     print(string)
 
 
-def compute_time_difference(start_time, decimals=3, pr=True, label=None):
+def compute_time_difference(start_time, pr=True, label=None, decimals=3):
     """
     Obtain the time elapsed since the given system time.
 
