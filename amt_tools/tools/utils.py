@@ -59,6 +59,65 @@ def notes_to_batched_notes(pitches, intervals):
     return batched_notes
 
 
+def cat_batched_notes(batched_notes, new_batched_notes):
+    """
+    Concatenate two collections of batched notes.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+    new_batched_notes : ndarray (N x 3)
+      Same as batched_notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+    """
+
+    # Concatenate along the first axis
+    batched_notes = np.concatenate((batched_notes, new_batched_notes), axis=0)
+
+    return batched_notes
+
+
+def filter_batched_note_repeats(batched_notes):
+    """
+    Remove any note duplicates, where a duplicate is defined as
+    an entry with the same pitch and onset time. If there are
+    duplicates, we keep the entry with the longest duration.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (L x 3)
+      Array of note intervals and pitches by row or column
+      L - number of notes
+    """
+
+    # Sort the batched notes, so the longest duration will always be chosen
+    batched_notes = np.flip(sort_batched_notes(batched_notes), axis=0)
+
+    # Determine the pitches and onsets represented by the batched_notes
+    pitches_onsets = np.roll(batched_notes, shift=1, axis=-1)[:, :2]
+
+    # Determine which note entries should be kept
+    keep_indices = np.unique(pitches_onsets, return_index=True, axis=0)[-1]
+
+    # Remove duplicate note entries
+    batched_notes = batched_notes[keep_indices]
+
+    return batched_notes
+
+
 def transpose_batched_notes(batched_notes):
     """
     Switch the axes of batched notes.
@@ -180,7 +239,7 @@ def slice_batched_notes(batched_notes, start_time, stop_time):
     batched_notes = batched_notes[batched_notes[:, 1] > start_time]
 
     # Remove notes with onsets after the slice stop time
-    batched_notes = batched_notes[batched_notes[:, 0] < stop_time]
+    batched_notes = batched_notes[batched_notes[:, 0] <= stop_time]
 
     # Clip onsets at the slice start time
     batched_notes[:, 0] = np.maximum(batched_notes[:, 0], start_time)
@@ -430,6 +489,107 @@ def stacked_notes_to_midi(stacked_notes):
         pitches = notes_to_midi(pitches)
         # Add converted slice back to stack
         stacked_notes[slc] = pitches, intervals
+
+    return stacked_notes
+
+
+def cat_stacked_notes(stacked_notes, new_stacked_notes):
+    """
+    Concatenate two collections of stacked notes.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    new_stacked_notes : dict
+      Same as stacked_notes
+      Note: must also have same number of slices
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for concatenation
+    stacked_notes = deepcopy(stacked_notes)
+
+    # Loop through the stack of pitch lists
+    for slc in stacked_notes.keys():
+        # Convert the notes to batched notes
+        batched_notes = notes_to_batched_notes(*stacked_notes[slc])
+        new_batched_notes = notes_to_batched_notes(*new_stacked_notes[slc])
+        # Concatenate the batched notes
+        batched_notes = cat_batched_notes(batched_notes, new_batched_notes)
+        # Convert back to notes
+        pitches, intervals = batched_notes_to_notes(batched_notes)
+        # Overwrite the slice entry
+        stacked_notes[slc] = pitches, intervals
+
+    return stacked_notes
+
+
+def filter_stacked_note_repeats(stacked_notes):
+    """
+    Remove any note duplicates within each slice, where a duplicate
+    is defined as an entry with the same pitch and onset time.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    """
+
+    # Convert to batched notes
+    stacked_notes = apply_func_stacked_representation(stacked_notes, notes_to_batched_notes)
+    # Filter batched note repeats
+    stacked_notes = apply_func_stacked_representation(stacked_notes, filter_batched_note_repeats)
+    # Convert back to notes
+    stacked_notes = apply_func_stacked_representation(stacked_notes, batched_notes_to_notes)
+
+    return stacked_notes
+
+
+def stacked_notes_to_frets(stacked_notes, tuning=None):
+    """
+    Convert stacked notes from MIDI to guitar fret numbers.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (MIDI), intervals)) pairs
+    tuning : list of str
+      Name of lowest note playable on each degree of freedom
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (fret), intervals)) pairs
+    """
+
+    # Make a copy of the stacked notes for conversion
+    stacked_notes = deepcopy(stacked_notes)
+
+    if tuning is None:
+        # Default the tuning
+        tuning = constants.DEFAULT_GUITAR_TUNING
+
+    # Convert the tuning to midi pitches
+    midi_tuning = librosa.note_to_midi(tuning)
+
+    # Loop through the stack of notes
+    for i, slc in enumerate(stacked_notes.keys()):
+        # Get the notes from the slice
+        pitches, intervals = stacked_notes[slc]
+        # Convert the pitches to frets
+        frets = (pitches - midi_tuning[i]).astype(constants.UINT)
+        # Add converted slice back to stack
+        stacked_notes[slc] = frets, intervals
 
     return stacked_notes
 
@@ -2136,6 +2296,48 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
             new_values[idcs[i]] = values[i]
 
     return new_times, new_values
+
+
+def apply_func_stacked_representation(stacked_representation, func, **kwargs):
+    """
+    Recursively apply a function to the contents of each slice in a stacked representation.
+    TODO - this can be probably be used in many places to avoid extra code
+
+    Parameters
+    ----------
+    stacked_representation : dict
+        Dictionary representing some stacked data structure
+    func : function
+        Function to run on each slice
+    kwargs : dict of keyword arguments
+        Arguments for the chosen function
+
+    Returns
+    -------
+    stacked_representation : dict
+        Dictionary representing some modified stacked data structure
+    """
+
+    # Make a copy of the stacked representation
+    stacked_representation = deepcopy(stacked_representation)
+
+    # Loop through the stack
+    for slc in stacked_representation.keys():
+        # Use the current slice contents as function arguments
+        args = stacked_representation[slc]
+
+        # Check if there is more than one argument
+        if isinstance(args, tuple):
+            # Unpack the arguments and run the function
+            output = func(*args, **kwargs)
+        else:
+            # Run the function with the single argument
+            output = func(args, **kwargs)
+
+        # Apply the given function
+        stacked_representation[slc] = output
+
+    return stacked_representation
 
 
 def tensor_to_array(data):

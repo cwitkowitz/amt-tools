@@ -9,6 +9,7 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
+# TODO - waveform wrapper?
 # TODO - take squared modulus of some of these?
 
 

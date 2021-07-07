@@ -687,8 +687,25 @@ class AudioFileStream(AudioStream):
         """
 
         # Load the audio at the specified path, with no normalization by default
-        # TODO - abstract normalization type
         audio, _ = tools.load_normalize_audio(audio_path, fs=module.sample_rate, norm=None)
+
+        self.original_audio = audio
+
+        # TODO - abstract normalization type
+        # Normalize the audio
+        audio = tools.rms_norm(audio)
 
         # Call the parent class constructor - the rest of the functionality is the same
         AudioStream.__init__(self, module, frame_buffer_size, audio, real_time, playback)
+
+    def start_streaming(self):
+        """
+        Begin streaming the audio.
+        """
+
+        # Start tracking time
+        super().start_streaming()
+
+        if self.playback:
+            # Play the audio
+            sd.play(self.original_audio, self.module.sample_rate)

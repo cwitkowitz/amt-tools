@@ -1,16 +1,15 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
+from . import constants
 from . import utils
 
 # Regular imports
 from abc import abstractmethod
 
-import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
-import librosa
 
 # TODO - move to pyqtgraph eventually?
 
@@ -213,12 +212,10 @@ class Visualizer(object):
         Perform any steps after updating the plot.
         """
 
-        t = utils.get_current_time()
         # Request that the plot is redrawn
         self.fig.canvas.draw_idle()
         # Flush the GUI events for the figure
         self.fig.canvas.flush_events()
-        #utils.compute_time_difference(t, True, 'Post Update')
 
     def close(self):
         """
@@ -464,7 +461,7 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5, include_axes=T
 
     if x_bounds is None:
         # Get the dynamic x-axis boundaries if none were provided
-        x_bounds = get_dynamic_y_bounds(ax, times)
+        x_bounds = get_dynamic_x_bounds(ax, times)
     # Bound the x-axis
     ax.set_xlim(x_bounds)
 
@@ -499,7 +496,7 @@ def plot_stacked_pitch_list(stacked_pitch_list, hertz=False, point_size=5, inclu
     point_size : int or float
       Size of points within the scatter plot
     include_axes : bool
-      Whether to include the axis in the visualizer
+      Whether to include the axis in the plot
     x_bounds : list (length 2) of float or None (Optional)
       Lower and upper x-axis boundary to force
     y_bounds : list (length 2) of float or None (Optional)
@@ -517,7 +514,6 @@ def plot_stacked_pitch_list(stacked_pitch_list, hertz=False, point_size=5, inclu
       A handle for the figure used to plot the waveform
     """
 
-    t = utils.get_current_time()
     # Loop through the stack of pitch lists, keeping track of the index
     for idx, slc in enumerate(stacked_pitch_list.keys()):
         # Get the times and pitches from the slice
@@ -539,7 +535,6 @@ def plot_stacked_pitch_list(stacked_pitch_list, hertz=False, point_size=5, inclu
                               label=label,
                               idx=idx,
                               fig=fig)
-    #utils.compute_time_difference(t, True, 'Figure Update')
 
     return fig
 
@@ -628,122 +623,213 @@ class StackedPitchListVisualizer(Visualizer):
         self.stacked_pitch_list = None
 
 
-def visualize_multi_pitch(multi_pitch, ax=None):
-    if ax is None:
-        ax = plt.gca()
+def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
+                          x_bounds=None, colors=None, labels=None, fig=None):
+    """
+    Static function for plotting pitch contours (pitch_list).
 
-    ax.imshow(multi_pitch, cmap='gray_r', vmin=0, vmax=1)
-    ax.invert_yaxis()
+    Parameters
+    ----------
+    stacked_frets : dict
+      Dictionary containing (slice -> (pitches (fret), intervals)) pairs
+    point_size : int or float
+      Size of points within the scatter plot
+    include_x_axis : bool
+      Whether to include the time axis in the plot
+    x_bounds : list (length 2) of float or None (Optional)
+      Lower and upper x-axis boundary to force
+    colors : list of string or None (Optional)
+      Color (by string) for the notes
+    labels : list of string or None (Optional)
+      Labels for the strings
+    fig : matplotlib Figure object
+      Preexisting figure to use for plotting
 
-    return ax
+    Returns
+    ----------
+    fig : matplotlib Figure object
+      A handle for the figure used to plot the waveform
+    """
 
-# TODO - this is mostly trash for now - I've yet to make an effort to reestablish this
-# TODO - see earlier commits to get started
+    if fig is None:
+        # Initialize a new figure if one was not given
+        fig = initialize_figure(interactive=False, figsize=(10, 5))
 
+    # Obtain a handle for the figure's current axis
+    ax = fig.gca()
 
-def pianoroll(track_name, i_est, p_est, i_ref, p_ref, t_bounds, save_path=None):
-    est_max, ref_max = 0, 0
-    for i in range(profile.num_strings):
-        if i_est.size != 0:
-            est_max = max(est_max, np.max(i_est))
-        if i_ref.size != 0:
-            ref_max = max(ref_max, np.max(i_ref))
-    t_bounds = [t_bounds[0], min(t_bounds[1], max(est_max, ref_max))]
+    if labels is None:
+        # Default the string labels
+        labels = constants.DEFAULT_GUITAR_LABELS
 
-    plt.figure()
+    # Set the y-axis ticks to the string labels
+    ax.set_yticks(range(len(stacked_frets)))
+    ax.set_yticklabels(labels)
 
-    for s in range(profile.num_strings):
-        for n in range(p_ref.size):
-            t_st = i_ref[n][0]
-            t_fn = i_ref[n][1]
-            m_fq = int(round(librosa.hz_to_midi(p_ref[n])))
+    # Add some extra space to the y-axis
+    y_padding = 0.5
+    ax.set_ylim([-y_padding, len(stacked_frets) - y_padding])
 
-            plt.plot([t_st, t_fn], [m_fq] * 2, linewidth=10, color='black', label='Ref.')
+    # Obtain the labels for all lines
+    line_labels = [line.get_label() for line in ax.get_lines()]
 
-        for n in range(p_est.size):
-            t_st = i_est[n][0]
-            t_fn = i_est[n][1]
-            m_fq = int(round(librosa.hz_to_midi(p_est[n])))
+    # Construct a list to keep track of the notes plot
+    labels_in_use = []
 
-            plt.plot([t_st, t_fn], [m_fq] * 2, linewidth=10, color='orange', label='Est.',alpha=0.75)
+    # Loop through the stack of pitch lists, keeping track of the index
+    for idx, slc in enumerate(stacked_frets.keys()):
+        # Get the frets and intervals from the slice
+        frets, intervals = stacked_frets[slc]
 
-    handles = [mlines.Line2D([], [], color='black', linestyle='-', label='Ref.', linewidth=10),
-               mlines.Line2D([], [], color='orange', linestyle='-', label='Est.', linewidth=10)]
+        # Make sure the frets are integers
+        frets = frets.astype(constants.UINT)
 
-    # The lowest possible note - i.e. the open note of the lowest string
-    m_lw = librosa.note_to_midi(profile.tuning[0])
+        # Determine the color to use for the string
+        color = 'k' if colors is None else colors[idx]
 
-    # The highest possible note - i.e. the maximum fret on the highest string
-    m_hg = librosa.note_to_midi(profile.tuning[profile.num_strings - 1]) + profile.num_frets
+        for k, fret in enumerate(frets):
+            # Obtain the onset for the note
+            onset = intervals[k, 0]
+            # Construct a unique label for the note
+            label = f'{labels[idx]}_{fret}_{round(onset, 5)}'
+            # Add the label to the tracked list
+            labels_in_use += [label]
 
-    plt.title(track_name)
-    plt.xlabel('Time (s)')
-    plt.ylabel('Pitch (MIDI)')
-    plt.legend(handles=handles, loc='upper right', framealpha=0.5)
-    plt.xlim(t_bounds[0] - 0.25, t_bounds[1] + 0.25)
-    plt.ylim(m_lw - 1, m_hg + 1)
+            if label not in line_labels:
+                # Plot onset of the note as its fret number
+                ax.scatter(onset, idx, marker="${}$".format(fret), color=color, label=label, s=point_size)
+                # Plot the note durations as a line following the fret number
+                ax.plot(intervals[k], [idx, idx], linestyle='-', color=color, label=label)
+            else:
+                # Find the existing line
+                note_line = [line for line in ax.get_lines() if line.get_label() == label][0]
+                # Extend the existing line
+                note_line.set_xdata(intervals[k])
 
-    plt.gcf().set_size_inches(16, 9)
-    plt.tight_layout()
+    # Obtain the onsets lines for the notes
+    note_onsets = [point for point in ax.collections]
+    note_lines = [line for line in ax.get_lines() if line.get_label() not in labels]
 
-    if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=500)
+    # Loop through all of the lines on the plot
+    for onset, line in zip(note_onsets, note_lines):
+        # Check if the line is still in use
+        if line.get_label() not in labels_in_use:
+            # Remove the onset
+            onset.remove()
+            # Remove the line
+            line.remove()
+
+    if x_bounds is None:
+        # Get the dynamic x-axis boundaries if none were provided
+        #x_bounds = get_dynamic_x_bounds(ax, times)
+        x_bounds = ax.get_xlim()
+    # Bound the x-axis
+    ax.set_xlim(x_bounds)
+
+    # Obtain the lines for the string if they exist
+    string_lines = [line for line in ax.get_lines() if line.get_label() in labels]
+
+    # Loop through the strings
+    for idx in range(len(stacked_frets)):
+        if idx >= len(string_lines):
+            # Plot the string for the first time
+            ax.plot(x_bounds, [idx, idx], linewidth=1, color='k', label=f'{labels[idx]}', alpha=0.25)
+        else:
+            # Shift the line across time
+            string_lines[idx].set_xdata(x_bounds)
+
+    if not include_x_axis:
+        # Hide the x-axis
+        ax.axis['bottom'].set_visible(False)
     else:
-        plt.show()
+        # Add x-axis labels
+        ax.set_xlabel('Time (s)')
+
+    return fig
 
 
-def guitar_tabs(track_name, tabs_est, tabs_ref, t_bounds, offset=True, save_path=None):
-    est_max, ref_max = 0, 0
-    for i in range(profile.num_strings):
-        if tabs_est[i][1].size != 0:
-            est_max = max(est_max, np.max(tabs_est[i][1]))
-        if tabs_ref[i][1].size != 0:
-            ref_max = max(ref_max, np.max(tabs_ref[i][1]))
-    t_bounds = [t_bounds[0], min(t_bounds[1], max(est_max, ref_max))]
+class GuitarTablatureVisualizer(Visualizer):
+    """
+    Implements an iterative guitar tablature visualizer.
+    """
+    def __init__(self, figsize=None, include_axes=True, plot_frequency=None, time_window=1, colors=None, labels=None):
+        """
+        Initialize parameters for the guitar tablature visualizer.
 
-    plt.figure()
+        Parameters
+        ----------
+        See Visualizer class for others...
+        time_window : int or float
+          Number of seconds to show in the plot at a time
+        colors : list of string or None (Optional)
+          Color for the pitch contour
+        labels : list of string or None (Optional)
+          Labels to use for legend
+        """
 
-    for s in range(profile.num_strings):
-        p_ref = tabs_ref[s][0]
-        i_ref = tabs_ref[s][1]
-        for n in range(p_ref.size):
-            t_st = i_ref[n][0]
-            t_fn = i_ref[n][1]
-            m_fq = librosa.hz_to_midi(p_ref[n])
-            fret = int(round(m_fq - librosa.note_to_midi(profile.tuning[s])))
+        super().__init__(figsize, include_axes, plot_frequency)
 
-            plt.scatter(t_st, s + 1, marker="${}$".format(fret), color='black', label='Ref.', s=200)
+        # Buffer parameters
+        self.time_window = time_window
+        self.stacked_frets = None
 
-            if offset:
-                plt.plot([t_st + 0.03, t_fn - 0.03], [s + 1] * 2, linestyle='-', color='black', label='Ref.')
+        # Plotting parameters
+        self.colors = colors
+        self.labels = labels
 
-        p_est = tabs_est[s][0]
-        i_est = tabs_est[s][1]
-        for n in range(p_est.size):
-            t_st = i_est[n][0]
-            t_fn = i_est[n][1]
-            m_fq = librosa.hz_to_midi(p_est[n])
-            fret = int(round(m_fq - librosa.note_to_midi(profile.tuning[s])))
+        # Reset the visualizer
+        self.reset()
 
-            plt.scatter(t_st, s + 1, marker="${}$".format(fret), color='orange', label='Est.', s=200, alpha=0.75)
+    def update(self, current_time, stacked_frets):
+        """
+        Update the internal state of the guitar tablature visualizer and display the updated plot.
 
-            if offset:
-                plt.plot([t_st + 0.03, t_fn - 0.03], [s + 1] * 2, linestyle='-', color='orange', label='Est.', alpha=0.75)
+        Parameters
+        ----------
+        current_time : int
+          Current time associated with the stacked frets
+        stacked_frets : dict
+          Dictionary containing (slice -> (frets, intervals)) pairs
+        """
 
-    handles = [mlines.Line2D([], [], color='black', linestyle='-', label='Ref.', linewidth=3),
-               mlines.Line2D([], [], color='orange', linestyle='-', label='Est.', linewidth=3)]
+        # Determine the window of time which should be displayed
+        time_window_start = current_time - self.time_window
 
-    plt.title(track_name)
-    plt.xlabel('Time (s)')
-    plt.ylabel('String')
-    plt.yticks(range(1, 7), profile.tuning)
-    plt.legend(handles=handles, loc='upper right', framealpha=0.5)
-    plt.xlim(t_bounds[0] - 0.25, t_bounds[1] + 0.25)
+        if self.stacked_frets is None:
+            # Initialize the stacked pitch list with the given observations
+            self.stacked_frets = stacked_frets
+        else:
+            # Concatenate the tracked stacked pitch list with the given observations
+            self.stacked_frets = utils.cat_stacked_notes(self.stacked_frets, stacked_frets)
+            self.stacked_frets = utils.filter_stacked_note_repeats(self.stacked_frets)
 
-    plt.gcf().set_size_inches(16, 4.5)
-    plt.tight_layout()
+        # Slice the tracked stacked pitch list so observations are within the time window
+        self.stacked_frets = utils.apply_func_stacked_representation(self.stacked_frets, utils.notes_to_batched_notes)
+        self.stacked_frets = utils.apply_func_stacked_representation(self.stacked_frets, utils.slice_batched_notes,
+                                                                     start_time=time_window_start,
+                                                                     stop_time=current_time)
+        self.stacked_frets = utils.apply_func_stacked_representation(self.stacked_frets, utils.batched_notes_to_notes)
 
-    if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=500)
-    else:
-        plt.show()
+        if self.query_figure_update():
+            self.pre_update()
+            # Set the x-axis boundaries to force
+            x_bounds = [time_window_start, current_time]
+            # Update the visualizer's figure
+            self.fig = plot_guitar_tablature(stacked_frets=self.stacked_frets,
+                                             include_x_axis=self.include_axes,
+                                             x_bounds=x_bounds,
+                                             colors=self.colors,
+                                             labels=self.labels,
+                                             fig=self.fig)
+            self.post_update()
+
+    def reset(self):
+        """
+        Reset the guitar tablature visualizer.
+        """
+
+        # Clear any open figures, open a new one, and reset the frame counter
+        super().reset()
+
+        # Clear the stacked frets buffer
+        self.stacked_frets = None

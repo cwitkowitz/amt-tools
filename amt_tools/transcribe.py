@@ -496,6 +496,7 @@ class StackedNoteTranscriber(Estimator):
 class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
     """
     Estimate stacked notes from stacked multi pitch activation maps, one frame at a time.
+    TODO - reset function
     """
 
     def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
@@ -517,8 +518,21 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
 
     def estimate(self, raw_output):
         """
+        Track notes for each slice of a stacked multi pitch activation map,
+        acquiring note estimates when the notes are complete.
+
         TODO - verify transcription results are the same
         TODO - how to deal with active pitches when last frame is given
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        stacked_notes : dict
+          Dictionary containing (slice -> (pitches, intervals)) pairs
         """
 
         # Obtain the multi pitch activation maps to transcribe
@@ -587,6 +601,73 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
 
         # Update the previous activations
         self.previous_activations = stacked_multi_pitch
+
+        return stacked_notes
+
+    def get_active_stacked_multi_pitch(self):
+        """
+        Obtain the estimator's active notes as a stacked multi pitch array.
+
+        Returns
+        ----------
+        stacked_multi_pitch : ndarray (S x F x T)
+          Array of multiple discrete pitch activation maps
+          S - number of slices in stack
+          F - number of discrete pitches
+          T - number of frames
+        """
+
+        # Create an array of zeros with the same size as the active pitch array
+        stacked_multi_pitch = np.zeros(self.active_pitches.shape)
+        # Change all nonzero values to one
+        stacked_multi_pitch[self.active_pitches != 0] = 1
+
+        return stacked_multi_pitch
+
+    def get_active_stacked_notes(self, current_time=None):
+        """
+        Obtain the estimator's active notes as stacked notes.
+
+        Parameters
+        ----------
+        current_time : float or None (Optional)
+          The current tracked time, for adding duration to the note estimates
+
+        Returns
+        ----------
+        stacked_notes : dict
+          Dictionary containing (slice -> (pitches, intervals)) pairs
+        """
+
+        # Initialize a dictionary to hold the notes
+        stacked_notes = dict()
+
+        # Obtain the onset times of the current active pitches per slice
+        active_pitch_onsets = self.active_pitches.squeeze(-1)
+
+        # Determine the number of slices
+        stack_size = active_pitch_onsets.shape[0]
+
+        # Loop through the slices of the stack
+        for slc in range(stack_size):
+            # Acquire the active MIDI pitches
+            pitches = self.profile.get_midi_range()[active_pitch_onsets[slc] != 0]
+            # Acquire the onset times corresponding to the pitches
+            onset_times = active_pitch_onsets[slc, active_pitch_onsets[slc] != 0]
+
+            # Check if a time was provided
+            if current_time is None:
+                # Make the offsets the same as the onsets
+                offset_times = onset_times
+            else:
+                # Make the offsets the provided time
+                offset_times = current_time * np.ones(onset_times.shape)
+
+            # Construct the note intervals
+            intervals = np.concatenate(([onset_times], [offset_times]), axis=-1)
+
+            # Add the notes to the stacked notes dictionary
+            stacked_notes[slc] = pitches, intervals
 
         return stacked_notes
 
