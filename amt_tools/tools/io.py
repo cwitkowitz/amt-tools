@@ -83,16 +83,14 @@ def load_stacked_notes_jams(jams_path):
     # Extract all of the midi note annotations
     note_data_slices = jam.annotations[constants.JAMS_NOTE_MIDI]
 
-    # Obtain the number of annotations
-    stack_size = len(note_data_slices)
-
     # Initialize a dictionary to hold the notes
     stacked_notes = dict()
 
     # Loop through the slices of the stack
-    for slc in range(stack_size):
-        # Extract the notes pertaining to this slice
-        slice_notes = note_data_slices[slc]
+    for slice_notes in note_data_slices:
+
+        # Extract the string the notes of this slice are for
+        string = slice_notes.annotation_metadata[constants.JAMS_STRING_IDX]
 
         # Initialize lists to hold the pitches and intervals
         pitches, intervals = list(), list()
@@ -106,8 +104,8 @@ def load_stacked_notes_jams(jams_path):
         # Convert the pitch and interval lists to arrays
         pitches, intervals = np.array(pitches), np.array(intervals)
 
-        # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
-        stacked_notes.update(utils.notes_to_stacked_notes(pitches, intervals, slc))
+        # Add the pitch-interval pairs to the stacked notes dictionary under the string index as key
+        stacked_notes.update(utils.notes_to_stacked_notes(pitches, intervals, string))
 
     return stacked_notes
 

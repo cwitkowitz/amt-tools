@@ -69,6 +69,7 @@ KEY_LOSS_KLD = 'loss_kld'
 
 JAMS_NOTE_MIDI = 'note_midi'
 JAMS_PITCH_HZ = 'pitch_contour'
+JAMS_STRING_IDX = 'data_source'
 
 ##################################################
 # MIDI ATTRIBUTES                                #
