@@ -587,7 +587,7 @@ def stacked_notes_to_frets(stacked_notes, tuning=None):
         # Get the notes from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert the pitches to frets
-        frets = (pitches - midi_tuning[i]).astype(constants.UINT)
+        frets = np.round(pitches - midi_tuning[i]).astype(constants.UINT)
         # Add converted slice back to stack
         stacked_notes[slc] = frets, intervals
 
@@ -1203,7 +1203,7 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
     stacked_multi_pitch = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to multi pitch and add to the list
@@ -1240,7 +1240,7 @@ def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
     stacked_multi_pitch = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_pitch_list)):
+    for slc in stacked_pitch_list.keys():
         # Get the pitches and intervals from the slice
         times, pitch_list = stacked_pitch_list[slc]
         multi_pitch = pitch_list_to_multi_pitch(times, pitch_list, profile)
@@ -1559,7 +1559,7 @@ def stacked_notes_to_stacked_onsets(stacked_notes, times, profile, ambiguity=Non
     stacked_onsets = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to onsets and add to the list
@@ -1739,7 +1739,7 @@ def stacked_notes_to_stacked_offsets(stacked_notes, times, profile, ambiguity):
     stacked_offsets = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to offsets and add to the list

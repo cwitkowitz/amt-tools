@@ -676,30 +676,30 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
     # Construct a list to keep track of the notes plot
     labels_in_use = []
 
-    # Loop through the stack of pitch lists
-    for string in stacked_frets.keys():
+    # Loop through the stack of pitch lists, keeping track of the index
+    for idx, slc in enumerate(stacked_frets.keys()):
         # Get the frets and intervals from the slice
-        frets, intervals = stacked_frets[string]
+        frets, intervals = stacked_frets[slc]
 
         # Make sure the frets are integers
         frets = frets.astype(constants.UINT)
 
         # Determine the color to use for the string
-        color = 'k' if colors is None else colors[string]
+        color = 'k' if colors is None else colors[idx]
 
         for k, fret in enumerate(frets):
             # Obtain the onset for the note
             onset = intervals[k, 0]
             # Construct a unique label for the note
-            label = f'{labels[string]}_{fret}_{round(onset, 5)}'
+            label = f'{labels[idx]}_{fret}_{round(onset, 5)}'
             # Add the label to the tracked list
             labels_in_use += [label]
 
             if label not in line_labels:
                 # Plot onset of the note as its fret number
-                ax.scatter(onset, string, marker="${}$".format(fret), color=color, label=label, s=point_size)
+                ax.scatter(onset, idx, marker="${}$".format(fret), color=color, label=label, s=point_size)
                 # Plot the note durations as a line following the fret number
-                ax.plot(intervals[k], [string, string], linestyle='-', color=color, label=label)
+                ax.plot(intervals[k], [idx, idx], linestyle='-', color=color, label=label)
             else:
                 # Find the existing line
                 note_line = [line for line in ax.get_lines() if line.get_label() == label][0]
@@ -730,13 +730,13 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
     string_lines = [line for line in ax.get_lines() if line.get_label() in labels]
 
     # Loop through the strings
-    for string in range(len(stacked_frets)):
-        if string >= len(string_lines):
+    for idx in range(len(stacked_frets)):
+        if idx >= len(string_lines):
             # Plot the string for the first time
-            ax.plot(x_bounds, [string, string], linewidth=1, color='k', label=f'{labels[string]}', alpha=0.25)
+            ax.plot(x_bounds, [idx, idx], linewidth=1, color='k', label=f'{labels[idx]}', alpha=0.25)
         else:
             # Shift the line across time
-            string_lines[string].set_xdata(x_bounds)
+            string_lines[idx].set_xdata(x_bounds)
 
     if not include_x_axis:
         # Hide the x-axis

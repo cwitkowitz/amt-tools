@@ -104,7 +104,7 @@ def load_stacked_notes_jams(jams_path):
         # Convert the pitch and interval lists to arrays
         pitches, intervals = np.array(pitches), np.array(intervals)
 
-        # Add the pitch-interval pairs to the stacked notes dictionary under the string index as key
+        # Add the pitch-interval pairs to the stacked notes dictionary under the string entry as key
         stacked_notes.update(utils.notes_to_stacked_notes(pitches, intervals, string))
 
     return stacked_notes
