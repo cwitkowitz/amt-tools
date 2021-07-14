@@ -1146,7 +1146,7 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
 
     Parameters
     ----------
-    stacked_multi_pitch : ndarray (S x F x T)
+    stacked_multi_pitch : ndarray or tensor (..., S x F x T)
       Array of multiple discrete pitch activation maps
       S - number of slices in stack
       F - number of discrete pitches
@@ -1154,14 +1154,19 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
 
     Returns
     ----------
-    multi_pitch : ndarray (F x T)
+    multi_pitch : ndarray or tensor (..., F x T)
       Discrete pitch activation map
       F - number of discrete pitches
       T - number of frames
     """
 
     # Collapse the stacked arrays into one using the max operation
-    multi_pitch = np.max(stacked_multi_pitch, axis=-3)
+    if isinstance(stacked_multi_pitch, torch.Tensor):
+        # PyTorch Tensor
+        multi_pitch = torch.max(stacked_multi_pitch, dim=-3)[0]
+    else:
+        # NumPy Ndarray
+        multi_pitch = np.max(stacked_multi_pitch, axis=-3)
 
     return multi_pitch
 
@@ -1281,7 +1286,7 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
 
     Parameters
     ----------
-    tablature : ndarray (S x T)
+    tablature : ndarray or tensor (..., S x T) (must consist of integers)
       Array of class membership for multiple degrees of freedom (e.g. strings)
       S - number of strings or degrees of freedom
       T - number of frames
@@ -1290,7 +1295,7 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
 
     Returns
     ----------
-    stacked_multi_pitch : ndarray (S x F x T)
+    stacked_multi_pitch : ndarray or tensor (..., S x F x T)
       Array of multiple discrete pitch activation maps
       S - number of slices in stack
       F - number of discrete pitches
@@ -1298,13 +1303,13 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     """
 
     # Determine the number of degrees of freedom and frames
-    num_dofs, num_frames = tablature.shape
+    num_dofs, num_frames = tablature.shape[-2:]
 
     # Determine the total number of pitches to be incldued
     num_pitches = profile.get_range_len()
 
     # Initialize and empty stacked multi pitch array
-    stacked_multi_pitch = np.zeros((num_dofs, num_pitches, num_frames))
+    stacked_multi_pitch = np.zeros(tablature.shape[:-2] + (num_dofs, num_pitches, num_frames))
 
     # Obtain the tuning for the tablature (lowest note for each degree of freedom)
     tuning = profile.get_midi_tuning()
@@ -1318,11 +1323,22 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     # Determine the active pitches, relative to the start of the stacked multi pitch array
     pitch_idcs = (tablature + dof_start)[non_silent_frames]
 
-    # Break the non-silent frames indices into degree of freedom and frame
-    dof_idcs, frame_idcs = non_silent_frames.nonzero()
+    # Obtain the non-silent indices across each dimension
+    non_silent_idcs = non_silent_frames.nonzero()
+
+    if isinstance(tablature, torch.Tensor):
+        # Extra step for PyTorch Tensors (tuple with indices for each dimension)
+        non_silent_idcs = tuple(non_silent_idcs.transpose(-2, -1))
+
+    # Split the non-silent indices by frame vs. everything else
+    other_idcs, frame_idcs = non_silent_idcs[:-1], non_silent_idcs[-1]
 
     # Populate the stacked multi pitch array
-    stacked_multi_pitch[(dof_idcs, pitch_idcs, frame_idcs)] = 1
+    stacked_multi_pitch[other_idcs + (pitch_idcs, frame_idcs)] = 1
+
+    if isinstance(tablature, torch.Tensor):
+        # Convert to Tensor and add to the appropriate device
+        stacked_multi_pitch = torch.from_numpy(stacked_multi_pitch).to(tablature.device)
 
     return stacked_multi_pitch
 

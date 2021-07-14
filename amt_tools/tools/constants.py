@@ -35,6 +35,7 @@ JAMS_EXT = 'jams'
 NPZ_EXT = 'npz'
 TXT_EXT = 'txt'
 PYT_EXT = 'pt'
+CSV_EXT = 'csv'
 
 ##################################################
 # GROUND TRUTH / PREDICTION KEYS                 #

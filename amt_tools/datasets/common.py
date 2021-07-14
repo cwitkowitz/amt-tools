@@ -20,6 +20,8 @@ import os
 # TODO - possible integration with mirdata
 # TODO - optionally avoud splitting notes...
 #      - see magenta/models/onsets_frames_transcription/audio_label_data_utils.py
+# TODO - multipitch can overlap on last/first frame of notes
+#        - seems correct based on note start/end times but could be problematic
 
 # TODO - get notes function?
 
