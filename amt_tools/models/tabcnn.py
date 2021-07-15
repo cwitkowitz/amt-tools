@@ -171,7 +171,7 @@ class TabCNN(TranscriptionModel):
 
     def post_proc(self, batch):
         """
-        Calculate loss and finalize model output
+        Calculate loss and finalize model output.
 
         Parameters
         ----------

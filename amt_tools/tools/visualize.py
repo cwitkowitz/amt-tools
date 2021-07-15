@@ -627,6 +627,7 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
                           x_bounds=None, colors=None, labels=None, fig=None):
     """
     Static function for plotting pitch contours (pitch_list).
+    TODO - this does not scale well for big note groups
 
     Parameters
     ----------
@@ -669,6 +670,15 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
     # Add some extra space to the y-axis
     y_padding = 0.5
     ax.set_ylim([-y_padding, len(stacked_frets) - y_padding])
+
+    if x_bounds is None:
+        # Get the dynamic x-axis boundaries if none were provided
+        #x_bounds = get_dynamic_x_bounds(ax, times)
+        x_bounds = ax.get_xlim()
+    # Bound the x-axis
+    ax.set_xlim(x_bounds)
+
+    # TODO - slice_stacked_notes utility function to avoid plotting unnecessary notes
 
     # Obtain the labels for all lines
     line_labels = [line.get_label() for line in ax.get_lines()]
@@ -718,13 +728,6 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
             onset.remove()
             # Remove the line
             line.remove()
-
-    if x_bounds is None:
-        # Get the dynamic x-axis boundaries if none were provided
-        #x_bounds = get_dynamic_x_bounds(ax, times)
-        x_bounds = ax.get_xlim()
-    # Bound the x-axis
-    ax.set_xlim(x_bounds)
 
     # Obtain the lines for the string if they exist
     string_lines = [line for line in ax.get_lines() if line.get_label() in labels]

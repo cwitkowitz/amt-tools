@@ -89,7 +89,7 @@ def load_stacked_notes_jams(jams_path):
     # Loop through the slices of the stack
     for slice_notes in note_data_slices:
 
-        # Extract the string the notes of this slice are for
+        # Extract the string label for this slice
         string = slice_notes.annotation_metadata[constants.JAMS_STRING_IDX]
 
         # Initialize lists to hold the pitches and intervals
@@ -135,6 +135,27 @@ def load_notes_jams(jams_path):
     pitches, intervals = utils.stacked_notes_to_notes(stacked_notes)
 
     return pitches, intervals
+
+
+def load_duration_jams(jams_path):
+    """
+    Determine the duration of audio associated with JAMS annotations.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+
+    Returns
+    ----------
+    duration : float
+      Total length (seconds) of the audio associated with the annotations
+    """
+
+    # Read the meta-data from the jams file
+    duration = jams.load(jams_path)[constants.JAMS_METADATA].duration
+
+    return duration
 
 
 def load_stacked_pitch_list_jams(jams_path, times=None):

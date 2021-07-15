@@ -1069,8 +1069,15 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # Initialize an empty multi pitch array
     multi_pitch = np.zeros((num_pitches, num_frames))
 
-    # Convert the pitches to number of semitones from lowest note
+    # Round to nearest semitone and subtract the lowest
+    # note of the instrument to obtain relative pitches
     pitches = np.round(pitches - profile.low).astype(constants.UINT)
+
+    # Determine if and where there is underflow or overflow
+    valid_idcs = np.logical_and((pitches >= 0), (pitches < num_pitches))
+
+    # Remove any invalid pitches
+    pitches, intervals = pitches[valid_idcs], intervals[valid_idcs]
 
     # Duplicate the array of times for each note and stack along a new axis
     times = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
@@ -2811,6 +2818,7 @@ def unpack_dict(data, key):
 
     # Default the entry
     # TODO - better to use None or False?
+    # TODO - can give me pointer to actual item, not copy
     entry = None
 
     # Check if a dictionary was provided and if the key is in the dictionary
@@ -2873,7 +2881,7 @@ def get_tag(tag=None):
     return tag
 
 
-def slice_track(track, start, stop, skip=None):
+def slice_track(track, start, stop, skip=None, pad=True):
     """
     Slice any ndarray or tensor entries of a dictionary along the last axis.
 
@@ -2887,6 +2895,8 @@ def slice_track(track, start, stop, skip=None):
       End index (excluded in slice)
     skip : list of str
       Keys to skip during this process
+    pad : bool
+      Whether to pad to implicit size (stop - start) when necessary
 
     Returns
     ----------
@@ -2911,6 +2921,24 @@ def slice_track(track, start, stop, skip=None):
                                 isinstance(track[key], torch.Tensor)):
             # Slice along the final axis
             track[key] = track[key][..., start : stop]
+
+            # Determine if the entry was long enough
+            num_missing = max(0, (stop - start) - track[key].shape[-1])
+
+            if num_missing:
+                # Create an array or tensor of zeros to add to the entry
+                if isinstance(track[key], np.ndarray):
+                    # Append a NumPy array of zeros
+                    zeros = np.zeros(track[key].shape[:-1] + tuple([num_missing]))
+                    track[key] = np.concatenate((track[key], zeros), axis=-1)
+                else:
+                    # Append a PyTorch tensor of zeros
+                    zeros = torch.zeros(track[key].shape[:-1] + tuple([num_missing])).to(track[key].device)
+                    track[key] = torch.cat((track[key], zeros), dim=-1)
+
+                if key == constants.KEY_TABLATURE:
+                    # Change the padded zeros to ones
+                    track[key][..., -num_missing:] = -1
 
     return track
 
