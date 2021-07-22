@@ -62,23 +62,20 @@ def load_normalize_audio(wav_path, fs=None, norm=-1, res_type='kaiser_best'):
     return audio, fs
 
 
-def load_stacked_notes_jams(jams_path):
+def extract_stacked_notes_jams(jam):
     """
-    Load MIDI notes spread across slices (e.g. guitar strings) from JAMS file into a dictionary.
+    Extract MIDI notes spread across slices (e.g. guitar strings) from JAMS data into a dictionary.
 
     Parameters
     ----------
-    jams_path : string
-      Path to JAMS file to read
+    jam : JAMS object
+      JAMS file data
 
     Returns
     ----------
     stacked_notes : dict
       Dictionary containing (slice -> (pitches, intervals)) pairs
     """
-
-    # Load the metadata from the jams file
-    jam = jams.load(jams_path)
 
     # Extract all of the midi note annotations
     note_data_slices = jam.annotations[constants.JAMS_NOTE_MIDI]
@@ -110,9 +107,61 @@ def load_stacked_notes_jams(jams_path):
     return stacked_notes
 
 
+def load_stacked_notes_jams(jams_path):
+    """
+    Helper function to load a JAMS file and extract the stacked notes.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    """
+
+    # Load the metadata from the jams file
+    jam = jams.load(jams_path)
+
+    # Extract the stacked notes
+    stacked_notes = extract_stacked_notes_jams(jam)
+
+    return stacked_notes
+
+
+def extract_notes_jams(jam):
+    """
+    Extract all MIDI notes within a JAMS file.
+
+    Parameters
+    ----------
+    jam : JAMS object
+      JAMS file data
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    """
+
+    # First, extract the notes into a stack
+    stacked_notes = extract_stacked_notes_jams(jam)
+
+    # Unpack the stacked notes
+    pitches, intervals = utils.stacked_notes_to_notes(stacked_notes)
+
+    return pitches, intervals
+
+
 def load_notes_jams(jams_path):
     """
-    Load all MIDI notes within a JAMS file.
+    Helper function to load a JAMS file and extract the notes.
 
     Parameters
     ----------
@@ -129,17 +178,39 @@ def load_notes_jams(jams_path):
       N - number of notes
     """
 
-    # First, load the notes into a stack
-    stacked_notes = load_stacked_notes_jams(jams_path=jams_path)
+    # Load the metadata from the jams file
+    jam = jams.load(jams_path)
 
-    pitches, intervals = utils.stacked_notes_to_notes(stacked_notes)
+    # Extract the notes as loose groups
+    pitches, intervals = extract_notes_jams(jam)
 
     return pitches, intervals
 
 
+def extract_duration_jams(jam):
+    """
+    Extract the duration of audio associated with JAMS annotations.
+
+    Parameters
+    ----------
+    jam : JAMS object
+      JAMS file data
+
+    Returns
+    ----------
+    duration : float
+      Total length (seconds) of the audio associated with the annotations
+    """
+
+    # Read the meta-data from the jams file
+    duration = jam[constants.JAMS_METADATA].duration
+
+    return duration
+
+
 def load_duration_jams(jams_path):
     """
-    Determine the duration of audio associated with JAMS annotations.
+    Helper function to load a JAMS file and extract the duration.
 
     Parameters
     ----------
@@ -153,7 +224,7 @@ def load_duration_jams(jams_path):
     """
 
     # Read the meta-data from the jams file
-    duration = jams.load(jams_path)[constants.JAMS_METADATA].duration
+    duration = extract_duration_jams(jams.load(jams_path))
 
     return duration
 
@@ -161,6 +232,7 @@ def load_duration_jams(jams_path):
 def load_stacked_pitch_list_jams(jams_path, times=None):
     """
     Load pitch lists spread across slices (e.g. guitar strings) from JAMS file into a dictionary.
+    TODO - same load/extract separation as notes
 
     Parameters
     ----------
@@ -233,6 +305,7 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
 def load_pitch_list_jams(jams_path, times):
     """
     Load pitch list from JAMS file.
+    TODO - same load/extract separation as notes
 
     Parameters
     ----------

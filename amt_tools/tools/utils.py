@@ -363,6 +363,35 @@ def notes_to_midi(pitches):
     return pitches
 
 
+def offset_notes(pitches, intervals, semitones):
+    """
+    Add a semitone offset to note groups.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    semitones : float
+      Number of semitones by which to offset note pitches
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Same as input with added offset
+    intervals : ndarray (N x 2)
+      Same as input
+    """
+
+    # Add the offset to the pitches
+    pitches += semitones
+
+    return pitches, intervals
+
+
 ##################################################
 # TO STACKED NOTES                               #
 ##################################################
@@ -592,6 +621,40 @@ def stacked_notes_to_frets(stacked_notes, tuning=None):
         stacked_notes[slc] = frets, intervals
 
     return stacked_notes
+
+
+def find_pitch_bounds_stacked_notes(stacked_notes):
+    """
+    Determine the minimum and maximum pitch for each slice of stacked notes.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+
+    Returns
+    ----------
+    min_pitches : list (S)
+      Minimum pitch across all notes per slice
+      S - number of slices in stack
+    max_pitches : list (S)
+      Maximum pitch across all notes per slice
+      S - number of slices in stack
+    """
+
+    # Initialize lists to hold the pitch bounds
+    min_pitches, max_pitches = list(), list()
+
+    # Loop through the stack of notes
+    for i, slc in enumerate(stacked_notes.keys()):
+        # Get the pitches from the slice
+        pitches, _ = stacked_notes[slc]
+
+        # Add the minimum and maximum pitch for this slice
+        min_pitches += [np.min(pitches)]
+        max_pitches += [np.max(pitches)]
+
+    return min_pitches, max_pitches
 
 
 ##################################################

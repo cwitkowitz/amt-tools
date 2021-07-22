@@ -360,6 +360,10 @@ class SoftmaxGroups(OutputLayer):
           Loss or error for entire batch
         """
 
+        # Make clones so as not to modify originals out of function scope
+        estimated = estimated.clone()
+        reference = reference.clone()
+
         # Obtain the batch size before frame axis is collapsed
         batch_size = estimated.size(0)
 
@@ -500,6 +504,10 @@ class LogisticBank(OutputLayer):
         loss : Tensor (1-D)
           Loss or error for entire batch
         """
+
+        # Make clones so as not to modify originals out of function scope
+        estimated = estimated.clone()
+        reference = reference.clone()
 
         # Switch the frame and key dimension
         estimated = estimated.transpose(-2, -1)

@@ -174,3 +174,18 @@ class GuitarProfile(TablatureProfile):
         num_pitches = num_frets + 1
 
         super().__init__(tuning, num_pitches)
+
+    def get_num_frets(self):
+        """
+        Determine how many frets are supported by this profile.
+
+        Returns
+        ----------
+        num_frets : int
+          Number of frets supported
+        """
+
+        # TODO - this is kind of awkward
+        num_frets = self.num_pitches - 1
+
+        return num_frets
