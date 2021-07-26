@@ -671,14 +671,15 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
     y_padding = 0.5
     ax.set_ylim([-y_padding, len(stacked_frets) - y_padding])
 
-    if x_bounds is None:
-        # Get the dynamic x-axis boundaries if none were provided
-        #x_bounds = get_dynamic_x_bounds(ax, times)
-        x_bounds = ax.get_xlim()
-    # Bound the x-axis
-    ax.set_xlim(x_bounds)
-
-    # TODO - slice_stacked_notes utility function to avoid plotting unnecessary notes
+    if x_bounds is not None:
+        # Convert the notes to batched notes
+        stacked_frets = utils.apply_func_stacked_representation(stacked_frets, utils.notes_to_batched_notes)
+        # Remove notes occuring outside of the time-axis boundaries
+        stacked_frets = utils.apply_func_stacked_representation(stacked_frets, utils.slice_batched_notes,
+                                                                                  start_time=x_bounds[0],
+                                                                                   stop_time=x_bounds[1])
+        # Convert the batced notes back to note groups
+        stacked_frets = utils.apply_func_stacked_representation(stacked_frets, utils.batched_notes_to_notes)
 
     # Obtain the labels for all lines
     line_labels = [line.get_label() for line in ax.get_lines()]
@@ -731,6 +732,13 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
 
     # Obtain the lines for the string if they exist
     string_lines = [line for line in ax.get_lines() if line.get_label() in labels]
+
+    if x_bounds is None:
+        # Get the dynamic x-axis boundaries if none were provided
+        #x_bounds = get_dynamic_x_bounds(ax, times)
+        x_bounds = ax.get_xlim()
+    # Bound the x-axis
+    ax.set_xlim(x_bounds)
 
     # Loop through the strings
     for idx in range(len(stacked_frets)):

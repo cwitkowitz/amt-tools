@@ -634,10 +634,10 @@ def find_pitch_bounds_stacked_notes(stacked_notes):
 
     Returns
     ----------
-    min_pitches : list (S)
+    min_pitches : ndarray (S)
       Minimum pitch across all notes per slice
       S - number of slices in stack
-    max_pitches : list (S)
+    max_pitches : ndarray (S)
       Maximum pitch across all notes per slice
       S - number of slices in stack
     """
@@ -651,8 +651,11 @@ def find_pitch_bounds_stacked_notes(stacked_notes):
         pitches, _ = stacked_notes[slc]
 
         # Add the minimum and maximum pitch for this slice
-        min_pitches += [np.min(pitches)]
-        max_pitches += [np.max(pitches)]
+        min_pitches += [np.min(pitches) if len(pitches) > 0 else 0]
+        max_pitches += [np.max(pitches) if len(pitches) > 0 else 0]
+
+    # Convert to NumPy arrays
+    min_pitches, max_pitches = np.array(min_pitches), np.array(max_pitches)
 
     return min_pitches, max_pitches
 
@@ -2382,6 +2385,37 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
             new_values[idcs[i]] = values[i]
 
     return new_times, new_values
+
+
+def get_frame_times(duration, sample_rate, hop_length):
+    """
+    Determine the start time of each frame for given audio parameters
+
+    Parameters
+    ----------
+    duration : float
+        Total length (seconds) of audio
+    sample_rate : int or float
+        Number of samples per second
+    hop_length : int or float
+        Number of samples between frames
+
+    Returns
+    -------
+    times : ndarray
+        Array of times corresponding to frames
+    """
+
+    # TODO - this seems too close to the FeatureModel function -
+    #        maybe that function should be made to work with a duration if no audio exists
+
+    # Determine the total number of frames in the sample
+    total_num_frames = int(1 + (duration * sample_rate - 1) // hop_length)
+
+    # We need the frame times for the tablature
+    times = librosa.frames_to_time(np.arange(total_num_frames), sample_rate, hop_length)
+
+    return times
 
 
 def apply_func_stacked_representation(stacked_representation, func, **kwargs):

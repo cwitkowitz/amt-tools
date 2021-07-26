@@ -198,7 +198,7 @@ class FeatureModule(object):
 
     def get_times(self, audio):
         """
-        Determine the time, in seconds, associated with frame.
+        Determine the time, in seconds, associated with each frame.
 
         This is the default behavior. It can be overridden.
 
