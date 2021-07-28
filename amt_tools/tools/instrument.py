@@ -58,7 +58,7 @@ class InstrumentProfile(object):
         """
 
         # Just count the size of the MIDI range
-        range_len = self.get_midi_range().size
+        range_len = self.high - self.low + 1
 
         return range_len
 
@@ -145,6 +145,24 @@ class TablatureProfile(InstrumentProfile):
         midi_tuning = librosa.note_to_midi(self.tuning)
 
         return midi_tuning
+
+    def get_midi_range(self):
+        """
+        Obtain the instrument's range of MIDI pitches across each degree of freedom.
+
+        Returns
+        ----------
+        pitch_ranges : ndarray
+          Ascending array of pitches playable on the instrument
+        """
+
+        tuning = self.get_midi_tuning()
+        num_dofs = self.get_num_dofs()
+
+        # Create an ascending array from the lowest pitch to the highest pitch
+        pitch_ranges = np.array([np.arange(tuning[i], tuning[i] + self.num_pitches) for i in range(num_dofs)])
+
+        return pitch_ranges
 
 
 class GuitarProfile(TablatureProfile):

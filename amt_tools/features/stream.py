@@ -7,7 +7,12 @@ from .. import tools
 # Regular imports
 from abc import abstractmethod
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except OSError:
+    print('Cannot import sounddevice. Please install PortAudio and try again.')
+    print('  >>> sudo apt-get install libportaudio2')
+
 import numpy as np
 
 import threading
