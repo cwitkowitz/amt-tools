@@ -14,6 +14,7 @@ import os
 def filter_notes_by_duration(pitches, intervals, threshold=0.):
     """
     Remove notes from a collection which have a duration less than a threshold
+    TODO - add to tools and make same function for batched notes to use in here
 
     Parameters
     ----------

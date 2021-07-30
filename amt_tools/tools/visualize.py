@@ -844,3 +844,69 @@ class GuitarTablatureVisualizer(Visualizer):
 
         # Clear the stacked frets buffer
         self.stacked_frets = None
+
+
+def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=None):
+    """
+    Static function for plotting a 2D pitch activation map or pianoroll.
+
+    Parameters
+    ----------
+    multi_pitch : ndarray (F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    times : ndarray or None (Optional)
+      Times corresponding to waveform samples
+    include_axes : bool
+      Whether to include the axis in the visualizer
+    color : string
+      Color for the waveform
+    fig : matplotlib Figure object
+      Preexisting figure to use for plotting
+
+    Returns
+    ----------
+    fig : matplotlib Figure object
+      A handle for the figure used to plot the waveform
+    """
+
+    if fig is None:
+        # Initialize a new figure if one was not given
+        fig = initialize_figure(interactive=False)
+
+    # Obtain a handle for the figure's current axis
+    ax = fig.gca()
+
+    if times is None:
+        # Default times to ascending indices
+        times = np.arange(multi_pitch.shape[-1])
+        # Mark the x-axis as frame index
+        x_label = 'Frame Index'
+    else:
+        # Mark the x-axis as time
+        x_label = 'Time (s)'
+
+    # Use the times (or frame indices) for the x-axis
+    x_min, x_max = np.min(times), np.max(times)
+
+    # Use the relative pitch in the activation map for the y-axis
+    y_min, y_max = 0, multi_pitch.shape[-2]
+
+    # Set the extent for marking the axes of the image
+    extent = [x_min, x_max, y_max, y_min]
+
+    # Plot the activation map as an image
+    ax.imshow(multi_pitch, cmap='gray_r', vmin=0, vmax=1, extent=extent, aspect='auto')
+    # Flip the axis for ascending pitch
+    ax.invert_yaxis()
+
+    if not include_axes:
+        # Hide the axes
+        ax.axis('off')
+    else:
+        # Add axis labels
+        ax.set_ylabel('Relative Pitch (MIDI)')
+        ax.set_xlabel(x_label)
+
+    return fig

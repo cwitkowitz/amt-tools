@@ -146,7 +146,7 @@ class TablatureProfile(InstrumentProfile):
 
         return midi_tuning
 
-    def get_midi_range(self):
+    def get_dof_midi_range(self):
         """
         Obtain the instrument's range of MIDI pitches across each degree of freedom.
 
