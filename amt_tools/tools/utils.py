@@ -1244,6 +1244,71 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
     return multi_pitch
 
 
+def logistic_to_multi_pitch(logistic, profile):
+    """
+    View logistic activations as a single multi pitch array.
+    TODO - fix this garbage so it works with differentiation
+
+    Parameters
+    ----------
+    logistic : ndarray or tensor (..., N x T)
+      Array of distinct activations (e.g. string/fret combinations)
+      N - number of individual activations
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    multi_pitch : ndarray or tensor (..., F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Obtain the tuning (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Determine the size of the multi pitch array to construct
+    dims = tuple(logistic.shape[:-1]) + tuple([profile.get_range_len()])
+
+    # Initialize an empty list to hold the logistic activations
+    if isinstance(logistic, np.ndarray):
+        multi_pitch = np.ones(dims)
+    else:
+        multi_pitch = torch.ones(dims)
+
+    # Loop through the multi pitch arrays
+    for dof in range(len(tuning)):
+        # Determine which activations correspond to this degree of freedom
+        start_idx = dof * profile.num_pitches
+        stop_idx = (dof + 1) * profile.num_pitches
+
+        # Obtain the logistic activations for the degree of freedom
+        activations = logistic[..., start_idx : stop_idx]
+
+        # Lower and upper pitch boundary for this degree of freedom
+        lower_bound = tuning[dof] - profile.low
+        upper_bound = lower_bound + profile.num_pitches
+
+        # Perform logical and with the current and new multipitch data
+        if isinstance(logistic, np.ndarray):
+            new_multi_pitch = np.logical_and(multi_pitch[..., lower_bound : upper_bound], activations)
+        else:
+            new_multi_pitch = torch.logical_and(multi_pitch[..., lower_bound : upper_bound], activations)
+
+        # Insert the ANDed multi pitch activations
+        multi_pitch[..., lower_bound : upper_bound] = new_multi_pitch
+
+    # Make sure the activations are integers
+    if isinstance(logistic, np.ndarray):
+        multi_pitch = multi_pitch.astype(amt_tools.tools.UINT)
+    else:
+        multi_pitch = multi_pitch.long()
+
+    return multi_pitch
+
+
 ##################################################
 # TO STACKED MULTI PITCH                         #
 ##################################################
@@ -1400,18 +1465,21 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     non_silent_idcs = non_silent_frames.nonzero()
 
     if isinstance(tablature, torch.Tensor):
+        # Make sure pitch indices are integers
+        pitch_idcs = pitch_idcs.long()
         # Extra step for PyTorch Tensors (tuple with indices for each dimension)
         non_silent_idcs = tuple(non_silent_idcs.transpose(-2, -1))
+        # Convert to Tensor and add to the appropriate device
+        stacked_multi_pitch = torch.from_numpy(stacked_multi_pitch).to(tablature.device)
+    else:
+        # Make sure pitch indices are integers
+        pitch_idcs = pitch_idcs.astype(constants.INT64)
 
     # Split the non-silent indices by frame vs. everything else
     other_idcs, frame_idcs = non_silent_idcs[:-1], non_silent_idcs[-1]
 
     # Populate the stacked multi pitch array
     stacked_multi_pitch[other_idcs + (pitch_idcs, frame_idcs)] = 1
-
-    if isinstance(tablature, torch.Tensor):
-        # Convert to Tensor and add to the appropriate device
-        stacked_multi_pitch = torch.from_numpy(stacked_multi_pitch).to(tablature.device)
 
     return stacked_multi_pitch
 
@@ -1505,6 +1573,119 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
     tablature = np.concatenate(tablature)
 
     return tablature
+
+
+def logistic_to_tablature(logistic, profile, silence_thr=0.):
+    """
+    View logistic activations as tablature class membership.
+
+    Parameters
+    ----------
+    logistic : tensor (..., N x T)
+      Array of distinct activations (e.g. string/fret combinations)
+      N - number of individual activations
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+    silence_thr : float
+      Threshold for maximum activation under which silence will be selected
+
+    Returns
+    ----------
+    tablature : tensor (S x T)
+      Array of class membership for multiple degrees of freedom (e.g. strings)
+      S - number of strings or degrees of freedom
+      T - number of frames
+    """
+
+    # Obtain the tuning (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Initialize an empty list to hold the tablature
+    tablature = list()
+
+    # Loop through the multi pitch arrays
+    for dof in range(len(tuning)):
+        # Determine which activations correspond to this degree of freedom
+        start_idx = dof * profile.num_pitches
+        stop_idx = (dof + 1) * profile.num_pitches
+
+        # Obtain the logistic activations for the degree of freedom
+        activations = logistic[..., start_idx : stop_idx, :]
+
+        # Determine which class has the highest activation across each frame
+        max_activations, highest_class = torch.max(activations, axis=-2)
+
+        # Determine which frames correspond to silence
+        silent_frames = max_activations <= silence_thr
+
+        # Overwrite the highest class for the silent frames
+        highest_class[silent_frames] = -1
+
+        # Add the class membership to the tablature
+        tablature += [highest_class.unsqueeze(-2)]
+
+    # Collapse the list to get the final tablature
+    tablature = torch.cat(tablature, dim=-2)
+
+    return tablature
+
+
+##################################################
+# TO LOGISTIC                                    #
+##################################################
+
+
+def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile):
+    """
+    View stacked multi pitch arrays as a set of individual activations.
+
+    Parameters
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    logistic : ndarray (N x T)
+      Array of distinct activations (e.g. string/fret combinations)
+      N - number of individual activations
+      T - number of frames
+    """
+
+    # Obtain the tuning (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Initialize an empty list to hold the logistic activations
+    logistic = list()
+
+    # Loop through the multi pitch arrays
+    for dof in range(stacked_multi_pitch.shape[-3]):
+        # Obtain the multi pitch array for the degree of freedom
+        multi_pitch = stacked_multi_pitch[..., dof, :, :]
+
+        # Lower and upper pitch boundary for this degree of freedom
+        lower_bound = tuning[dof] - profile.low
+        upper_bound = lower_bound + profile.num_pitches
+
+        # Bound the multi pitch array by the support of the degree of freedom
+        multi_pitch = multi_pitch[..., lower_bound : upper_bound, :]
+
+        # Add the multi pitch data to the logistic activations
+        logistic += [multi_pitch]
+
+    # Collapse the list to get the final logistic activations
+    if isinstance(stacked_multi_pitch, np.ndarray):
+        logistic = np.concatenate(logistic, axis=-2)
+    else:
+        logistic = torch.cat(logistic, dim=-2)
+
+    return logistic
 
 
 ##################################################

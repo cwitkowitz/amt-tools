@@ -63,6 +63,8 @@ KEY_LOSS_OFFSETS = 'loss_offsets'
 KEY_LOSS_PITCH = 'loss_pitch'
 KEY_LOSS_TABS = 'loss_tabs'
 KEY_LOSS_KLD = 'loss_kld'
+KEY_LOSS_INH = 'loss_inhib'
+KEY_LOSS_REC = 'loss_recon'
 
 ##################################################
 # JAMS ATTRIBUTES                                #
@@ -121,6 +123,7 @@ DEFAULT_PIANO_HIGHEST_PITCH = 108
 UINT = 'uint'
 FLOAT = 'float'
 FLOAT32 = 'float32'
+INT64 = 'int64'
 
 ##################################################
 # MISCELLANEOUS                                  #
