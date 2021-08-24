@@ -450,11 +450,7 @@ class LogisticBank(OutputLayer):
         super().__init__(dim_in, dim_out)
 
         # Initialize the output layer
-        self.output_layer = nn.Sequential(
-            nn.Linear(self.dim_in, self.dim_out),
-            # TODO - make sure stability is not an issue - see ""_with_logits()
-            nn.Sigmoid()
-        )
+        self.output_layer = nn.Linear(self.dim_in, self.dim_out)
 
     def forward(self, feats):
         """
@@ -513,7 +509,7 @@ class LogisticBank(OutputLayer):
         estimated = estimated.transpose(-2, -1)
 
         # Calculate the loss for the entire pseudo-batch
-        loss = F.binary_cross_entropy(estimated.float(), reference.float(), reduction='none')
+        loss = F.binary_cross_entropy_with_logits(estimated.float(), reference.float(), reduction='none')
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
         # Average loss across keys
@@ -546,6 +542,8 @@ class LogisticBank(OutputLayer):
 
         final_output = super().finalize_output(raw_output)
 
+        # Apply sigmoid activation
+        final_output = torch.sigmoid(final_output)
         # Switch the frame and key dimension
         final_output = final_output.transpose(-2, -1)
         # Convert output to binary values

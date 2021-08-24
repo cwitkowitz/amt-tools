@@ -1575,7 +1575,7 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
     return tablature
 
 
-def logistic_to_tablature(logistic, profile, silence_thr=0.):
+def logistic_to_tablature(logistic, profile, silence, silence_thr=0.):
     """
     View logistic activations as tablature class membership.
 
@@ -1587,6 +1587,8 @@ def logistic_to_tablature(logistic, profile, silence_thr=0.):
       T - number of frames
     profile : TablatureProfile (instrument.py)
       Tablature instrument profile detailing experimental setup
+    silence : bool
+      Whether to explicitly include an activation for silence
     silence_thr : float
       Threshold for maximum activation under which silence will be selected
 
@@ -1607,8 +1609,8 @@ def logistic_to_tablature(logistic, profile, silence_thr=0.):
     # Loop through the multi pitch arrays
     for dof in range(len(tuning)):
         # Determine which activations correspond to this degree of freedom
-        start_idx = dof * profile.num_pitches
-        stop_idx = (dof + 1) * profile.num_pitches
+        start_idx = dof * (profile.num_pitches + int(silence))
+        stop_idx = (dof + 1) * (profile.num_pitches + int(silence))
 
         # Obtain the logistic activations for the degree of freedom
         activations = logistic[..., start_idx : stop_idx, :]
@@ -1616,11 +1618,13 @@ def logistic_to_tablature(logistic, profile, silence_thr=0.):
         # Determine which class has the highest activation across each frame
         max_activations, highest_class = torch.max(activations, axis=-2)
 
-        # Determine which frames correspond to silence
-        silent_frames = max_activations <= silence_thr
-
-        # Overwrite the highest class for the silent frames
-        highest_class[silent_frames] = -1
+        if silence:
+            highest_class -= 1
+        else:
+            # Determine which frames correspond to silence
+            silent_frames = max_activations <= silence_thr
+            # Overwrite the highest class for the silent frames
+            highest_class[silent_frames] = -1
 
         # Add the class membership to the tablature
         tablature += [highest_class.unsqueeze(-2)]
@@ -1636,7 +1640,7 @@ def logistic_to_tablature(logistic, profile, silence_thr=0.):
 ##################################################
 
 
-def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile):
+def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile, silence=False):
     """
     View stacked multi pitch arrays as a set of individual activations.
 
@@ -1649,6 +1653,8 @@ def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile):
       T - number of frames
     profile : TablatureProfile (instrument.py)
       Tablature instrument profile detailing experimental setup
+    silence : bool
+      Whether to explicitly include an activation for silence
 
     Returns
     ----------
@@ -1675,6 +1681,18 @@ def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile):
 
         # Bound the multi pitch array by the support of the degree of freedom
         multi_pitch = multi_pitch[..., lower_bound : upper_bound, :]
+
+        if silence:
+            if isinstance(multi_pitch, np.ndarray):
+                # Construct an array with activations for silence
+                silence_activations = np.sum(multi_pitch, axis=-2, keepdims=True) == 0
+                # Append the silence activations at the front of the multi pitch array
+                multi_pitch = np.append(silence_activations, multi_pitch, axis=-2)
+            else:
+                # Construct a tensor with activations for silence
+                silence_activations = torch.sum(multi_pitch, dim=-2, keepdims=True) == 0
+                # Append the silence activations at the front of the multi pitch array
+                multi_pitch = torch.cat((silence_activations.to(multi_pitch.device), multi_pitch), dim=-2)
 
         # Add the multi pitch data to the logistic activations
         logistic += [multi_pitch]
