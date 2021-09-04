@@ -90,6 +90,7 @@ class TranscriptionDataset(Dataset):
         # Default the feature extraction to a plain Mel Spectrogram if none was provided
         if data_proc is None:
             # TODO - should keep as None so that, e.g., pure tablature data won't do this step
+            # TODO - or create placeholders such as Waveform() or Frames()
             data_proc = STFT(hop_length=self.hop_length,
                              sample_rate=self.sample_rate)
         self.data_proc = data_proc

@@ -1,5 +1,5 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
-# Author: Jonathan Driedger <redacted@redacted>
+# Author: Jonathan Driedger (Chordify)
 
 # My imports
 from .. import tools
@@ -440,6 +440,7 @@ class MicrophoneStream(FeatureStream, threading.Thread):
                     # Read the available samples (mono-channel) and normalize them
                     # TODO - abstract normalization type
                     new_audio = tools.rms_norm(self.stream.read(num_samples_available)[0][:, 0])
+                    #new_audio = self.stream.read(num_samples_available)[0][:, 0]
 
                     # Advance the buffer by the amount of new samples
                     self.audio_buffer = np.roll(self.audio_buffer, -num_samples_available)

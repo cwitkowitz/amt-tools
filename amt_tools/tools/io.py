@@ -474,6 +474,31 @@ def write_and_print(file, text, verbose=True, end=''):
             print(text, end='')
 
 
+def write_list(lst, path):
+    """
+    Write all items in a list to a file.
+
+    Parameters
+    ----------
+    lst : list of object
+      Collection of items to write
+    path : string
+      Location of the file to write
+    """
+
+    # Make sure all the directories in the path exist
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    # Open a file at the path with writing permissions
+    with open(path, 'w') as file:
+        # Loop through the entire list
+        for i, item in enumerate(lst):
+            # Determine how the line should end
+            end = '' if (i + 1) == len(lst) else '\n'
+            # Write the line to the file
+            write_and_print(file, item, verbose=False, end=end)
+
+
 def write_pitch_list(times, pitches, path, places=3):
     """
     Write all of the notes in a loose collection to a file.

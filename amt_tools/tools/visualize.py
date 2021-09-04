@@ -331,6 +331,7 @@ class WaveformVisualizer(Visualizer):
         super().__init__(figsize, include_axes, plot_frequency)
 
         self.sample_rate = sample_rate
+
         # Determine the buffer size necessary for the chosen time window
         self.buffer_size = int(round(time_window * self.sample_rate))
 
@@ -394,6 +395,173 @@ class WaveformVisualizer(Visualizer):
         self.sample_buffer = np.zeros(self.buffer_size)
         # Reset the sample index used for tracking time
         self.current_sample = 0
+
+
+def plot_tfr(tfr, times=None, include_axes=True, fig=None):
+    """
+    Static function for plotting any time-frequency representation.
+
+    Parameters
+    ----------
+    tfr : ndarray (F x T)
+      Time-frequency representation
+      F - number of frequency bins
+      T - number of frames
+    times : ndarray or None (Optional)
+      Times corresponding to waveform samples
+    include_axes : bool
+      Whether to include the axis in the visualizer
+    fig : matplotlib Figure object
+      Preexisting figure to use for plotting
+
+    Returns
+    ----------
+    fig : matplotlib Figure object
+      A handle for the figure used to plot the waveform
+    """
+
+    if fig is None:
+        # Initialize a new figure if one was not given
+        fig = initialize_figure(interactive=False)
+
+    # Obtain a handle for the figure's current axis
+    ax = fig.gca()
+
+    if times is None:
+        # Default times to ascending indices
+        times = np.arange(tfr.shape[-1])
+
+    # Determine the current time boundaries
+    min_time = np.min(times)
+    max_time = np.max(times)
+
+    # Determine the number of bins in the TFR
+    n_bins = tfr.shape[-2]
+
+    # Check if a TFR has already been plotted
+    if len(ax.images):
+        # Update the TFR with the new data
+        ax.images[0].set_data(tfr)
+        # Determine the extent for the image
+        extent = [min_time, max_time] + ax.images[0].get_extent()[-2:]
+        # Update the images extent
+        ax.images[0].set_extent(extent)
+        # Flip the axis for ascending pitch
+        ax.invert_yaxis()
+    else:
+        # Determine the extent for the image
+        extent = [min_time, max_time, n_bins, 0]
+        # Plot the tfr as an image
+        ax.imshow(tfr, extent=extent)
+        # Flip the axis for ascending pitch
+        ax.invert_yaxis()
+        # Make sure the image fills the figure
+        ax.set_aspect('auto')
+
+    if not include_axes:
+        # Hide the axes
+        ax.axis('off')
+    else:
+        # Add axis labels
+        ax.set_ylabel('Frequency Bins')
+        ax.set_xlabel('Time (s)')
+
+    return fig
+
+
+class TFRVisualizer(Visualizer):
+    """
+    Implements an iterative time-frequency representation (TFR) visualizer.
+    """
+    def __init__(self, figsize=None, include_axes=True, plot_frequency=None,
+                 sample_rate=44100, hop_length=512, n_bins=192, time_window=1):
+        """
+        Initialize parameters for the TFR visualizer.
+
+        Parameters
+        ----------
+        See Visualizer class for others...
+        sample_rate : int or float
+          Number of samples per second of audio
+        hop_length : int or float
+          Number of samples between feature frames
+        n_bins : int
+          Number of bins expected in TFR
+        time_window : int or float
+          Number of seconds to show in the plot at a time
+        """
+
+        super().__init__(figsize, include_axes, plot_frequency)
+
+        self.sample_rate = sample_rate
+        self.hop_length = hop_length
+        self.n_bins = n_bins
+
+        # Determine the buffer size necessary for the chosen time window
+        self.buffer_size = int(round(time_window * self.sample_rate / self.hop_length))
+
+        # Buffer parameters
+        self.time_buffer = None
+        self.frame_buffer = None
+        self.current_frame = None
+
+        # Reset the visualizer
+        self.reset()
+
+    def update(self, frames):
+        """
+        Update the internal state of the TFR visualizer and display the updated plot.
+
+        Parameters
+        ----------
+        frames : ndarray (F x T)
+          New frames for the TFR
+          F - number of frequency bins
+          T - number of frames
+        """
+
+        # Determine how many new frames were given
+        num_frames = frames.shape[-1]
+
+        # Advance the frame buffer by the given amount of new frames
+        self.frame_buffer = np.roll(self.frame_buffer, -num_frames)
+        # Overwrite the oldest frames in the buffer with the new ones
+        self.frame_buffer[..., -num_frames:] = frames
+
+        # Obtain the corresponding times for the new samples
+        times = np.arange(self.current_frame, self.current_frame + num_frames) / (self.sample_rate / self.hop_length)
+
+        # Advance the time buffer by the given amount of new frames
+        self.time_buffer = np.roll(self.time_buffer, -num_frames)
+        # Overwrite the oldest times in the buffer with the new times
+        self.time_buffer[-num_frames:] = times
+
+        # Advance the time tracking frame index
+        self.current_frame += num_frames
+
+        if self.query_figure_update():
+            self.pre_update()
+            # Update the visualizer's figure
+            self.fig = plot_tfr(tfr=self.frame_buffer,
+                                times=self.time_buffer,
+                                include_axes=self.include_axes,
+                                fig=self.fig)
+            self.post_update()
+
+    def reset(self):
+        """
+        Reset the TFR visualizer.
+        """
+
+        # Clear any open figures, open a new one, and reset the frame counter
+        super().reset()
+
+        # Create a time buffer, where the very next sample added will be at time 0
+        self.time_buffer = np.arange(-self.buffer_size, 0) / (self.sample_rate / self.hop_length)
+        # Create a corresponding frame buffer
+        self.frame_buffer = np.zeros((self.n_bins, self.buffer_size))
+        # Reset the frame index used for tracking time
+        self.current_frame = 0
 
 
 def plot_pitch_list(times, pitch_list, hertz=False, point_size=5, include_axes=True,
@@ -897,6 +1065,7 @@ def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=No
     extent = [x_min, x_max, y_max, y_min]
 
     # Plot the activation map as an image
+    # TODO - make interactive (ax.images.set_data)
     ax.imshow(multi_pitch, cmap='gray_r', vmin=0, vmax=1, extent=extent, aspect='auto')
     # Flip the axis for ascending pitch
     ax.invert_yaxis()

@@ -29,3 +29,4 @@ from .mel import *
 from .stft import *
 from .stream import *
 from .vqt import *
+from .waveform import *
