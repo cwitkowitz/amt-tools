@@ -85,6 +85,22 @@ class PianoProfile(InstrumentProfile):
 
         super().__init__(low, high)
 
+    def get_num_dofs(self):
+        """
+        Determine how many degrees of freedom (e.g. strings) are present on the instrument.
+
+        Returns
+        ----------
+        num_dofs : int
+          Number of degrees of freedom instrument supports
+        """
+
+        # A piano only has one degree of freedom
+        num_dofs = 1
+
+        return num_dofs
+
+
 
 class TablatureProfile(InstrumentProfile):
     """

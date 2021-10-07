@@ -99,6 +99,12 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
         # Extract and sort files pertaining to the optimizer state
         optimizer_files = sorted([path for path in log_files if tools.PYT_STATE in path], key=file_sort)
 
+        # Check if there is a preexisting model and optimizer state for the specified number of iterations
+        if f'-{iterations}.' in model_files and f'-{iterations}.' in optimizer_files:
+            # Remove all other files from the list of model and optimizer files
+            model_files = [file for file in model_files if f'-{iterations}.' in file]
+            optimizer_files = [file for file in optimizer_files if f'-{iterations}.' in file]
+
         # Check if any previous checkpoints exist
         if len(model_files) > 0 and len(optimizer_files) > 0:
             # Get the path to the latest model file

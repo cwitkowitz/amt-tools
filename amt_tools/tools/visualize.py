@@ -1064,11 +1064,19 @@ def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=No
     # Set the extent for marking the axes of the image
     extent = [x_min, x_max, y_max, y_min]
 
-    # Plot the activation map as an image
-    # TODO - make interactive (ax.images.set_data)
-    ax.imshow(multi_pitch, cmap='gray_r', vmin=0, vmax=1, extent=extent, aspect='auto')
-    # Flip the axis for ascending pitch
-    ax.invert_yaxis()
+    # Check if an activation map has already been plotted
+    if len(ax.images):
+        # Update the activation map with the new data
+        ax.images[0].set_data(multi_pitch)
+        # Update the images extent
+        ax.images[0].set_extent(extent)
+        # Flip the axis for ascending pitch
+        ax.invert_yaxis()
+    else:
+        # Plot the activation map as an image
+        ax.imshow(multi_pitch, cmap='gray_r', vmin=0, vmax=1, extent=extent, aspect='auto')
+        # Flip the axis for ascending pitch
+        ax.invert_yaxis()
 
     if not include_axes:
         # Hide the axes
@@ -1079,3 +1087,61 @@ def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=No
         ax.set_xlabel(x_label)
 
     return fig
+
+class PianorollVisualizer(TFRVisualizer):
+    """
+    Implements an iterative pianoroll visualizer.
+    """
+    def __init__(self, figsize=None, include_axes=True, plot_frequency=None,
+                 sample_rate=44100, hop_length=512, n_pitches=88, time_window=1):
+        """
+        Initialize parameters for the pianoroll visualizer.
+
+        Parameters
+        ----------
+        See TFRVisualizer class for others...
+        n_pitches : int
+          Number of pitches expected in pianoroll
+        """
+
+        super().__init__(figsize, include_axes, plot_frequency, sample_rate, hop_length, n_pitches, time_window)
+
+    def update(self, frames):
+        """
+        Update the internal state of the pianoroll visualizer and display the updated plot.
+
+        Parameters
+        ----------
+        frames : ndarray (F x T)
+          New frames for the pianoroll
+          F - number of pitches
+          T - number of frames
+        """
+
+        # Determine how many new frames were given
+        num_frames = frames.shape[-1]
+
+        # Advance the frame buffer by the given amount of new frames
+        self.frame_buffer = np.roll(self.frame_buffer, -num_frames)
+        # Overwrite the oldest frames in the buffer with the new ones
+        self.frame_buffer[..., -num_frames:] = frames
+
+        # Obtain the corresponding times for the new samples
+        times = np.arange(self.current_frame, self.current_frame + num_frames) / (self.sample_rate / self.hop_length)
+
+        # Advance the time buffer by the given amount of new frames
+        self.time_buffer = np.roll(self.time_buffer, -num_frames)
+        # Overwrite the oldest times in the buffer with the new times
+        self.time_buffer[-num_frames:] = times
+
+        # Advance the time tracking frame index
+        self.current_frame += num_frames
+
+        if self.query_figure_update():
+            self.pre_update()
+            # Update the visualizer's figure
+            self.fig = plot_pianoroll(multi_pitch=self.frame_buffer,
+                                      times=self.time_buffer,
+                                      include_axes=self.include_axes,
+                                      fig=self.fig)
+            self.post_update()
