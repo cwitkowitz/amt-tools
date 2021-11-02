@@ -99,18 +99,20 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
         # Extract and sort files pertaining to the optimizer state
         optimizer_files = sorted([path for path in log_files if tools.PYT_STATE in path], key=file_sort)
 
-        # Check if there is a preexisting model and optimizer state for the specified number of iterations
-        if f'-{iterations}.' in model_files and f'-{iterations}.' in optimizer_files:
-            # Remove all other files from the list of model and optimizer files
-            model_files = [file for file in model_files if f'-{iterations}.' in file]
-            optimizer_files = [file for file in optimizer_files if f'-{iterations}.' in file]
-
         # Check if any previous checkpoints exist
         if len(model_files) > 0 and len(optimizer_files) > 0:
+            # Define the tags for the model and state at the selected number of iterations
+            max_model = f'{tools.PYT_MODEL}-{iterations}.{tools.PYT_EXT}'
+            max_state = f'{tools.PYT_STATE}-{iterations}.{tools.PYT_EXT}'
+
+            # Check if a model/state already exists for the selected iterations
+            model_index = model_files.index(max_model) if max_model in model_files else -1
+            state_index = optimizer_files.index(max_state) if max_state in optimizer_files else -1
+
             # Get the path to the latest model file
-            model_path = os.path.join(log_dir, model_files[-1])
+            model_path = os.path.join(log_dir, model_files[model_index])
             # Get the path to the latest optimizer state file
-            optimizer_path = os.path.join(log_dir, optimizer_files[-1])
+            optimizer_path = os.path.join(log_dir, optimizer_files[state_index])
 
             # Make the start iteration the iteration when the checkpoint was taken
             start_iter = int(''.join([ch for ch in model_files[-1] if ch.isdigit()]))
