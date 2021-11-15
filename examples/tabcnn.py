@@ -69,9 +69,6 @@ def config():
 @ex.automain
 def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoints,
                      batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
-    # Seed everything with the same seed
-    tools.seed_everything(seed)
-
     # Initialize the default guitar profile
     profile = tools.GuitarProfile()
 
@@ -102,6 +99,9 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
     # Perform each fold of cross-validation
     for k in range(6):
+        # Seed everything with the same seed
+        tools.seed_everything(seed)
+
         # Determine the name of the splits being removed
         test_hold_out = '0' + str(k)
 

@@ -286,7 +286,7 @@ class SoftmaxGroups(OutputLayer):
     across the possibilities (the string's fretting).
     """
 
-    def __init__(self, dim_in, num_groups, num_classes):
+    def __init__(self, dim_in, num_groups, num_classes, weights=None):
         """
         Initialize fields of the multi-label softmax layer.
 
@@ -298,10 +298,15 @@ class SoftmaxGroups(OutputLayer):
           Number of independent softmax groups
         num_classes : int
           Number of classes per softmax group
+        weights : ndarray (G x C) or None (optional)
+          Class weights for calculating loss
+          G - number of independent softmax groups
+          C - number of classes per softmax group
         """
 
         self.num_groups = num_groups
         self.num_classes = num_classes
+        self.weights = weights
 
         # Total number of output neurons
         dim_out = self.num_groups * self.num_classes
@@ -337,6 +342,27 @@ class SoftmaxGroups(OutputLayer):
 
         return tablature
 
+    def set_weights(self, weights, device='cpu'):
+        """
+        Update the class weighting.
+
+        Parameters
+        ----------
+        weights : ndarray (G x C) or None (optional)
+          Class weights for calculating loss
+          G - number of independent softmax groups
+          C - number of classes per softmax group
+        device : string, optional (default /'cpu/')
+          Device to hold the weights
+        """
+
+        if isinstance(device, int):
+            # If device is an integer, assume device represents GPU number
+            device = torch.device(f'cuda:{device}'
+                                  if torch.cuda.is_available() else 'cpu')
+
+        self.weights = torch.Tensor(weights).to(device)
+
     def get_loss(self, estimated, reference):
         """
         Compute the cross entropy softmax loss for each group independently.
@@ -367,19 +393,40 @@ class SoftmaxGroups(OutputLayer):
         # Obtain the batch size before frame axis is collapsed
         batch_size = estimated.size(0)
 
-        # Fold the degrees of freedom axis into the pseudo-batch axis
-        estimated = estimated.view(-1, self.num_classes)
+        if self.weights is None:
+            # Fold the degrees of freedom axis into the pseudo-batch axis
+            estimated = estimated.view(-1, self.num_classes)
 
-        # Transform ground-truth tabs into 1D softmax labels
-        reference = reference.transpose(-2, -1)
-        reference[reference == -1] = self.num_classes - 1
-        reference = reference.flatten().long()
+            # Transform ground-truth tabs into 1D softmax labels
+            reference = reference.transpose(-2, -1)
+            reference[reference == -1] = self.num_classes - 1
+            reference = reference.flatten().long()
 
-        # Calculate the loss for the entire pseudo-batch
-        loss = F.cross_entropy(estimated.float(), reference, reduction='none')
-        loss = loss.view(batch_size, -1, self.num_groups)
-        # Average loss across degrees of freedom
-        loss = torch.mean(loss, dim=-1)
+            # Calculate the loss for the entire pseudo-batch
+            loss = F.cross_entropy(estimated.float(), reference, reduction='none')
+            loss = loss.view(batch_size, -1, self.num_groups)
+            # Sum loss across degrees of freedom
+            loss = torch.sum(loss, dim=-1)
+        else:
+            # TODO - does there really need to be two branches here?
+            # Initalize the loss
+            loss = 0
+
+            # Collapse the batch and frame dimension and break apart the activations by group
+            estimated = estimated.view(-1, self.num_groups, self.num_classes).float()
+
+            # Transform ground-truth tabs into 1D softmax labels
+            reference[reference == -1] = self.num_classes - 1
+
+            # Loop through the Softmax groups
+            for smax in range(self.num_groups):
+                # Compute the weighted loss for each group
+                loss += F.cross_entropy(estimated[:, smax], reference[:, smax].flatten().long(),
+                                        weight=self.weights[smax], reduction='none')
+
+            # Uncollapse the batch dimension
+            loss = loss.view(batch_size, -1)
+
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
         # Average the loss across the batch

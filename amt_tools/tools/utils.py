@@ -1616,7 +1616,10 @@ def logistic_to_tablature(logistic, profile, silence, silence_thr=0.):
         activations = logistic[..., start_idx : stop_idx, :]
 
         # Determine which class has the highest activation across each frame
-        max_activations, highest_class = torch.max(activations, axis=-2)
+        if isinstance(logistic, np.ndarray):
+            max_activations, highest_class = np.max(activations, axis=-2), np.argmax(activations, axis=-2)
+        else:
+            max_activations, highest_class = torch.max(activations, axis=-2)
 
         if silence:
             highest_class -= 1
@@ -1627,10 +1630,16 @@ def logistic_to_tablature(logistic, profile, silence, silence_thr=0.):
             highest_class[silent_frames] = -1
 
         # Add the class membership to the tablature
-        tablature += [highest_class.unsqueeze(-2)]
+        if isinstance(logistic, np.ndarray):
+            tablature += [np.expand_dims(highest_class, axis=-2)]
+        else:
+            tablature += [highest_class.unsqueeze(-2)]
 
     # Collapse the list to get the final tablature
-    tablature = torch.cat(tablature, dim=-2)
+    if isinstance(logistic, np.ndarray):
+        tablature = np.concatenate(tablature, axis=-2)
+    else:
+        tablature = torch.cat(tablature, dim=-2)
 
     return tablature
 
@@ -1705,6 +1714,37 @@ def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile, silence=False)
 
     return logistic
 
+
+def tablature_to_logistic(tablature, profile, silence=False):
+    """
+    Helper function to convert tabature to unique string/fret combinations.
+
+    Parameters
+    ----------
+    tablature : tensor (S x T)
+      Array of class membership for multiple degrees of freedom (e.g. strings)
+      S - number of strings or degrees of freedom
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+    silence : bool
+      Whether to explicitly include an activation for silence
+
+    Returns
+    ----------
+    logistic_activations : ndarray (N x T)
+      Array of tablature activations (e.g. string/fret combinations)
+      N - number of unique string/fret activations
+      T - number of frames
+    """
+
+    # Convert the tablature data to a stacked multi pitch array
+    stacked_multi_pitch = tablature_to_stacked_multi_pitch(tablature, profile)
+
+    # Convert the stacked multi pitch array to logistic (unique string/fret) activations
+    logistic_activations = stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile, silence)
+
+    return logistic_activations
 
 ##################################################
 # TO ONSETS                                      #
@@ -3060,6 +3100,34 @@ def dict_append(track, additions, dim=-1):
         elif isinstance(additions[key], tuple):
             # Insert a None to show we saw the tuple but refuse to process it
             track[key] = None
+
+    return track
+
+
+def dict_detach(track):
+    """
+    Detach gradient computation for all tensors.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the dictionary entry is a Tensor
+        if isinstance(track[key], torch.Tensor):
+            # Detach the gradient from the Tensor
+            track[key] = track[key].detach()
 
     return track
 
