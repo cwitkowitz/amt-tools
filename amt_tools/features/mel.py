@@ -80,11 +80,8 @@ class MelSpec(STFT):
           Calculated features in decibels
         """
 
-        # Only use maximum as reference if there is more than one frame
-        ref = 1.0 if feats.shape[-1] == 1 else np.max
-
         # Simply use the appropriate librosa function
-        feats = librosa.core.power_to_db(feats, ref=ref)
+        feats = librosa.core.power_to_db(feats, ref=np.max)
 
         return feats
 

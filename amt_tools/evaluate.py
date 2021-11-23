@@ -1,7 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from .inference import run_online, run_offline, run_inference
+from .inference import run_online, run_offline
 from . import tools
 
 # Regular imports
@@ -51,19 +51,25 @@ def validate(model, dataset, evaluator, estimator=None, online=False):
       Dictionary containing all relevant results averaged across all tracks
     """
 
-    # Run inference steps on all tracks in the dataset
-    all_predictions = run_inference(model, dataset, estimator, online)
+    # Make sure the model is in evaluation mode
+    model.eval()
 
-    # Loop through the validation track ids
-    for track_id in dataset.tracks:
-        # Obtain the track data
-        track_data = dataset.get_track_data(track_id)
+    # Turn off gradient computation
+    with torch.no_grad():
+        # Loop through the validation track ids
+        for track_id in dataset.tracks:
+            # Obtain the track data
+            track_data = dataset.get_track_data(track_id)
 
-        # Extract the predictions for the track
-        predictions = all_predictions[track_id]
+            if online:
+                # Perform the inference step in mock-real-time fashion
+                predictions = run_online(track_data, model, estimator)
+            else:
+                # Perform the inference step offline
+                predictions = run_offline(track_data, model, estimator)
 
-        # Evaluate the predictions and track the results
-        evaluator.get_track_results(predictions, track_data, track_id)
+            # Evaluate the predictions and track the results
+            evaluator.get_track_results(predictions, track_data, track_id)
 
     # Obtain the average results from this validation loop
     average = evaluator.average_results()

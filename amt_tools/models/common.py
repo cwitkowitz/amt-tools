@@ -559,8 +559,8 @@ class LogisticBank(OutputLayer):
         loss = F.binary_cross_entropy_with_logits(estimated.float(), reference.float(), reduction='none')
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
-        # Average loss across keys
-        loss = torch.mean(loss, dim=-1)
+        # Sum loss across keys
+        loss = torch.sum(loss, dim=-1)
         # Average loss across the batch
         loss = torch.mean(loss)
 

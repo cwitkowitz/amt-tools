@@ -58,7 +58,7 @@ class WaveformWrapper(FeatureModule):
           Mono-channel audio
         """
 
-        return audio
+        return None
 
     def get_feature_size(self):
         """
