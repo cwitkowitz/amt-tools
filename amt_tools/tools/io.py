@@ -461,6 +461,9 @@ def write_and_print(file, text, verbose=True, end=''):
       Append this to the end of the text (e.g. for new line or no new line)
     """
 
+    # Make sure the provided text is a string
+    text = str(text)
+
     # Append the ending to the text
     text = text + end
 
@@ -574,6 +577,67 @@ def write_notes(pitches, intervals, path, places=3):
 
             # Write the line to the file
             write_and_print(estim_file, line, verbose=False, end=end)
+
+
+def write_stacked_notes_jams(stacked_notes, jams_path):
+    """
+    Helper function to create a JAMS file and populate it with stacked notes.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    jams_path : string
+      Path to JAMS file to write
+    """
+
+    # Create a new JAMS object
+    jam = jams.JAMS()
+
+    # Keep track of the duration
+    total_duration = 0
+
+    # Loop through all slices
+    for key in stacked_notes.keys():
+        # Initialize a new annotation to hold the notes of the slice
+        slice_data = jams.Annotation(namespace=constants.JAMS_NOTE_MIDI, time=0, duration=0)
+        # Add metadata to reference the slice as the source of data
+        slice_data.annotation_metadata = jams.AnnotationMetadata(data_source=key)
+
+        # Extract the notes corresponding to the slice
+        pitches, intervals = stacked_notes[key]
+
+        # Compute the duration of each note
+        durations = intervals[:, 1] - intervals[:, 0]
+
+        # Loop through all the notes
+        for n in range(len(pitches)):
+            # Add the note to the slice data
+            slice_data.append(time=intervals[n, 0], duration=durations[n], value=pitches[n])
+
+        # Add the annotation to the JAM
+        jam.annotations.append(slice_data)
+
+        if len(pitches) == 0:
+            # Don't compute duration if there are no notes for the slice
+            continue
+
+        # Determine the total duration of the slice
+        slice_duration = np.max(intervals[:, 1])
+
+        # Update the slice duration, if necessary
+        if slice_duration > total_duration:
+            total_duration = slice_duration
+
+    # Add the total duration to the file metadata
+    jam.file_metadata.duration = total_duration
+
+    # Add the total duration to the metadata of each annotation
+    for slice_data in jam.annotations:
+        slice_data.duration = total_duration
+
+    # Save as a JAM file
+    jam.save(jams_path)
 
 
 ##################################################

@@ -397,7 +397,7 @@ def offset_notes(pitches, intervals, semitones):
 ##################################################
 
 
-def notes_to_stacked_notes(pitches, intervals, i=0):
+def notes_to_stacked_notes(pitches, intervals, key=0):
     """
     Convert a collection of notes into a dictionary of stacked notes.
 
@@ -409,7 +409,7 @@ def notes_to_stacked_notes(pitches, intervals, i=0):
     intervals : ndarray (N x 2)
       Array of onset-offset time pairs corresponding to notes
       N - number of notes
-    i : int
+    key : object
       Slice key to use
 
     Returns
@@ -422,7 +422,7 @@ def notes_to_stacked_notes(pitches, intervals, i=0):
     stacked_notes = dict()
 
     # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
-    stacked_notes[i] = sort_notes(pitches, intervals)
+    stacked_notes[key] = sort_notes(pitches, intervals)
 
     return stacked_notes
 
