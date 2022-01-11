@@ -1102,7 +1102,7 @@ def cat_stacked_pitch_list(stacked_pitch_list, new_stacked_pitch_list):
 ##################################################
 
 
-def notes_to_multi_pitch(pitches, intervals, times, profile):
+def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=True):
     """
     Convert loose MIDI note groups into a multi pitch array.
 
@@ -1119,6 +1119,8 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+    include_offsets : bool
+      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -1159,7 +1161,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # Loop through each note
     for i in range(len(pitches)):
         # Populate the multi pitch array with activations for the note
-        multi_pitch[pitches[i], onsets[i] : offsets[i] + 1] = 1
+        multi_pitch[pitches[i], onsets[i] : offsets[i] + int(include_offsets)] = 1
 
     return multi_pitch
 
@@ -1314,7 +1316,7 @@ def logistic_to_multi_pitch(logistic, profile):
 ##################################################
 
 
-def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
+def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile, include_offsets=True):
     """
     Convert a dictionary of MIDI note groups into a stack of multi pitch arrays.
 
@@ -1327,6 +1329,8 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+    include_offsets : bool
+      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -1345,7 +1349,7 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to multi pitch and add to the list
-        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile)
+        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets)
         stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(slice_multi_pitch))
 
     # Collapse the list into an array
