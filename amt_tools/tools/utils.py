@@ -1459,6 +1459,10 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     # Determine the place in the stacked multi pitch array where each degree of freedom begins
     dof_start = np.expand_dims(tuning - profile.low, -1)
 
+    if isinstance(tablature, torch.Tensor):
+        # Convert these to tensor
+        dof_start = torch.Tensor(dof_start).to(tablature.device)
+
     # Determine which frames, by degree of freedom, contain pitch activity
     non_silent_frames = tablature >= 0
 
@@ -1466,6 +1470,7 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     pitch_idcs = (tablature + dof_start)[non_silent_frames]
 
     # Obtain the non-silent indices across each dimension
+    # TODO - nonzero(*, bool as_tuple) to avoid deprecation warning?
     non_silent_idcs = non_silent_frames.nonzero()
 
     if isinstance(tablature, torch.Tensor):
@@ -1475,6 +1480,8 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
         non_silent_idcs = tuple(non_silent_idcs.transpose(-2, -1))
         # Convert to Tensor and add to the appropriate device
         stacked_multi_pitch = torch.from_numpy(stacked_multi_pitch).to(tablature.device)
+        # Make sure the tensor has the same type as the input tablature
+        stacked_multi_pitch = stacked_multi_pitch.to(tablature.dtype)
     else:
         # Make sure pitch indices are integers
         pitch_idcs = pitch_idcs.astype(constants.INT64)
@@ -1721,7 +1728,7 @@ def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile, silence=False)
 
 def tablature_to_logistic(tablature, profile, silence=False):
     """
-    Helper function to convert tabature to unique string/fret combinations.
+    Helper function to convert tablature to unique string/fret combinations.
 
     Parameters
     ----------
@@ -2531,6 +2538,7 @@ def seed_everything(seed):
       Seed to use for random number generation
     """
 
+    # TODO - look into 'torch.backends.cudnn.benchmark = False'
     torch.backends.cudnn.deterministic = True
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -3055,7 +3063,7 @@ def dict_append(track, additions, dim=-1):
     """
     Append together matching entries of two dictionaries. This
     will deliberately skip tuples, as in stacked representations.
-    TODO - maybe be repeat of function defined in evaluate.py
+    TODO - may be repeat of function defined in evaluate.py
 
     Parameters
     ----------

@@ -8,6 +8,7 @@ setup(
     url='https://github.com/cwitkowitz/amt-tools',
     author='Frank Cwitkowitz',
     author_email='fcwitkow@ur.rochester.edu',
+    # TODO - why does 'pip install -e' consider generated/examples as packages?
     packages=find_packages(),
     python_requires='>=3.7',
     install_requires=['numpy', 'librosa', 'torch', 'matplotlib',

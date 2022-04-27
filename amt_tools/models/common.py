@@ -41,7 +41,7 @@ class TranscriptionModel(nn.Module):
           Device with which to perform processing steps
         """
 
-        super().__init__()
+        nn.Module.__init__(self)
 
         self.dim_in = dim_in
         self.profile = profile
@@ -55,8 +55,6 @@ class TranscriptionModel(nn.Module):
 
         # Placeholder for appending additional modules, such as learnable filterbanks
         self.frontend = nn.Sequential()
-
-        self.change_device()
 
     def change_device(self, device=None):
         """
@@ -206,7 +204,7 @@ class OutputLayer(nn.Module):
     Implements a generic output layer for transcription models.
     """
 
-    def __init__(self, dim_in, dim_out):
+    def __init__(self, dim_in, dim_out, weights=None):
         """
         Initialize parameters common to all output layers as model fields
         and instantiate layers as a PyTorch processing Module.
@@ -217,12 +215,41 @@ class OutputLayer(nn.Module):
           Dimensionality of input features
         dim_out : int
           Dimensionality of output activations
+        weights : ndarray (G x C) or None (optional)
+          Class weights for calculating loss
+          G - number of independent softmax groups
+          C - number of classes per softmax group
         """
 
         super().__init__()
 
         self.dim_in = dim_in
         self.dim_out = dim_out
+
+        if weights is None:
+            self.weights = weights
+        else:
+            self.set_weights(self.weights.flatten())
+
+    def set_weights(self, weights, device='cpu'):
+        """
+        Update the class weighting.
+
+        Parameters
+        ----------
+        weights : ndarray (N) or None (optional)
+          Class weights for calculating loss
+          N - number of activations
+        device : string, optional (default /'cpu/')
+          Device to hold the weights
+        """
+
+        if isinstance(device, int):
+            # If device is an integer, assume device represents GPU number
+            device = torch.device(f'cuda:{device}'
+                                  if torch.cuda.is_available() else 'cpu')
+
+        self.weights = torch.Tensor(weights).to(device)
 
     @abstractmethod
     def forward(self, feats):
@@ -298,20 +325,17 @@ class SoftmaxGroups(OutputLayer):
           Number of independent softmax groups
         num_classes : int
           Number of classes per softmax group
-        weights : ndarray (G x C) or None (optional)
-          Class weights for calculating loss
-          G - number of independent softmax groups
-          C - number of classes per softmax group
+
+        See OutputLayer class for others...
         """
 
         self.num_groups = num_groups
         self.num_classes = num_classes
-        self.weights = weights
 
         # Total number of output neurons
         dim_out = self.num_groups * self.num_classes
 
-        super().__init__(dim_in, dim_out)
+        super().__init__(dim_in, dim_out, weights)
 
         # Intitialize the output layer
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
@@ -341,27 +365,6 @@ class SoftmaxGroups(OutputLayer):
         tablature = self.output_layer(feats)
 
         return tablature
-
-    def set_weights(self, weights, device='cpu'):
-        """
-        Update the class weighting.
-
-        Parameters
-        ----------
-        weights : ndarray (G x C) or None (optional)
-          Class weights for calculating loss
-          G - number of independent softmax groups
-          C - number of classes per softmax group
-        device : string, optional (default /'cpu/')
-          Device to hold the weights
-        """
-
-        if isinstance(device, int):
-            # If device is an integer, assume device represents GPU number
-            device = torch.device(f'cuda:{device}'
-                                  if torch.cuda.is_available() else 'cpu')
-
-        self.weights = torch.Tensor(weights).to(device)
 
     def get_loss(self, estimated, reference):
         """
@@ -418,11 +421,14 @@ class SoftmaxGroups(OutputLayer):
             # Transform ground-truth tabs into 1D softmax labels
             reference[reference == -1] = self.num_classes - 1
 
+            # Reshape activations to index by group
+            weight = self.weights.view(self.num_groups, -1)
+
             # Loop through the Softmax groups
             for smax in range(self.num_groups):
                 # Compute the weighted loss for each group
                 loss += F.cross_entropy(estimated[:, smax], reference[:, smax].flatten().long(),
-                                        weight=self.weights[smax], reduction='none')
+                                        weight=weight[smax], reduction='none')
 
             # Uncollapse the batch dimension
             loss = loss.view(batch_size, -1)
@@ -482,7 +488,7 @@ class LogisticBank(OutputLayer):
     or not the key is active.
     """
 
-    def __init__(self, dim_in, dim_out):
+    def __init__(self, dim_in, dim_out, weights=None):
         """
         Initialize fields of the multi-label logistic layer.
 
@@ -492,9 +498,11 @@ class LogisticBank(OutputLayer):
           Dimensionality of input features
         dim_out : int
           Dimensionality of output activations
+
+        See OutputLayer class for others...
         """
 
-        super().__init__(dim_in, dim_out)
+        super().__init__(dim_in, dim_out, weights)
 
         # Initialize the output layer
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
@@ -555,8 +563,12 @@ class LogisticBank(OutputLayer):
         # Switch the frame and key dimension
         estimated = estimated.transpose(-2, -1)
 
+        # Add a frame dimension to the weights for broadcasting
+        weight = self.weights.unsqueeze(-1) if self.weights is not None else None
+
         # Calculate the loss for the entire pseudo-batch
-        loss = F.binary_cross_entropy_with_logits(estimated.float(), reference.float(), reduction='none')
+        loss = F.binary_cross_entropy_with_logits(estimated.float(), reference.float(),
+                                                  weight=weight, reduction='none')
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
         # Sum loss across keys

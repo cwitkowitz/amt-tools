@@ -32,6 +32,9 @@ def run_offline(track_data, model, estimator=None):
     # Obtain the name of the track if it exists
     track_id = tools.unpack_dict(track_data, tools.KEY_TRACK)
 
+    # Convert all numpy arrays in the data dictionary to float32
+    track_data = tools.dict_to_dtype(track_data, dtype=tools.FLOAT32)
+
     # Treat the track data as a batch
     track_data = tools.dict_unsqueeze(tools.dict_to_tensor(track_data))
 
@@ -66,6 +69,9 @@ def run_single_frame(track_data, model, estimator=None):
 
     # Obtain the name of the track if it exists
     track_id = tools.unpack_dict(track_data, tools.KEY_TRACK)
+
+    # Convert all numpy arrays in the data dictionary to float32
+    track_data = tools.dict_to_dtype(track_data, dtype=tools.FLOAT32)
 
     # Make sure the track data consists of tensors
     track_data = tools.dict_to_tensor(track_data)

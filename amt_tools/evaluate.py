@@ -51,15 +51,17 @@ def validate(model, dataset, evaluator, estimator=None, online=False):
       Dictionary containing all relevant results averaged across all tracks
     """
 
-    # Make sure the model is in evaluation mode
-    model.eval()
-
     # Turn off gradient computation
     with torch.no_grad():
         # Loop through the validation track ids
         for track_id in dataset.tracks:
             # Obtain the track data
             track_data = dataset.get_track_data(track_id)
+
+            # Make sure the model is in evaluation mode, called here
+            # in case there are any evaluation steps, such as resetting
+            # language model state, to run before each track
+            model.eval()
 
             if online:
                 # Perform the inference step in mock-real-time fashion
