@@ -16,6 +16,27 @@ import mido
 import jams
 import os
 
+__all__ = [
+    'load_normalize_audio',
+    'extract_stacked_notes_jams',
+    'load_stacked_notes_jams',
+    'extract_notes_jams',
+    'load_notes_jams',
+    'extract_duration_jams',
+    'load_duration_jams',
+    'load_stacked_pitch_list_jams',
+    'load_pitch_list_jams',
+    'load_notes_midi',
+    'write_and_print',
+    'write_list',
+    'write_pitch_list',
+    'write_notes',
+    'write_stacked_notes_jams',
+    'stream_url_resource',
+    'unzip_and_remove',
+    'change_base_dir'
+]
+
 
 ##################################################
 # INPUT                                          #

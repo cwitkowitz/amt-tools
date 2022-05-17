@@ -20,13 +20,13 @@ from amt_tools.features.hvqt import HVQT
 HVQT()
 """
 
-from .combo import *
-from .common import *
-from .cqt import *
-from .hcqt import *
-from .hvqt import *
-from .mel import *
-from .stft import *
-from .stream import *
-from .vqt import *
-from .waveform import *
+from .combo import FeatureCombo
+from .common import FeatureModule
+from .cqt import CQT
+from .hcqt import HCQT
+from .hvqt import HVQT
+from .mel import MelSpec
+from .stft import STFT
+from .stream import FeatureStream, MicrophoneStream, AudioStream, AudioFileStream
+from .vqt import VQT
+from .waveform import WaveformWrapper

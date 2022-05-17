@@ -27,7 +27,12 @@ class MelSpec(STFT):
           Whether to use HTK formula instead of Slaney
         """
 
-        super().__init__(sample_rate, hop_length, decibels, n_fft, win_length, center)
+        super().__init__(sample_rate=sample_rate,
+                         hop_length=hop_length,
+                         decibels=decibels,
+                         win_length=win_length,
+                         center=center,
+                         n_fft=n_fft)
 
         self.n_mels = n_mels
         self.htk = htk

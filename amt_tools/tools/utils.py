@@ -1,7 +1,6 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-import amt_tools.tools
 from . import constants
 
 # Regular imports
@@ -21,11 +20,103 @@ import time
 # TODO - try to ensure these won't break if extra dimensions (e.g. batch) are included
 # TODO - make sure there are no hard assignments (make return copies instead of original where necessary)
 
+__all__ = [
+    'notes_to_batched_notes',
+    'cat_batched_notes',
+    'filter_batched_note_repeats',
+    'transpose_batched_notes',
+    'stacked_notes_to_batched_notes',
+    'batched_notes_to_hz',
+    'batched_notes_to_midi',
+    'slice_batched_notes',
+    'batched_notes_to_notes',
+    'stacked_notes_to_notes',
+    'notes_to_hz',
+    'notes_to_midi',
+    'offset_notes',
+    'notes_to_stacked_notes',
+    'batched_notes_to_stacked_notes',
+    'stacked_notes_to_hz',
+    'stacked_notes_to_midi',
+    'cat_stacked_notes',
+    'filter_stacked_note_repeats',
+    'stacked_notes_to_frets',
+    'find_pitch_bounds_stacked_notes',
+    'stacked_pitch_list_to_pitch_list',
+    'multi_pitch_to_pitch_list',
+    'pitch_list_to_hz',
+    'pitch_list_to_midi',
+    'slice_pitch_list',
+    'cat_pitch_list',
+    'unroll_pitch_list',
+    'pitch_list_to_stacked_pitch_list',
+    'stacked_multi_pitch_to_stacked_pitch_list',
+    'stacked_pitch_list_to_hz',
+    'stacked_pitch_list_to_midi',
+    'slice_stacked_pitch_list',
+    'cat_stacked_pitch_list',
+    'notes_to_multi_pitch',
+    'pitch_list_to_multi_pitch',
+    'stacked_multi_pitch_to_multi_pitch',
+    'logistic_to_multi_pitch',
+    'stacked_notes_to_stacked_multi_pitch',
+    'stacked_pitch_list_to_stacked_multi_pitch',
+    'multi_pitch_to_stacked_multi_pitch',
+    'tablature_to_stacked_multi_pitch',
+    'stacked_pitch_list_to_tablature',
+    'stacked_multi_pitch_to_tablature',
+    'logistic_to_tablature',
+    'stacked_multi_pitch_to_logistic',
+    'tablature_to_logistic',
+    'notes_to_onsets',
+    'multi_pitch_to_onsets',
+    'stacked_notes_to_stacked_onsets',
+    'stacked_multi_pitch_to_stacked_onsets',
+    'notes_to_offsets',
+    'multi_pitch_to_offsets',
+    'stacked_notes_to_stacked_offsets',
+    'stacked_multi_pitch_to_stacked_offsets',
+    'sort_batched_notes',
+    'sort_notes',
+    'sort_pitch_list',
+    'rms_norm',
+    'blur_activations',
+    'normalize_activations',
+    'threshold_activations',
+    'framify_activations',
+    'inhibit_activations',
+    'remove_activation_blips',
+    'seed_everything',
+    'estimate_hop_length',
+    'time_series_to_uniform',
+    'get_frame_times',
+    'apply_func_stacked_representation',
+    'tensor_to_array',
+    'array_to_tensor',
+    'save_pack_npz',
+    'load_unpack_npz',
+    'dict_to_dtype',
+    'dict_to_device',
+    'dict_to_array',
+    'dict_to_tensor',
+    'dict_squeeze',
+    'dict_unsqueeze',
+    'dict_append',
+    'dict_detach',
+    'try_unpack_dict',
+    'unpack_dict',
+    'query_dict',
+    'get_tag',
+    'slice_track',
+    'get_current_time',
+    'print_time',
+    'compute_time_difference'
+]
+
 
 ##################################################
 # TO BATCH-FRIENDLY NOTES                        #
 ##################################################
-
 
 def notes_to_batched_notes(pitches, intervals):
     """
@@ -1304,7 +1395,7 @@ def logistic_to_multi_pitch(logistic, profile):
 
     # Make sure the activations are integers
     if isinstance(logistic, np.ndarray):
-        multi_pitch = multi_pitch.astype(amt_tools.tools.UINT)
+        multi_pitch = multi_pitch.astype(constants.UINT)
     else:
         multi_pitch = multi_pitch.long()
 

@@ -29,7 +29,10 @@ class WaveformWrapper(FeatureModule):
           Whether to pad for centered frames
         """
 
-        super().__init__(sample_rate, hop_length, 1, decibels)
+        super().__init__(sample_rate=sample_rate,
+                         hop_length=hop_length,
+                         num_channels=1,
+                         decibels=decibels)
 
         if win_length is None:
             win_length = self.hop_length

@@ -24,7 +24,11 @@ class STFT(WaveformWrapper):
           Length of the FFT window in spectrogram calculation
         """
 
-        super().__init__(sample_rate, hop_length, decibels, win_length, center)
+        super().__init__(sample_rate=sample_rate,
+                         hop_length=hop_length,
+                         decibels=decibels,
+                         win_length=win_length,
+                         center=center)
 
         self.n_fft = n_fft
 

@@ -13,6 +13,25 @@ import numpy as np
 
 # TODO - move to pyqtgraph eventually?
 
+__all__ = [
+    'global_toolbar_disable',
+    'initialize_figure',
+    'get_dynamic_x_bounds',
+    'get_dynamic_y_bounds',
+    'Visualizer',
+    'plot_waveform',
+    'WaveformVisualizer',
+    'plot_tfr',
+    'TFRVisualizer',
+    'plot_pitch_list',
+    'plot_stacked_pitch_list',
+    'StackedPitchListVisualizer',
+    'plot_guitar_tablature',
+    'GuitarTablatureVisualizer',
+    'plot_pianoroll',
+    'PianorollVisualizer'
+]
+
 
 def global_toolbar_disable():
     """

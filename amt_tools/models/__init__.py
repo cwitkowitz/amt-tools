@@ -21,6 +21,6 @@ LogisticBank()
 SoftmaxGroups()
 """
 
-from .common import *
-from .onsetsframes import *
-from .tabcnn import *
+from .common import TranscriptionModel, OutputLayer, SoftmaxGroups, LogisticBank
+from .onsetsframes import OnsetsFrames, OnsetsFrames2, AcousticModel, LanguageModel, OnlineLanguageModel
+from .tabcnn import TabCNN
