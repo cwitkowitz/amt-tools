@@ -3,9 +3,6 @@
 # My imports
 from .hvqt import HVQT
 
-# Regular imports
-# No imports used
-
 
 class HCQT(HVQT):
     """

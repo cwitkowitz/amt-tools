@@ -1,8 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from . import constants
-from . import utils
+from . import utils, constants
 
 # Regular imports
 from abc import abstractmethod

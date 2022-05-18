@@ -16,6 +16,26 @@ import torch
 import sys
 import os
 
+__all__ = [
+    'validate',
+    'average_results',
+    'append_results',
+    'log_results',
+    'write_results',
+    'pattern_match',
+    'Evaluator',
+    'ComboEvaluator',
+    'LossWrapper',
+    'StackedMultipitchEvaluator',
+    'MultipitchEvaluator',
+    'StackedNoteEvaluator',
+    'NoteEvaluator',
+    'StackedPitchListEvaluator',
+    'PitchListEvaluator',
+    'TablatureEvaluator',
+    'SoftmaxAccuracy'
+]
+
 EPSILON = sys.float_info.epsilon
 
 # TODO - add warning when unpack returns None

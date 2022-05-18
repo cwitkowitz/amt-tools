@@ -7,7 +7,6 @@ from .. import tools
 # Regular imports
 from mirdata.datasets import guitarset
 
-import numpy as np
 import os
 
 

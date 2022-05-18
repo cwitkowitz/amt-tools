@@ -1,5 +1,5 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
-# Author: Jonathan Driedger (Chordify)
+# Author: Jonathan Driedger
 
 # My imports
 from .. import tools
@@ -16,7 +16,6 @@ except OSError:
 import numpy as np
 
 import threading
-import warnings
 
 
 class FeatureStream(object):

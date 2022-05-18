@@ -8,10 +8,12 @@ from . import tools
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-import torch.nn as nn
-import numpy as np
 import torch
 import os
+
+__all__ = [
+    'train'
+]
 
 
 def file_sort(file_name):

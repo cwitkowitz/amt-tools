@@ -4,8 +4,6 @@
 from . import constants
 
 # Regular imports
-from abc import abstractmethod
-
 import numpy as np
 import librosa
 
@@ -99,7 +97,6 @@ class PianoProfile(InstrumentProfile):
         num_dofs = 1
 
         return num_dofs
-
 
 
 class TablatureProfile(InstrumentProfile):
