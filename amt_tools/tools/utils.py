@@ -1561,7 +1561,6 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     pitch_idcs = (tablature + dof_start)[non_silent_frames]
 
     # Obtain the non-silent indices across each dimension
-    # TODO - nonzero(*, bool as_tuple) to avoid deprecation warning?
     non_silent_idcs = non_silent_frames.nonzero()
 
     if isinstance(tablature, torch.Tensor):
@@ -2487,7 +2486,7 @@ def framify_activations(activations, win_length, hop_length=1, pad=True):
         # Determine the number of intermediary frames required to give back same size
         int_frames = num_frames + 2 * pad_length
         # Pad the activations with zeros
-        activations = librosa.util.pad_center(activations, int_frames)
+        activations = librosa.util.pad_center(activations, size=int_frames)
     else:
         # Number of intermediary frames is the same
         int_frames = num_frames

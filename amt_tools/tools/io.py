@@ -34,6 +34,7 @@ __all__ = [
     'write_stacked_notes_jams',
     'stream_url_resource',
     'unzip_and_remove',
+    'zip_and_save',
     'change_base_dir'
 ]
 
@@ -723,6 +724,31 @@ def unzip_and_remove(zip_path, target=None):
 
     # Delete the zip file
     os.remove(zip_path)
+
+
+def zip_and_save(dir_path, zip_path):
+    """
+    Zip the contents of a directory and save the compressed file to disk.
+
+    Parameters
+    ----------
+    dir_path : string
+      Path to the directory to compress
+    zip_path : string
+      Path to the resulting zip file
+    """
+
+    # Create a new Zip file to write to
+    with zipfile.ZipFile(zip_path, mode='w') as zipf:
+        # Traverse through the directory to compress
+        for root, _, files in os.walk(dir_path):
+            # Loop through all files in the current sub-directory
+            for file in files:
+                # Determine the absolute and relative path of the file
+                absolute_path = os.path.join(root, file)
+                relative_path = absolute_path.replace(dir_path, '')
+                # Write to the Zip file
+                zipf.write(absolute_path, relative_path)
 
 
 def change_base_dir(new_dir, old_dir):
