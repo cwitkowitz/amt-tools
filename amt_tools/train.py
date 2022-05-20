@@ -16,29 +16,6 @@ __all__ = [
 ]
 
 
-def file_sort(file_name):
-    """
-    Augment file names for sorting within the models directory. Since, e.g.,
-    /'500/' will by default be scored as higher than /'1500/'. One way to fix
-    this is by adding the length of the file to the beginning of the string.
-
-    Parameters
-    ----------
-    file_name : str
-      Path being sorted
-
-    Returns
-    ----------
-    sort_name : str
-      Character count concatenated with original file name
-    """
-
-    # Takes into account the number of digits by adding string length
-    sort_name = str(len(file_name)) + file_name
-
-    return sort_name
-
-
 def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.', scheduler=None,
           resume=True, single_batch=False, val_set=None, estimator=None, evaluator=None, vis_fnc=None):
     """
@@ -97,9 +74,9 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
         log_files = os.listdir(log_dir)
 
         # Extract and sort files pertaining to the model
-        model_files = sorted([path for path in log_files if tools.PYT_MODEL in path], key=file_sort)
+        model_files = sorted([path for path in log_files if tools.PYT_MODEL in path], key=tools.file_sort)
         # Extract and sort files pertaining to the optimizer state
-        optimizer_files = sorted([path for path in log_files if tools.PYT_STATE in path], key=file_sort)
+        optimizer_files = sorted([path for path in log_files if tools.PYT_STATE in path], key=tools.file_sort)
 
         # Check if any previous checkpoints exist
         if len(model_files) > 0 and len(optimizer_files) > 0:

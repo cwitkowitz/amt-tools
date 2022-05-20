@@ -35,7 +35,8 @@ __all__ = [
     'stream_url_resource',
     'unzip_and_remove',
     'zip_and_save',
-    'change_base_dir'
+    'change_base_dir',
+    'file_sort'
 ]
 
 
@@ -774,3 +775,26 @@ def change_base_dir(new_dir, old_dir):
 
     # Remove the (now empty) old top-level directory
     os.rmdir(old_dir)
+
+
+def file_sort(file_name):
+    """
+    Augment file names for sorting since, e.g., /'500/' will by default be
+    scored as higher than /'1500/'. One way to fix this is by adding the
+    length of the file to the beginning of the string.
+
+    Parameters
+    ----------
+    file_name : str
+      Path being sorted
+
+    Returns
+    ----------
+    sort_name : str
+      Character count concatenated with original file name
+    """
+
+    # Takes into account the number of digits by adding string length
+    sort_name = str(len(file_name)) + file_name
+
+    return sort_name
