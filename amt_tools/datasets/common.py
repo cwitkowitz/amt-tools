@@ -335,7 +335,7 @@ class TranscriptionDataset(Dataset):
         if tools.KEY_NOTES in keys:
             # Notes entry has not been popped by a dataloader
             notes = data[tools.KEY_NOTES]
-        elif tools.KEY_NOTES in self.data[track_id].keys():
+        elif self.store_data and tools.KEY_NOTES in self.data[track_id].keys():
             # Notes entry has been popped and must be added again
             notes = self.data[track_id][tools.KEY_NOTES]
         else:

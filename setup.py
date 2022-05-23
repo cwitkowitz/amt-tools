@@ -10,7 +10,7 @@ setup(
     author_email='fcwitkow@ur.rochester.edu',
     # TODO - why does 'pip install -e' consider generated/examples as packages?
     packages=find_packages(),
-    python_requires='>=3.7',
+    python_requires='>=3.8',
     install_requires=['numpy', 'librosa', 'torch', 'matplotlib',
                       'sacred', 'mir_eval', 'jams', 'mido', 'requests',
                       'tqdm', 'tensorboardX', 'scipy', 'pandas', 'mirdata'],
