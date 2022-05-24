@@ -104,28 +104,14 @@ class GuitarSet(TranscriptionDataset):
             # Convert the stacked multi pitch array into tablature
             data[tools.KEY_TABLATURE] = tools.stacked_multi_pitch_to_tablature(stacked_multi_pitch, self.profile)
 
-            # Consider the length of a hop as the ambiguity for onsets/offsets
-            ambiguity = self.hop_length / self.sample_rate
-
-            # Obtain note onsets from the notes in tablature format
-            stacked_onsets = tools.stacked_notes_to_stacked_onsets(stacked_notes, times, self.profile, ambiguity)
-            data[tools.KEY_ONSETS] = tools.stacked_multi_pitch_to_tablature(stacked_onsets, self.profile)
-
-            # Obtain note offsets from the notes in tablature format
-            stacked_offsets = tools.stacked_notes_to_stacked_offsets(stacked_notes, times, self.profile, ambiguity)
-            data[tools.KEY_OFFSETS] = tools.stacked_multi_pitch_to_tablature(stacked_offsets, self.profile)
-
             if self.save_data:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
 
                 # Save the data as a NumPy zip file
-                keys = (tools.KEY_FS, tools.KEY_AUDIO,
-                        tools.KEY_TABLATURE, tools.KEY_MULTIPITCH,
-                        tools.KEY_ONSETS, tools.KEY_OFFSETS)
+                keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_TABLATURE, tools.KEY_MULTIPITCH)
                 tools.save_pack_npz(gt_path, keys, data[tools.KEY_FS], data[tools.KEY_AUDIO],
-                                    data[tools.KEY_TABLATURE], data[tools.KEY_MULTIPITCH],
-                                    data[tools.KEY_ONSETS], data[tools.KEY_OFFSETS])
+                                    data[tools.KEY_TABLATURE], data[tools.KEY_MULTIPITCH])
 
         return data
 

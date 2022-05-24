@@ -167,6 +167,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
 
         # If we are at a checkpoint, or we have finished training
         if checkpoint or done_training:
+            # TODO - save random seed(s) from dataset(s) as well
             # Save the model
             torch.save(model,
                        os.path.join(log_dir, f'{tools.PYT_MODEL}-{global_iter + 1}.{tools.PYT_EXT}'))

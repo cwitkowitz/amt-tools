@@ -29,6 +29,7 @@ __all__ = [
     'batched_notes_to_hz',
     'batched_notes_to_midi',
     'slice_batched_notes',
+    'multi_pitch_to_notes',
     'batched_notes_to_notes',
     'stacked_notes_to_notes',
     'notes_to_hz',
@@ -344,6 +345,111 @@ def slice_batched_notes(batched_notes, start_time, stop_time):
 ##################################################
 # TO NOTES                                       #
 ##################################################
+
+
+def multi_pitch_to_notes(multi_pitch, times, profile, onsets=None, offsets=None):
+    """
+    Decode a multi pitch array into loose MIDI note groups.
+
+    Parameters
+    ----------
+    multi_pitch : ndarray (F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    onsets : ndarray (F x T) or None (Optional)
+      Where to start considering notes "active"
+      F - number of discrete pitches
+      T - number of frames
+    offsets : ndarray (F x T) or None (Optional)
+      Where to stop considering notes "active" - currently unused
+      F - number of discrete pitches
+      T - number of frames
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes in MIDI format
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    """
+
+    if onsets is None:
+        # Default the onsets if they were not provided
+        onsets = multi_pitch_to_onsets(multi_pitch)
+
+    # Make sure all onsets have corresponding pitch activations
+    multi_pitch = np.logical_or(onsets, multi_pitch).astype(constants.FLOAT32)
+
+    # Turn onset activations into impulses at starting frame
+    onsets = multi_pitch_to_onsets(onsets)
+
+    # Determine the total number of frames
+    num_frames = multi_pitch.shape[-1]
+
+    # Estimate the duration of the track (for bounding note offsets)
+    times = np.append(times, times[-1] + estimate_hop_length(times))
+
+    # Create empty lists for note pitches and their time intervals
+    pitches, intervals = list(), list()
+
+    # Determine the pitch and frame indices where notes begin
+    pitch_idcs, frame_idcs = onsets.nonzero()
+
+    # Loop through note beginnings
+    for pitch, frame in zip(pitch_idcs, frame_idcs):
+        # Mark onset and start offset counter
+        onset, offset = frame, frame + 1
+
+        # Increment the offset counter until one of the following occurs:
+        #  1. There are no more frames
+        #  2. Pitch is no longer active in the multi pitch array
+        #  3. A new onset occurs involving the current pitch
+        while True:
+            # There are no more frames to count
+            maxed_out = offset == num_frames
+
+            if maxed_out:
+                # Stop looping
+                break
+
+            # There is an activation for the pitch at the next frame
+            active_pitch = multi_pitch[pitch, offset]
+
+            if not active_pitch:
+                # Stop looping
+                break
+
+            # There is an onset for the pitch at the next frame
+            new_onset = onsets[pitch, offset]
+
+            if new_onset:
+                # Stop looping
+                break
+
+            # Include the offset counter
+            offset += 1
+
+        # Add the frequency to the list
+        pitches.append(pitch + profile.low)
+
+        # Add the interval to the list
+        intervals.append([times[onset], times[offset]])
+
+    # Convert the lists to numpy arrays
+    pitches, intervals = np.array(pitches), np.array(intervals)
+
+    # Sort notes by onset just for the purpose of being neat
+    pitches, intervals = sort_notes(pitches, intervals)
+
+    return pitches, intervals
 
 
 def batched_notes_to_notes(batched_notes):
