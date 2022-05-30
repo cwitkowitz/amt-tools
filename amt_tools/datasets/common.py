@@ -32,7 +32,7 @@ class TranscriptionDataset(Dataset):
     """
 
     def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, profile, num_frames,
-                 split_notes, reset_data, store_data, save_data, save_loc, seed):
+                 audio_norm, split_notes, reset_data, store_data, save_data, save_loc, seed):
         """
         Initialize parameters common to all datasets as fields and instantiate
         as a PyTorch Dataset.
@@ -53,6 +53,11 @@ class TranscriptionDataset(Dataset):
           Instructions for organizing data and ground-truth
         num_frames : int
           Number of frames per data sample
+        audio_norm : float or None
+          Type of normalization to perform when loading audio
+          -1 - root-mean-square
+          See librosa for others...
+            - None case is handled here
         split_notes : bool
           Flag to avoiding cutting samples in between notes
         reset_data : bool
@@ -110,6 +115,8 @@ class TranscriptionDataset(Dataset):
         # Set the number of frames for each sample
         self.num_frames = num_frames
 
+        self.audio_norm = audio_norm
+
         # Set the storing and saving parameters
         self.store_data = store_data
         self.save_data = save_data
@@ -121,14 +128,16 @@ class TranscriptionDataset(Dataset):
         # Remove any saved ground-truth for the dataset if reset_data is selected
         if os.path.exists(self.get_gt_dir()) and self.reset_data:
             shutil.rmtree(self.get_gt_dir())
-        # Make sure the directory for saving and loading ground-truth exists
-        os.makedirs(self.get_gt_dir(), exist_ok=True)
+        if self.save_data:
+            # Make sure the directory for saving and loading ground-truth exists
+            os.makedirs(self.get_gt_dir(), exist_ok=True)
 
         # Remove any saved features for the dataset if reset_data is selected
         if os.path.exists(self.get_feats_dir()) and self.reset_data:
             shutil.rmtree(self.get_feats_dir())
-        # Make sure the directory for saving and loading features exists
-        os.makedirs(self.get_feats_dir(), exist_ok=True)
+        if self.save_data:
+            # Make sure the directory for saving and loading features exists
+            os.makedirs(self.get_feats_dir(), exist_ok=True)
 
         # Initialize a random number generator for the dataset
         self.rng = np.random.RandomState(seed)
@@ -265,6 +274,8 @@ class TranscriptionDataset(Dataset):
             if feats is not None:
                 # Add the features to the data dictionary in RAM
                 self.data[track][tools.KEY_FEATS] = feats
+                # TODO - a lot of memory could be saved by throwing
+                #        away audio after features are computed
             self.data[track][tools.KEY_TIMES] = times
 
         return data

@@ -1275,7 +1275,7 @@ class TablatureEvaluator(Evaluator):
             tools.KEY_PRECISION : precision,
             tools.KEY_RECALL : recall,
             tools.KEY_F1 : f_measure,
-            tools.KEY_TDR : tdr # TODO - slightly greater than 1 when testing on training?
+            tools.KEY_TDR : tdr
         }
 
         return results

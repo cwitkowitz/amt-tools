@@ -1975,7 +1975,7 @@ def notes_to_onsets(pitches, intervals, times, profile, ambiguity=None):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each onset label should span
 
     Returns
@@ -2062,7 +2062,7 @@ def stacked_notes_to_stacked_onsets(stacked_notes, times, profile, ambiguity=Non
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each onset label should span
 
     Returns
@@ -2860,7 +2860,7 @@ def get_frame_times(duration, sample_rate, hop_length):
     total_num_frames = int(1 + (duration * sample_rate - 1) // hop_length)
 
     # We need the frame times for the tablature
-    times = librosa.frames_to_time(np.arange(total_num_frames), sample_rate, hop_length)
+    times = librosa.frames_to_time(np.arange(total_num_frames), sr=sample_rate, hop_length=hop_length)
 
     return times
 

@@ -16,8 +16,8 @@ class MAPS(TranscriptionDataset):
     """
 
     def __init__(self, base_dir=None, splits=None, hop_length=512, sample_rate=16000, data_proc=None,
-                 profile=None, num_frames=None, split_notes=False, reset_data=False, store_data=True,
-                 save_data=True, save_loc=None, seed=0):
+                 profile=None, num_frames=None, audio_norm=-1, split_notes=False, reset_data=False,
+                 store_data=True, save_data=True, save_loc=None, seed=0):
         """
         Initialize the dataset and establish parameter defaults in function signature.
 
@@ -26,8 +26,8 @@ class MAPS(TranscriptionDataset):
         See TranscriptionDataset class...
         """
 
-        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile,
-                         num_frames, split_notes, reset_data, store_data, save_data, save_loc, seed)
+        super().__init__(base_dir, splits, hop_length, sample_rate, data_proc, profile, num_frames,
+                         audio_norm, split_notes, reset_data, store_data, save_data, save_loc, seed)
 
     def get_tracks(self, split):
         """
@@ -81,7 +81,9 @@ class MAPS(TranscriptionDataset):
             # Construct the path to the track's audio
             wav_path = self.get_wav_path(track)
             # Load and normalize the audio along with the sampling rate
-            data[tools.KEY_AUDIO], data[tools.KEY_FS] = tools.load_normalize_audio(wav_path, self.sample_rate)
+            data[tools.KEY_AUDIO], data[tools.KEY_FS] = tools.load_normalize_audio(wav_path,
+                                                                                   fs=self.sample_rate,
+                                                                                   norm=self.audio_norm)
 
             # Construct the path to the track's MIDI data
             midi_path = self.get_midi_path(track)

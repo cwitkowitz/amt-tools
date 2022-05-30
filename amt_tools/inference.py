@@ -5,7 +5,6 @@ from . import tools
 
 __all__ = [
     'run_offline',
-    'run_single_frame',
     'run_online'
 ]
 
@@ -51,6 +50,7 @@ def run_offline(track_data, model, estimator=None):
 def run_single_frame(track_data, model, estimator=None):
     """
     Perform inference on a single frame.
+    TODO - this is all repeat code of run_offline - only difference is lack of dict_unsqueeze
 
     Parameters
     ----------

@@ -9,7 +9,6 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
-# TODO - waveform wrapper?
 # TODO - take squared modulus of some of these?
 
 
@@ -97,18 +96,25 @@ class FeatureModule(object):
 
         return sample_range
 
-    @abstractmethod
     def get_num_samples_required(self):
         """
         Determine the number of samples required to extract one full frame of features.
+
+        Returns
+        ----------
+        num_samples_required : int
+          Number of samples
         """
 
-        return NotImplementedError
+        # Maximum number of samples which still produces one frame
+        num_samples_required = self.get_sample_range(1)[-1]
+
+        return num_samples_required
 
     @staticmethod
     def pad_audio(audio, divisor):
         """
-        Pad audio such that is is divisible by the specified divisor.
+        Pad audio such that it is divisible by the specified divisor.
 
         Parameters
         ----------

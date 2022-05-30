@@ -20,17 +20,24 @@ class STFT(WaveformWrapper):
         Parameters
         ----------
         See WaveformWrapper class for others...
+        win_length : int
+          Number of samples to use for each frame;
+          Must be less than or equal to n_fft;
+          Defaults to n_fft if unspecified
         n_fft : int
           Length of the FFT window in spectrogram calculation
         """
+
+        self.n_fft = n_fft
+
+        if win_length is None:
+            win_length = self.n_fft
 
         super().__init__(sample_rate=sample_rate,
                          hop_length=hop_length,
                          decibels=decibels,
                          win_length=win_length,
                          center=center)
-
-        self.n_fft = n_fft
 
     def process_audio(self, audio):
         """

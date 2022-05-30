@@ -8,7 +8,6 @@ import numpy as np
 
 
 # TODO - could filterbank learning support in models/common.py be simplified?
-# TODO - take another look at all of this to verify it all works as expected
 
 class WaveformWrapper(FeatureModule):
     """
@@ -23,8 +22,7 @@ class WaveformWrapper(FeatureModule):
         See FeatureModule class for others...
         win_length : int
           Number of samples to use for each frame;
-          Must be less than or equal to n_fft;
-          Defaults to n_fft if unspecified
+          Defaults to hop_length if unspecified
         center : bool
           Whether to pad for centered frames
         """
@@ -95,23 +93,9 @@ class WaveformWrapper(FeatureModule):
 
         return sample_range
 
-    def get_num_samples_required(self):
-        """
-        Determine the number of samples required to extract one full frame of features.
-
-        Returns
-        ----------
-        num_samples_required : int
-          Number of samples
-        """
-
-        num_samples_required = self.win_length
-
-        return num_samples_required
-
     def _pad_audio(self, audio):
         """
-        Pad audio such that is is divisible by the specified divisor.
+        Pad audio such that trailing audio can be used.
 
         Parameters
         ----------
@@ -128,7 +112,7 @@ class WaveformWrapper(FeatureModule):
             # We need at least this many samples
             divisor = self.get_num_samples_required()
             if audio.shape[-1] > divisor:
-                # After above is satisfied, just pad for one extra hop
+                # If above is satisfied, just pad for one extra hop
                 divisor = self.hop_length
 
             # Pad the audio
@@ -152,6 +136,7 @@ class WaveformWrapper(FeatureModule):
         """
 
         # TODO - is audio or None better?
+        # TODO - could also do framifying here
         return None
 
     def get_times(self, audio):
