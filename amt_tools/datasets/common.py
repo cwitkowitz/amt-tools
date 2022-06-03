@@ -260,14 +260,19 @@ class TranscriptionDataset(Dataset):
         if self.sample_rate != fs or self.hop_length != hop_length:
             warnings.warn('Loaded features\' sampling rate or hop length differs from expected.')
 
-        # Calculate the frame times every time (faster than saving/loading)
-        times = self.data_proc.get_times(data[tools.KEY_AUDIO])
+        if tools.query_dict(data, tools.KEY_TIMES):
+            # Use the times that were already provided
+            times = data[tools.KEY_TIMES]
+        else:
+            # Calculate the frame times (faster than saving/loading)
+            times = self.data_proc.get_times(data[tools.KEY_AUDIO])
+            # Add the times to the data dictionary
+            data[tools.KEY_TIMES] = times
 
         # Check if fixed features were provided
         if feats is not None:
             # Add the features to the data dictionary
             data[tools.KEY_FEATS] = feats
-        data[tools.KEY_TIMES] = times
 
         if self.store_data:
             # Check if fixed features were provided
