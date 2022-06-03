@@ -54,8 +54,15 @@ class STFT(WaveformWrapper):
           Post-processed features
         """
 
-        # Pad the audio if it is necessary to do so
-        audio = self._pad_audio(audio)
+        if audio.shape[-1] == 0:
+            # Handle case of empty audio array
+            spec = np.zeros((0, self.n_fft))
+
+            return spec
+
+        if not self.center:
+            # Pad the audio to fill in a final frame
+            audio = self.frame_pad(audio)
 
         # Calculate the spectrogram using librosa
         spec = librosa.stft(y=audio,

@@ -80,7 +80,7 @@ def load_normalize_audio(wav_path, fs=None, norm=-1, res_type='kaiser_best'):
         audio = utils.rms_norm(audio)
     else:
         # Normalize the audio using librosa
-        audio = librosa.util.normalize(audio, norm)
+        audio = librosa.util.normalize(audio, norm=norm)
 
     return audio, fs
 

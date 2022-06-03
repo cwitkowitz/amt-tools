@@ -4,6 +4,8 @@
 from .common import FeatureModule
 
 # Regular imports
+from librosa.util import frame
+
 import numpy as np
 
 
@@ -93,9 +95,10 @@ class WaveformWrapper(FeatureModule):
 
         return sample_range
 
-    def _pad_audio(self, audio):
+    def center_pad(self, audio):
         """
-        Pad audio such that trailing audio can be used.
+        Pad the audio such that the first sample
+        is located halfway through the first frame.
 
         Parameters
         ----------
@@ -105,24 +108,19 @@ class WaveformWrapper(FeatureModule):
         Returns
         ----------
         audio : ndarray
-          Audio padded such that it will not throw away non-zero samples
+          Padded audio
         """
 
-        if not self.center:
-            # We need at least this many samples
-            divisor = self.get_num_samples_required()
-            if audio.shape[-1] > divisor:
-                # If above is satisfied, just pad for one extra hop
-                divisor = self.hop_length
-
-            # Pad the audio
-            audio = self.pad_audio(audio, divisor)
+        # Compute the padding which would occur in (librosa) STFT
+        padding = [tuple([int(self.win_length // 2)] * 2)]
+        # Pad the signal on both sides
+        audio = np.pad(audio, padding, mode='constant')
 
         return audio
 
     def process_audio(self, audio):
         """
-        Simply pass through the audio.
+        Chop the audio in frames according to window and hop length.
 
         Parameters
         ----------
@@ -131,22 +129,39 @@ class WaveformWrapper(FeatureModule):
 
         Returns
         ----------
-        audio : ndarray
-          Mono-channel audio
+        audio_frames : ndarray
+          Padded audio split into frames
         """
 
-        # TODO - is audio or None better?
-        # TODO - could also do framifying here
-        return None
+        if audio.shape[-1] == 0:
+            # Handle case of empty audio array
+            return np.zeros((0, self.win_length))
 
-    def get_times(self, audio):
+        if self.center:
+            # Pad the audio such that the first sample
+            # is located halfway through the first frame
+            audio = self.center_pad(audio)
+        else:
+            # Pad the audio to fill in a final frame
+            audio = self.frame_pad(audio)
+
+        # Obtain the audio samples associated with each frame
+        audio_frames = frame(audio,
+                             frame_length=self.win_length,
+                             hop_length=self.hop_length)
+
+        return audio_frames
+
+    def get_times(self, audio, at_start=False):
         """
-        Determine the time, in seconds, associated with frame.
+        Determine the time, in seconds, associated with each frame.
 
         Parameters
         ----------
         audio: ndarray
           Mono-channel audio
+        at_start : bool
+          Whether time is associated with beginning of frame instead of center
 
         Returns
         ----------
@@ -154,11 +169,18 @@ class WaveformWrapper(FeatureModule):
           Time in seconds of each frame
         """
 
+        # Get the times associated with the hops
         times = super().get_times(audio)
 
-        if not self.center:
-            # Add a time offset equal to half the window length
+        if self.center and at_start:
+            # Subtract half of the window length
+            times -= ((self.win_length // 2) / self.sample_rate)
+        elif not self.center and not at_start:
+            # Add half of the window length
             times += ((self.win_length // 2) / self.sample_rate)
+        else:
+            # Simply the hop times we already have
+            pass
 
         return times
 
