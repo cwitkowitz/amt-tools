@@ -136,4 +136,8 @@ def run_online(track_data, model, estimator=None):
         # If so, they will need to be transposed, since they were processed in an online fashion
         predictions[tools.KEY_NOTES] = tools.transpose_batched_notes(predictions[tools.KEY_NOTES])
 
+    if estimator is not None:
+        # Reset the state for the next track
+        estimator.reset_state()
+
     return predictions

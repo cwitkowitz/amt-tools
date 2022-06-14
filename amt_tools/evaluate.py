@@ -933,8 +933,8 @@ class StackedNoteEvaluator(Evaluator):
         # Loop through the stack of notes
         for key in estimated.keys():
             # Extract the loose note groups from the stack
-            pitches_ref, intervals_ref = estimated[key]
-            pitches_est, intervals_est = reference[key]
+            pitches_est, intervals_est = estimated[key]
+            pitches_ref, intervals_ref = reference[key]
 
             # Convert notes to Hertz
             pitches_ref = tools.notes_to_hz(pitches_ref)
