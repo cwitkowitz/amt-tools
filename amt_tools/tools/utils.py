@@ -2337,17 +2337,10 @@ def sort_batched_notes(batched_notes, by=0):
       N - number of notes
     """
 
-    # Define the attributes that can be used to sort the notes
-    attributes = ['onset', 'offset', 'pitch']
-
-    # Obtain the dtype of the batch-friendly notes before any manipulation
-    dtype = batched_notes.dtype
-    # Set a temporary dtype for sorting purposes
-    batched_notes.dtype = [(attributes[0], float), (attributes[1], float), (attributes[2], float)]
-    # Sort the notes along the row axis by the selected attribute
-    batched_notes = np.sort(batched_notes, axis=0, order=attributes[by])
-    # Reset the dtype of the batch-friendly notes
-    batched_notes.dtype = dtype
+    # Obtain the indices of the array to sort by the chosen attribute
+    sorted_idcs = np.argsort(batched_notes[..., by])
+    # Re-order the array according to the sorting indices
+    batched_notes = batched_notes[sorted_idcs]
 
     return batched_notes
 

@@ -130,4 +130,10 @@ def run_online(track_data, model, estimator=None):
         # Append the new predictions
         predictions = tools.dict_append(predictions, new_predictions)
 
+    # Check if there are notes in the predictions
+    if tools.query_dict(predictions, tools.KEY_NOTES):
+        # TODO - this won't work for stacked notes - is there a need to support those here?
+        # If so, they will need to be transposed, since they were processed in an online fashion
+        predictions[tools.KEY_NOTES] = tools.transpose_batched_notes(predictions[tools.KEY_NOTES])
+
     return predictions

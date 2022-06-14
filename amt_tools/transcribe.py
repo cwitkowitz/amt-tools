@@ -503,6 +503,7 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
             batched_notes = tools.notes_to_batched_notes(pitches, intervals)
 
             # Add the notes to the stacked notes dictionary under the slice key
+            # TODO - is it absolutely necessary to transpose these???
             stacked_notes.update(tools.batched_notes_to_stacked_notes(batched_notes, True, slc))
 
         # Clear the onset times
