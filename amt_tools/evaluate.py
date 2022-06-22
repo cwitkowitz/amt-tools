@@ -933,8 +933,8 @@ class StackedNoteEvaluator(Evaluator):
         # Loop through the stack of notes
         for key in estimated.keys():
             # Extract the loose note groups from the stack
-            pitches_ref, intervals_ref = estimated[key]
-            pitches_est, intervals_est = reference[key]
+            pitches_est, intervals_est = estimated[key]
+            pitches_ref, intervals_ref = reference[key]
 
             # Convert notes to Hertz
             pitches_ref = tools.notes_to_hz(pitches_ref)
@@ -1275,7 +1275,7 @@ class TablatureEvaluator(Evaluator):
             tools.KEY_PRECISION : precision,
             tools.KEY_RECALL : recall,
             tools.KEY_F1 : f_measure,
-            tools.KEY_TDR : tdr # TODO - slightly greater than 1 when testing on training?
+            tools.KEY_TDR : tdr
         }
 
         return results

@@ -146,6 +146,16 @@ class ComboEstimator(object):
             # Update the save directory
             estimator.set_save_dir(new_dir)
 
+    def reset_state(self):
+        """
+        Reset all the estimators in the combo.
+        """
+
+        # Loop through all of the estimators
+        for estimator in self.estimators:
+            # Reset the state of each
+            estimator.reset_state()
+
 
 class Estimator(object):
     """
@@ -242,6 +252,14 @@ class Estimator(object):
         """
 
         return NotImplementedError
+
+    @abstractmethod
+    def reset_state(self):
+        """
+        Specify the protocol for resetting the state of the estimator.
+        """
+
+        pass
 
     def process_track(self, raw_output, track=None):
         """
@@ -407,7 +425,6 @@ class StackedNoteTranscriber(Estimator):
 class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
     """
     Estimate stacked notes from stacked multi pitch activation maps, one frame at a time.
-    TODO - reset function
     """
 
     def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
@@ -422,9 +439,22 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
         super().__init__(profile, save_dir, inhibition_window, minimum_duration)
 
         # Create an array to keep track of the previous pitch activations
-        self.previous_activations = np.zeros((profile.get_num_dofs(), profile.get_range_len(), 1))
-
+        self.previous_activations = None
         # Create an array to keep track of onset times for active pitches
+        self.active_pitches = None
+
+        self.reset_state()
+
+    def reset_state(self):
+        """
+        Zero-out the tracked state.
+        """
+
+        # Assume that no notes were previously active
+        self.previous_activations = np.zeros((self.profile.get_num_dofs(),
+                                              self.profile.get_range_len(), 1))
+
+        # Set all onset times to zero
         self.active_pitches = np.zeros(self.previous_activations.shape)
 
     def estimate(self, raw_output):
@@ -503,6 +533,7 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
             batched_notes = tools.notes_to_batched_notes(pitches, intervals)
 
             # Add the notes to the stacked notes dictionary under the slice key
+            # TODO - is it absolutely necessary to transpose these???
             stacked_notes.update(tools.batched_notes_to_stacked_notes(batched_notes, True, slc))
 
         # Clear the onset times
@@ -686,9 +717,21 @@ class IterativeNoteTranscriber(IterativeStackedNoteTranscriber):
         super().__init__(profile, save_dir, inhibition_window, minimum_duration)
 
         # Create an array to keep track of the previous pitch activations
-        self.previous_activations = np.zeros((1, profile.get_range_len(), 1))
-
+        self.previous_activations = None
         # Create an array to keep track of onset times for active pitches
+        self.active_pitches = None
+
+        self.reset_state()
+
+    def reset_state(self):
+        """
+        Zero-out the tracked state.
+        """
+
+        # Assume that no notes were previously active
+        self.previous_activations = np.zeros((1, self.profile.get_range_len(), 1))
+
+        # Set all onset times to zero
         self.active_pitches = np.zeros(self.previous_activations.shape)
 
     def estimate(self, raw_output):

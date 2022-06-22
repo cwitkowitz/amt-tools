@@ -52,8 +52,15 @@ class MelSpec(STFT):
           Post-processed features
         """
 
-        # Pad the audio if it is necessary to do so
-        audio = super()._pad_audio(audio)
+        if audio.shape[-1] == 0:
+            # Handle case of empty audio array
+            mel = np.zeros((0, self.n_mels))
+
+            return mel
+
+        if not self.center:
+            # Pad the audio to fill in a final frame
+            audio = self.frame_pad(audio)
 
         # Calculate the Mel Spectrogram using librosa
         mel = librosa.feature.melspectrogram(y=audio,

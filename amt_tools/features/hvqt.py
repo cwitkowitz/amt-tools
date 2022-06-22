@@ -104,14 +104,6 @@ class HVQT(FeatureModule):
 
         return sample_range
 
-    def get_num_samples_required(self):
-        """
-        Determine the number of samples required to extract one full frame of features.
-        """
-
-        # TODO - write this function
-        return NotImplementedError
-
     def process_audio(self, audio):
         """
         Get the VQT features stacked across harmonics for a piece of audio.
@@ -153,14 +145,16 @@ class HVQT(FeatureModule):
 
         return NotImplementedError
 
-    def get_times(self, audio):
+    def get_times(self, audio, at_start=False):
         """
-        Determine the time, in seconds, associated with frame.
+        Determine the time, in seconds, associated with each frame.
 
         Parameters
         ----------
-        audio: ndarray
+        audio : ndarray
           Mono-channel audio
+        at_start : bool
+          Whether time is associated with beginning of frame instead of center
 
         Returns
         ----------
@@ -168,8 +162,8 @@ class HVQT(FeatureModule):
           Time in seconds of each frame
         """
 
-        # Use the times of the highest harmonic's transform
-        times = self.modules[-1].get_times(audio)
+        # Use the times of the lowest harmonic's transform
+        times = self.modules[0].get_times(audio, at_start)
 
         return times
 

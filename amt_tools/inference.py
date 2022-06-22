@@ -5,7 +5,6 @@ from . import tools
 
 __all__ = [
     'run_offline',
-    'run_single_frame',
     'run_online'
 ]
 
@@ -51,6 +50,7 @@ def run_offline(track_data, model, estimator=None):
 def run_single_frame(track_data, model, estimator=None):
     """
     Perform inference on a single frame.
+    TODO - this is all repeat code of run_offline - only difference is lack of dict_unsqueeze
 
     Parameters
     ----------
@@ -132,5 +132,15 @@ def run_online(track_data, model, estimator=None):
         new_predictions = run_single_frame(batch, model, estimator)
         # Append the new predictions
         predictions = tools.dict_append(predictions, new_predictions)
+
+    # Check if there are notes in the predictions
+    if tools.query_dict(predictions, tools.KEY_NOTES):
+        # TODO - this won't work for stacked notes - is there a need to support those here?
+        # If so, they will need to be transposed, since they were processed in an online fashion
+        predictions[tools.KEY_NOTES] = tools.transpose_batched_notes(predictions[tools.KEY_NOTES])
+
+    if estimator is not None:
+        # Reset the state for the next track
+        estimator.reset_state()
 
     return predictions

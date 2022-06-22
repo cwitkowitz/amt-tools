@@ -1975,7 +1975,7 @@ def notes_to_onsets(pitches, intervals, times, profile, ambiguity=None):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each onset label should span
 
     Returns
@@ -2062,7 +2062,7 @@ def stacked_notes_to_stacked_onsets(stacked_notes, times, profile, ambiguity=Non
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each onset label should span
 
     Returns
@@ -2337,17 +2337,10 @@ def sort_batched_notes(batched_notes, by=0):
       N - number of notes
     """
 
-    # Define the attributes that can be used to sort the notes
-    attributes = ['onset', 'offset', 'pitch']
-
-    # Obtain the dtype of the batch-friendly notes before any manipulation
-    dtype = batched_notes.dtype
-    # Set a temporary dtype for sorting purposes
-    batched_notes.dtype = [(attributes[0], float), (attributes[1], float), (attributes[2], float)]
-    # Sort the notes along the row axis by the selected attribute
-    batched_notes = np.sort(batched_notes, axis=0, order=attributes[by])
-    # Reset the dtype of the batch-friendly notes
-    batched_notes.dtype = dtype
+    # Obtain the indices of the array to sort by the chosen attribute
+    sorted_idcs = np.argsort(batched_notes[..., by])
+    # Re-order the array according to the sorting indices
+    batched_notes = batched_notes[sorted_idcs]
 
     return batched_notes
 
@@ -2860,7 +2853,7 @@ def get_frame_times(duration, sample_rate, hop_length):
     total_num_frames = int(1 + (duration * sample_rate - 1) // hop_length)
 
     # We need the frame times for the tablature
-    times = librosa.frames_to_time(np.arange(total_num_frames), sample_rate, hop_length)
+    times = librosa.frames_to_time(np.arange(total_num_frames), sr=sample_rate, hop_length=hop_length)
 
     return times
 

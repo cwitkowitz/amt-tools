@@ -9,7 +9,6 @@ from abc import abstractmethod
 import numpy as np
 import librosa
 
-# TODO - waveform wrapper?
 # TODO - take squared modulus of some of these?
 
 
@@ -97,18 +96,25 @@ class FeatureModule(object):
 
         return sample_range
 
-    @abstractmethod
     def get_num_samples_required(self):
         """
         Determine the number of samples required to extract one full frame of features.
+
+        Returns
+        ----------
+        num_samples_required : int
+          Number of samples
         """
 
-        return NotImplementedError
+        # Maximum number of samples which still produces one frame
+        num_samples_required = self.get_sample_range(1)[-1]
+
+        return num_samples_required
 
     @staticmethod
-    def pad_audio(audio, divisor):
+    def divisor_pad(audio, divisor):
         """
-        Pad audio such that is is divisible by the specified divisor.
+        Pad audio such that it is divisible by the specified divisor.
 
         Parameters
         ----------
@@ -120,7 +126,7 @@ class FeatureModule(object):
         Returns
         ----------
         audio : ndarray
-          Audio padded such that it is divisible by the specified divisor
+          Padded audio
         """
 
         # Determine how many samples would be needed such that the audio is evenly divisible
@@ -129,6 +135,33 @@ class FeatureModule(object):
         if pad_amt > 0 and pad_amt != divisor:
             # Pad the audio for divisibility
             audio = np.append(audio, np.zeros(pad_amt).astype(tools.FLOAT32), axis=-1)
+
+        return audio
+
+    def frame_pad(self, audio):
+        """
+        Pad the audio to fill out the final frame.
+
+        Parameters
+        ----------
+        audio : ndarray
+          Mono-channel audio
+
+        Returns
+        ----------
+        audio : ndarray
+          Padded audio
+        """
+
+        # We need at least this many samples
+        divisor = self.get_num_samples_required()
+
+        if audio.shape[-1] > divisor:
+            # If above is satisfied, just pad for one extra hop
+            divisor = self.hop_length
+
+        # Pad the audio so it is divisible by the divisor
+        audio = self.divisor_pad(audio, divisor)
 
         return audio
 
@@ -217,7 +250,7 @@ class FeatureModule(object):
         num_frames = self.get_expected_frames(audio)
 
         frame_idcs = np.arange(num_frames)
-        # Obtain the time of the first sample of each frame
+        # Obtain the time of the sample at each hop
         times = librosa.frames_to_time(frames=frame_idcs,
                                        sr=self.sample_rate,
                                        hop_length=self.hop_length)
