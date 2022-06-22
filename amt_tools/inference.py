@@ -88,6 +88,7 @@ def run_single_frame(track_data, model, estimator=None):
 
 def run_online(track_data, model, estimator=None):
     """
+    TODO - no loss entry in predictions causes whole dict to be interpreted as loss
     Perform inference in an mock-online fashion.
 
     Parameters
@@ -108,6 +109,8 @@ def run_online(track_data, model, estimator=None):
     # Obtain the features and times from the track data
     features = tools.unpack_dict(track_data, tools.KEY_FEATS)
     times = tools.unpack_dict(track_data, tools.KEY_TIMES)
+
+    # TODO - if available, should ground-truth be fed in one frame at a time?
 
     # Determine the number of frame groups to feed through the model
     num_frame_groups = features.shape[-1]
