@@ -3577,7 +3577,7 @@ def compute_time_difference(start_time, pr=True, label=None, decimals=3):
     """
 
     # Take the difference between the current time and the paramterized time
-    elapsed_time = round(get_current_time() - start_time, decimals)
+    elapsed_time = round(get_current_time(decimals) - start_time, decimals)
 
     if pr:
         # Print to console

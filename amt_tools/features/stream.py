@@ -8,6 +8,7 @@ from .. import tools
 from abc import abstractmethod
 from pynput import keyboard
 
+import warnings
 import time
 
 try:
@@ -19,6 +20,9 @@ except OSError:
 import numpy as np
 import threading
 import librosa
+
+# Tolerance past which we consider ourselves falling behind on processing
+MIC_LAG_TOL = 0.250 # seconds
 
 
 class FeatureStream(object):
@@ -249,7 +253,8 @@ class MicrophoneStream(FeatureStream, threading.Thread):
     Implements a streaming wrapper which interfaces with a microphone.
     """
     def __init__(self, module, frame_buffer_size=1, audio_norm=None,
-                 audio_buffer_size=None, device=None, enforce_continuity=True):
+                 audio_buffer_size=None, device=None, enforce_continuity=True,
+                 suppress_warnings=True):
         """
         Initialize parameters for the microphone streaming interface.
 
@@ -268,6 +273,8 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         enforce_continuity : bool
           TODO - bring this functionality into a separate class (no current_sample, buffer_size = samples_required)
           Whether to extract frames according to explicit hops or by using the most recent samples
+        suppress_warnings : bool
+          Whether to ignore warning messages
         """
 
         FeatureStream.__init__(self, module, frame_buffer_size)
@@ -294,6 +301,8 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
         # Instant vs. continuous streaming
         self.enforce_continuity = enforce_continuity
+        # Flag for printing warning messages
+        self.suppress_warnings = suppress_warnings
 
         # Streaming parameters
         self.previous_time = None
@@ -380,7 +389,10 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         Clear everything related to any previous streams.
         """
 
-        # TODO - check self.killed
+        if self.killed and not self.suppress_warnings:
+            # Print a warning message if the thread was already killed, since it cannot be restarted
+            warnings.warn('The MicrophoneStream Thread was already killed. A new ' +
+                          'MicrophoneStream instance should be created.', category=RuntimeWarning)
 
         # Stop streaming and clear the feature buffer
         super().reset_stream()
@@ -402,7 +414,10 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         Begin streaming audio from the microphone.
         """
 
-        # TODO - check self.killed
+        if self.killed and not self.suppress_warnings:
+            # Print a warning message if the thread was already killed, since it cannot be restarted
+            warnings.warn('The MicrophoneStream Thread was already killed. A new ' +
+                          'MicrophoneStream instance should be created.', category=RuntimeWarning)
 
         # Check if the microphone stream was previously closed
         if self.query_finished():
@@ -471,7 +486,22 @@ class MicrophoneStream(FeatureStream, threading.Thread):
                     if self.enforce_continuity:
                         # Update the pointer to the next frame start, clipping it at the oldest sample
                         self.current_sample = max(0, self.current_sample - num_samples_available)
-                        # TODO - warning when not fast enough for real-time (current_sample <= 0) or MIC_LAG_TOL
+
+                        if not self.suppress_warnings:
+                            # Compute the current time lag
+                            time_lag = (len(self.audio_buffer) - self.current_sample) / self.module.sample_rate
+
+                            if self.current_sample == 0:
+                                # Print a warning message describing the situation
+                                warnings.warn(f'Processing might be too slow. Audio ' +
+                                              f'buffer currently maxed out.', category=RuntimeWarning)
+                            elif time_lag > MIC_LAG_TOL:
+                                # Print a warning message with the current time lag
+                                warnings.warn(f'Processing might be too slow. Currently ' +
+                                              f'{time_lag} seconds of audio to process.', category=RuntimeWarning)
+                            else:
+                                # Everything is OK, no need to print anything
+                                pass
 
     def extract_frame_features(self):
         """
@@ -486,6 +516,7 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         if self.enforce_continuity:
             # Wait until there are enough new samples in the buffer for an entire frame
             while self.current_sample > len(self.audio_buffer) - self.module.get_num_samples_required():
+                # This means we are ahead on processing
                 continue
 
             # Take a full frame of audio starting at the current pointer
@@ -592,8 +623,8 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         if key == keyboard.Key.enter:
             # Stop thread execution
             self.stop_thread()
-            # Wait 100 ms to be safe
-            time.sleep(0.100)
+            # Wait to continue until the thread has been properly stopped
+            self.join()
             # Stop the current stream
             self.stop_streaming()
 
@@ -602,7 +633,8 @@ class AudioStream(FeatureStream):
     """
     Implements a streaming wrapper which processes audio in real-time.
     """
-    def __init__(self, module, frame_buffer_size=1, audio=None, real_time=False, playback=False):
+    def __init__(self, module, frame_buffer_size=1, audio=None,
+                 real_time=False, playback=False, suppress_warnings=True):
         """
         Initialize parameters for the audio streaming interface.
 
@@ -615,6 +647,9 @@ class AudioStream(FeatureStream):
           Whether to process the audio in a real-time fashion
         playback : bool
           Whether to playback the audio when streaming in real-time
+        TODO - variant where we don't automatically enforce continuity (or at least have the option here)?
+        suppress_warnings : bool
+          Whether to ignore warning messages
         """
 
         FeatureStream.__init__(self, module, frame_buffer_size)
@@ -626,6 +661,7 @@ class AudioStream(FeatureStream):
         # Real-time parameters
         self.playback = playback
         self.real_time = real_time
+        self.suppress_warnings = suppress_warnings
 
         # Reset audio and streaming markers
         self.reset_stream(audio)
@@ -693,8 +729,16 @@ class AudioStream(FeatureStream):
             sample_time = (self.current_sample + self.module.get_num_samples_required()) / self.module.sample_rate
 
             if self.real_time:
+                if not self.suppress_warnings:
+                    # Compute the current time lag
+                    time_lag = self.get_elapsed_time() - sample_time
+
+                    if time_lag > MIC_LAG_TOL:
+                        # Print a warning message with the current time lag
+                        warnings.warn(f'Processing might be too slow. Currently ' +
+                                      f'out of sync by {time_lag} seconds.', category=RuntimeWarning)
+
                 # Wait until it is time to acquire the next frame
-                # TODO - add warning when model is not fast enough for real-time
                 while self.get_elapsed_time() < sample_time:
                     continue
 
@@ -733,7 +777,8 @@ class AudioFileStream(AudioStream):
     """
     Implements a streaming wrapper which processes an audio file in real-time.
     """
-    def __init__(self, module, frame_buffer_size=1, audio_path=None, audio_norm=-1, real_time=False, playback=False):
+    def __init__(self, module, frame_buffer_size=1, audio_path=None, audio_norm=-1,
+                 real_time=False, playback=False, suppress_warnings=True):
         """
         Initialize parameters for the audio file streaming interface.
 
@@ -755,7 +800,7 @@ class AudioFileStream(AudioStream):
         self.original_audio = audio
 
         # Call the parent class constructor - the rest of the functionality is the same
-        AudioStream.__init__(self, module, frame_buffer_size, audio, real_time, playback)
+        AudioStream.__init__(self, module, frame_buffer_size, audio, real_time, playback, suppress_warnings)
 
     def start_streaming(self):
         """
