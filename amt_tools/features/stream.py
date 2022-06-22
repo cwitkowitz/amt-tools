@@ -14,8 +14,8 @@ except OSError:
     print('  >>> sudo apt-get install libportaudio2')
 
 import numpy as np
-
 import threading
+import librosa
 
 
 class FeatureStream(object):
@@ -245,17 +245,23 @@ class MicrophoneStream(FeatureStream, threading.Thread):
     """
     Implements a streaming wrapper which interfaces with a microphone.
     """
-    def __init__(self, module, frame_buffer_size=1, audio_buffer_size=None, device=None, enforce_continuity=True):
+    def __init__(self, module, frame_buffer_size=1, audio_norm=None,
+                 audio_buffer_size=None, device=None, enforce_continuity=True):
         """
         Initialize parameters for the microphone streaming interface.
 
         Parameters
         ----------
         See FeatureStream class for others...
-        device : int or None (Optional)
-          Index of the device to use for data input (see query_devices() for options...)
+        audio_norm : float or None
+          Type of normalization to perform when loading audio
+          -1 - root-mean-square
+          See librosa for others...
+            - None case is handled here
         audio_buffer_size : int
           Size (in samples) of the audio buffer
+        device : int or None (Optional)
+          Index of the device to use for data input (see query_devices() for options...)
         enforce_continuity : bool
           TODO - bring this functionality into a separate class (no current_sample, buffer_size = samples_required)
           Whether to extract frames according to explicit hops or by using the most recent samples
@@ -269,6 +275,9 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
         # Field for the audio stream
         self.stream = None
+
+        # Type of normalization to perform on each new chunk of audio
+        self.audio_norm = audio_norm
 
         # Create the audio buffer
         if audio_buffer_size is None:
@@ -437,9 +446,14 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
                 if num_samples_available > 0:
                     # Read the available samples (mono-channel) and normalize them
-                    # TODO - abstract normalization type
-                    new_audio = tools.rms_norm(self.stream.read(num_samples_available)[0][:, 0])
-                    #new_audio = self.stream.read(num_samples_available)[0][:, 0]
+                    new_audio = self.stream.read(num_samples_available)[0][:, 0]
+
+                    if self.audio_norm == -1:
+                        # Perform root-mean-square normalization
+                        new_audio = tools.rms_norm(new_audio)
+                    else:
+                        # Normalize the audio using librosa
+                        new_audio = librosa.util.normalize(new_audio, norm=self.audio_norm)
 
                     # Advance the buffer by the amount of new samples
                     self.audio_buffer = np.roll(self.audio_buffer, -num_samples_available)
@@ -680,7 +694,7 @@ class AudioFileStream(AudioStream):
     """
     Implements a streaming wrapper which processes an audio file in real-time.
     """
-    def __init__(self, module, frame_buffer_size=1, audio_path=None, real_time=False, playback=False):
+    def __init__(self, module, frame_buffer_size=1, audio_path=None, audio_norm=-1, real_time=False, playback=False):
         """
         Initialize parameters for the audio file streaming interface.
 
@@ -689,16 +703,17 @@ class AudioFileStream(AudioStream):
         See AudioStream class for others...
         audio_path : string
           Path to audio to stream
+        audio_norm : float or None
+          Type of normalization to perform when loading audio
+          -1 - root-mean-square
+          See librosa for others...
+            - None case is handled here
         """
 
-        # Load the audio at the specified path, with no normalization by default
-        audio, _ = tools.load_normalize_audio(audio_path, fs=module.sample_rate, norm=None)
+        # Load the audio at the specified path, with rms normalization by default
+        audio, _ = tools.load_normalize_audio(audio_path, fs=module.sample_rate, norm=audio_norm)
 
         self.original_audio = audio
-
-        # TODO - abstract normalization type
-        # Normalize the audio
-        audio = tools.rms_norm(audio)
 
         # Call the parent class constructor - the rest of the functionality is the same
         AudioStream.__init__(self, module, frame_buffer_size, audio, real_time, playback)
