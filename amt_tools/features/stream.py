@@ -6,6 +6,9 @@ from .. import tools
 
 # Regular imports
 from abc import abstractmethod
+from pynput import keyboard
+
+import time
 
 try:
     import sounddevice as sd
@@ -305,6 +308,11 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         # Start the thread
         self.start()
 
+        # Create a new thread to listen for key presses/releases
+        self.key_listener = keyboard.Listener(on_press=self.on_press,
+                                              on_release=self.on_release)
+        self.key_listener.start()
+
     @staticmethod
     def query_devices(verbose=True):
         """
@@ -557,6 +565,37 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         """
 
         self.killed = True
+
+    @staticmethod
+    def on_press(key):
+        """
+        Function called when a key is pressed.
+
+        Parameters
+        ----------
+        key : pynput.keyboard.Key
+          Key which was pressed
+        """
+
+        pass
+
+    def on_release(self, key):
+        """
+        Function called when a key is released.
+
+        Parameters
+        ----------
+        key : pynput.keyboard.Key
+          Key which was released
+        """
+
+        if key == keyboard.Key.enter:
+            # Stop thread execution
+            self.stop_thread()
+            # Wait 100 ms to be safe
+            time.sleep(0.100)
+            # Stop the current stream
+            self.stop_streaming()
 
 
 class AudioStream(FeatureStream):

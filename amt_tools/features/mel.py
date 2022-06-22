@@ -54,9 +54,7 @@ class MelSpec(STFT):
 
         if audio.shape[-1] == 0:
             # Handle case of empty audio array
-            mel = np.zeros((0, self.n_mels))
-
-            return mel
+            return np.zeros((1, self.n_mels, 0))
 
         if not self.center:
             # Pad the audio to fill in a final frame
