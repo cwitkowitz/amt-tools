@@ -1,6 +1,7 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
+from .inference import run_online, run_offline
 from . import tools
 
 # Regular imports
@@ -11,14 +12,92 @@ from scipy.stats import hmean
 from copy import deepcopy
 
 import numpy as np
+import torch
 import sys
 import os
+
+__all__ = [
+    'validate',
+    'average_results',
+    'append_results',
+    'log_results',
+    'write_results',
+    'pattern_match',
+    'Evaluator',
+    'ComboEvaluator',
+    'LossWrapper',
+    'StackedMultipitchEvaluator',
+    'MultipitchEvaluator',
+    'StackedNoteEvaluator',
+    'NoteEvaluator',
+    'StackedPitchListEvaluator',
+    'PitchListEvaluator',
+    'TablatureEvaluator',
+    'SoftmaxAccuracy'
+]
 
 EPSILON = sys.float_info.epsilon
 
 # TODO - add warning when unpack returns None
 # TODO - none of the stacked evaluators have been tested independently
 #      - they will likely break during append, average, log, write, etc.
+
+##################################################
+# EVALUATION LOOP                                #
+##################################################
+
+
+def validate(model, dataset, evaluator, estimator=None, online=False):
+    """
+    Implements the validation or evaluation loop for a model and dataset partition.
+    Optionally save predictions and log results.
+
+    Parameters
+    ----------
+    model : TranscriptionModel
+      Model to validate or evaluate
+    dataset : TranscriptionDataset
+      Dataset (partition) to use for validation or evaluation
+    evaluator : Evaluator
+      Evaluation protocol to use
+    estimator : Estimator
+      Estimation protocol to use
+    online : bool
+      Whether to evaluate the model in a mock-real-time fashion
+
+    Returns
+    ----------
+    average : dict
+      Dictionary containing all relevant results averaged across all tracks
+    """
+
+    # Turn off gradient computation
+    with torch.no_grad():
+        # Loop through the validation track ids
+        for track_id in dataset.tracks:
+            # Obtain the track data
+            track_data = dataset.get_track_data(track_id)
+
+            # Make sure the model is in evaluation mode, called here
+            # in case there are any evaluation steps, such as resetting
+            # language model state, to run before each track
+            model.eval()
+
+            if online:
+                # Perform the inference step in mock-real-time fashion
+                predictions = run_online(track_data, model, estimator)
+            else:
+                # Perform the inference step offline
+                predictions = run_offline(track_data, model, estimator)
+
+            # Evaluate the predictions and track the results
+            evaluator.get_track_results(predictions, track_data, track_id)
+
+    # Obtain the average results from this validation loop
+    average = evaluator.average_results()
+
+    return average
+
 
 ##################################################
 # HELPER FUNCTIONS / RESULTS DICTIONARY          #
@@ -854,8 +933,8 @@ class StackedNoteEvaluator(Evaluator):
         # Loop through the stack of notes
         for key in estimated.keys():
             # Extract the loose note groups from the stack
-            pitches_ref, intervals_ref = estimated[key]
-            pitches_est, intervals_est = reference[key]
+            pitches_est, intervals_est = estimated[key]
+            pitches_ref, intervals_ref = reference[key]
 
             # Convert notes to Hertz
             pitches_ref = tools.notes_to_hz(pitches_ref)

@@ -13,17 +13,111 @@ import warnings
 import librosa
 import random
 import torch
+import time
 
 
 # TODO - torch Tensor compatibility
 # TODO - try to ensure these won't break if extra dimensions (e.g. batch) are included
 # TODO - make sure there are no hard assignments (make return copies instead of original where necessary)
 
+__all__ = [
+    'notes_to_batched_notes',
+    'cat_batched_notes',
+    'filter_batched_note_repeats',
+    'transpose_batched_notes',
+    'stacked_notes_to_batched_notes',
+    'batched_notes_to_hz',
+    'batched_notes_to_midi',
+    'slice_batched_notes',
+    'multi_pitch_to_notes',
+    'batched_notes_to_notes',
+    'stacked_notes_to_notes',
+    'notes_to_hz',
+    'notes_to_midi',
+    'offset_notes',
+    'notes_to_stacked_notes',
+    'batched_notes_to_stacked_notes',
+    'stacked_notes_to_hz',
+    'stacked_notes_to_midi',
+    'cat_stacked_notes',
+    'filter_stacked_note_repeats',
+    'stacked_notes_to_frets',
+    'find_pitch_bounds_stacked_notes',
+    'stacked_pitch_list_to_pitch_list',
+    'multi_pitch_to_pitch_list',
+    'pitch_list_to_hz',
+    'pitch_list_to_midi',
+    'slice_pitch_list',
+    'cat_pitch_list',
+    'unroll_pitch_list',
+    'pitch_list_to_stacked_pitch_list',
+    'stacked_multi_pitch_to_stacked_pitch_list',
+    'stacked_pitch_list_to_hz',
+    'stacked_pitch_list_to_midi',
+    'slice_stacked_pitch_list',
+    'cat_stacked_pitch_list',
+    'notes_to_multi_pitch',
+    'pitch_list_to_multi_pitch',
+    'stacked_multi_pitch_to_multi_pitch',
+    'logistic_to_multi_pitch',
+    'stacked_notes_to_stacked_multi_pitch',
+    'stacked_pitch_list_to_stacked_multi_pitch',
+    'multi_pitch_to_stacked_multi_pitch',
+    'tablature_to_stacked_multi_pitch',
+    'stacked_pitch_list_to_tablature',
+    'stacked_multi_pitch_to_tablature',
+    'logistic_to_tablature',
+    'stacked_multi_pitch_to_logistic',
+    'tablature_to_logistic',
+    'notes_to_onsets',
+    'multi_pitch_to_onsets',
+    'stacked_notes_to_stacked_onsets',
+    'stacked_multi_pitch_to_stacked_onsets',
+    'notes_to_offsets',
+    'multi_pitch_to_offsets',
+    'stacked_notes_to_stacked_offsets',
+    'stacked_multi_pitch_to_stacked_offsets',
+    'sort_batched_notes',
+    'sort_notes',
+    'sort_pitch_list',
+    'rms_norm',
+    'blur_activations',
+    'normalize_activations',
+    'threshold_activations',
+    'framify_activations',
+    'inhibit_activations',
+    'remove_activation_blips',
+    'seed_everything',
+    'estimate_hop_length',
+    'time_series_to_uniform',
+    'get_frame_times',
+    'apply_func_stacked_representation',
+    'tensor_to_array',
+    'array_to_tensor',
+    'save_pack_npz',
+    'load_unpack_npz',
+    'dict_to_dtype',
+    'dict_to_device',
+    'dict_to_array',
+    'dict_to_tensor',
+    'dict_squeeze',
+    'dict_unsqueeze',
+    'dict_append',
+    'dict_detach',
+    'try_unpack_dict',
+    'unpack_dict',
+    'query_dict',
+    'get_tag',
+    'slice_track',
+    'get_current_time',
+    'print_time',
+    'compute_time_difference'
+]
+
 
 ##################################################
 # TO BATCH-FRIENDLY NOTES                        #
 ##################################################
-
 
 def notes_to_batched_notes(pitches, intervals):
     """
@@ -53,6 +147,115 @@ def notes_to_batched_notes(pitches, intervals):
         pitches = np.expand_dims(pitches, axis=-1)
         # Concatenate the loose arrays to obtain ndarray([[onset, offset, pitch]])
         batched_notes = np.concatenate((intervals, pitches), axis=-1)
+
+    return batched_notes
+
+
+def cat_batched_notes(batched_notes, new_batched_notes):
+    """
+    Concatenate two collections of batched notes.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+    new_batched_notes : ndarray (N x 3)
+      Same as batched_notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+    """
+
+    # Concatenate along the first axis
+    batched_notes = np.concatenate((batched_notes, new_batched_notes), axis=0)
+
+    return batched_notes
+
+
+def filter_batched_note_repeats(batched_notes):
+    """
+    Remove any note duplicates, where a duplicate is defined as
+    an entry with the same pitch and onset time. If there are
+    duplicates, we keep the entry with the longest duration.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (L x 3)
+      Array of note intervals and pitches by row or column
+      L - number of notes
+    """
+
+    # Sort the batched notes, so the longest duration will always be chosen
+    batched_notes = np.flip(sort_batched_notes(batched_notes), axis=0)
+
+    # Determine the pitches and onsets represented by the batched_notes
+    pitches_onsets = np.roll(batched_notes, shift=1, axis=-1)[:, :2]
+
+    # Determine which note entries should be kept
+    keep_indices = np.unique(pitches_onsets, return_index=True, axis=0)[-1]
+
+    # Remove duplicate note entries
+    batched_notes = batched_notes[keep_indices]
+
+    return batched_notes
+
+
+def transpose_batched_notes(batched_notes):
+    """
+    Switch the axes of batched notes.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (3 x N) or (N x 3)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3) or (3 x N)
+      Array of note intervals and pitches by row or column
+      N - number of notes
+    """
+
+    # Transpose the last two axes
+    batched_notes = np.transpose(batched_notes, (-1, -2))
+
+    return batched_notes
+
+
+def stacked_notes_to_batched_notes(stacked_notes, transposed=False):
+    """
+    Convert a dictionary of stacked notes into a single representation.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> batched_notes) pairs
+    transposed : bool
+      Whether the axes of the batched notes were transposed before they were added
+
+    Returns
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row
+      N - number of notes
+    """
+
+    # Obtain the batched note entries from the dictionary values
+    entries = list(stacked_notes.values())
+
+    # Concatenate all groups of batched notes
+    batched_notes = np.concatenate([entry for entry in entries], axis=int(transposed))
 
     return batched_notes
 
@@ -128,7 +331,7 @@ def slice_batched_notes(batched_notes, start_time, stop_time):
     batched_notes = batched_notes[batched_notes[:, 1] > start_time]
 
     # Remove notes with onsets after the slice stop time
-    batched_notes = batched_notes[batched_notes[:, 0] < stop_time]
+    batched_notes = batched_notes[batched_notes[:, 0] <= stop_time]
 
     # Clip onsets at the slice start time
     batched_notes[:, 0] = np.maximum(batched_notes[:, 0], start_time)
@@ -142,6 +345,111 @@ def slice_batched_notes(batched_notes, start_time, stop_time):
 ##################################################
 # TO NOTES                                       #
 ##################################################
+
+
+def multi_pitch_to_notes(multi_pitch, times, profile, onsets=None, offsets=None):
+    """
+    Decode a multi pitch array into loose MIDI note groups.
+
+    Parameters
+    ----------
+    multi_pitch : ndarray (F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    onsets : ndarray (F x T) or None (Optional)
+      Where to start considering notes "active"
+      F - number of discrete pitches
+      T - number of frames
+    offsets : ndarray (F x T) or None (Optional)
+      Where to stop considering notes "active" - currently unused
+      F - number of discrete pitches
+      T - number of frames
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes in MIDI format
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    """
+
+    if onsets is None:
+        # Default the onsets if they were not provided
+        onsets = multi_pitch_to_onsets(multi_pitch)
+
+    # Make sure all onsets have corresponding pitch activations
+    multi_pitch = np.logical_or(onsets, multi_pitch).astype(constants.FLOAT32)
+
+    # Turn onset activations into impulses at starting frame
+    onsets = multi_pitch_to_onsets(onsets)
+
+    # Determine the total number of frames
+    num_frames = multi_pitch.shape[-1]
+
+    # Estimate the duration of the track (for bounding note offsets)
+    times = np.append(times, times[-1] + estimate_hop_length(times))
+
+    # Create empty lists for note pitches and their time intervals
+    pitches, intervals = list(), list()
+
+    # Determine the pitch and frame indices where notes begin
+    pitch_idcs, frame_idcs = onsets.nonzero()
+
+    # Loop through note beginnings
+    for pitch, frame in zip(pitch_idcs, frame_idcs):
+        # Mark onset and start offset counter
+        onset, offset = frame, frame + 1
+
+        # Increment the offset counter until one of the following occurs:
+        #  1. There are no more frames
+        #  2. Pitch is no longer active in the multi pitch array
+        #  3. A new onset occurs involving the current pitch
+        while True:
+            # There are no more frames to count
+            maxed_out = offset == num_frames
+
+            if maxed_out:
+                # Stop looping
+                break
+
+            # There is an activation for the pitch at the next frame
+            active_pitch = multi_pitch[pitch, offset]
+
+            if not active_pitch:
+                # Stop looping
+                break
+
+            # There is an onset for the pitch at the next frame
+            new_onset = onsets[pitch, offset]
+
+            if new_onset:
+                # Stop looping
+                break
+
+            # Include the offset counter
+            offset += 1
+
+        # Add the frequency to the list
+        pitches.append(pitch + profile.low)
+
+        # Add the interval to the list
+        intervals.append([times[onset], times[offset]])
+
+    # Convert the lists to numpy arrays
+    pitches, intervals = np.array(pitches), np.array(intervals)
+
+    # Sort notes by onset just for the purpose of being neat
+    pitches, intervals = sort_notes(pitches, intervals)
+
+    return pitches, intervals
 
 
 def batched_notes_to_notes(batched_notes):
@@ -252,12 +560,41 @@ def notes_to_midi(pitches):
     return pitches
 
 
+def offset_notes(pitches, intervals, semitones):
+    """
+    Add a semitone offset to note groups.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    semitones : float
+      Number of semitones by which to offset note pitches
+
+    Returns
+    ----------
+    pitches : ndarray (N)
+      Same as input with added offset
+    intervals : ndarray (N x 2)
+      Same as input
+    """
+
+    # Add the offset to the pitches
+    pitches += semitones
+
+    return pitches, intervals
+
+
 ##################################################
 # TO STACKED NOTES                               #
 ##################################################
 
 
-def notes_to_stacked_notes(pitches, intervals, i=0):
+def notes_to_stacked_notes(pitches, intervals, key=0):
     """
     Convert a collection of notes into a dictionary of stacked notes.
 
@@ -269,7 +606,7 @@ def notes_to_stacked_notes(pitches, intervals, i=0):
     intervals : ndarray (N x 2)
       Array of onset-offset time pairs corresponding to notes
       N - number of notes
-    i : int
+    key : object
       Slice key to use
 
     Returns
@@ -282,7 +619,42 @@ def notes_to_stacked_notes(pitches, intervals, i=0):
     stacked_notes = dict()
 
     # Add the pitch-interval pairs to the stacked notes dictionary under the slice key
-    stacked_notes[i] = sort_notes(pitches, intervals)
+    stacked_notes[key] = sort_notes(pitches, intervals)
+
+    return stacked_notes
+
+
+def batched_notes_to_stacked_notes(batched_notes, transposed=False, i=0):
+    """
+    Convert a collection of (batched) notes into a dictionary of stacked notes.
+
+    Parameters
+    ----------
+    batched_notes : ndarray (N x 3)
+      Array of note intervals and pitches by row
+      N - number of notes
+    transposed : bool
+      Whether to switch the axes of the batched notes before adding them
+    i : int
+      Slice key to use
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> batched_notes)
+    """
+
+    # Initialize a dictionary to hold the notes
+    stacked_notes = dict()
+
+    batched_notes = sort_batched_notes(batched_notes)
+
+    if transposed:
+        # Switch the axes
+        batched_notes = transpose_batched_notes(batched_notes)
+
+    # Add the batched notes to the stacked notes dictionary under the slice key
+    stacked_notes[i] = batched_notes
 
     return stacked_notes
 
@@ -345,6 +717,144 @@ def stacked_notes_to_midi(stacked_notes):
         stacked_notes[slc] = pitches, intervals
 
     return stacked_notes
+
+
+def cat_stacked_notes(stacked_notes, new_stacked_notes):
+    """
+    Concatenate two collections of stacked notes.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    new_stacked_notes : dict
+      Same as stacked_notes
+      Note: must also have same number of slices
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for concatenation
+    stacked_notes = deepcopy(stacked_notes)
+
+    # Loop through the stack of pitch lists
+    for slc in stacked_notes.keys():
+        # Convert the notes to batched notes
+        batched_notes = notes_to_batched_notes(*stacked_notes[slc])
+        new_batched_notes = notes_to_batched_notes(*new_stacked_notes[slc])
+        # Concatenate the batched notes
+        batched_notes = cat_batched_notes(batched_notes, new_batched_notes)
+        # Convert back to notes
+        pitches, intervals = batched_notes_to_notes(batched_notes)
+        # Overwrite the slice entry
+        stacked_notes[slc] = pitches, intervals
+
+    return stacked_notes
+
+
+def filter_stacked_note_repeats(stacked_notes):
+    """
+    Remove any note duplicates within each slice, where a duplicate
+    is defined as an entry with the same pitch and onset time.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+    """
+
+    # Convert to batched notes
+    stacked_notes = apply_func_stacked_representation(stacked_notes, notes_to_batched_notes)
+    # Filter batched note repeats
+    stacked_notes = apply_func_stacked_representation(stacked_notes, filter_batched_note_repeats)
+    # Convert back to notes
+    stacked_notes = apply_func_stacked_representation(stacked_notes, batched_notes_to_notes)
+
+    return stacked_notes
+
+
+def stacked_notes_to_frets(stacked_notes, tuning=None):
+    """
+    Convert stacked notes from MIDI to guitar fret numbers.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (MIDI), intervals)) pairs
+    tuning : list of str
+      Name of lowest note playable on each degree of freedom
+
+    Returns
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches (fret), intervals)) pairs
+    """
+
+    # Make a copy of the stacked notes for conversion
+    stacked_notes = deepcopy(stacked_notes)
+
+    if tuning is None:
+        # Default the tuning
+        tuning = constants.DEFAULT_GUITAR_TUNING
+
+    # Convert the tuning to midi pitches
+    midi_tuning = librosa.note_to_midi(tuning)
+
+    # Loop through the stack of notes
+    for i, slc in enumerate(stacked_notes.keys()):
+        # Get the notes from the slice
+        pitches, intervals = stacked_notes[slc]
+        # Convert the pitches to frets
+        frets = np.round(pitches - midi_tuning[i]).astype(constants.UINT)
+        # Add converted slice back to stack
+        stacked_notes[slc] = frets, intervals
+
+    return stacked_notes
+
+
+def find_pitch_bounds_stacked_notes(stacked_notes):
+    """
+    Determine the minimum and maximum pitch for each slice of stacked notes.
+
+    Parameters
+    ----------
+    stacked_notes : dict
+      Dictionary containing (slice -> (pitches, intervals)) pairs
+
+    Returns
+    ----------
+    min_pitches : ndarray (S)
+      Minimum pitch across all notes per slice
+      S - number of slices in stack
+    max_pitches : ndarray (S)
+      Maximum pitch across all notes per slice
+      S - number of slices in stack
+    """
+
+    # Initialize lists to hold the pitch bounds
+    min_pitches, max_pitches = list(), list()
+
+    # Loop through the stack of notes
+    for i, slc in enumerate(stacked_notes.keys()):
+        # Get the pitches from the slice
+        pitches, _ = stacked_notes[slc]
+
+        # Add the minimum and maximum pitch for this slice
+        min_pitches += [np.min(pitches) if len(pitches) > 0 else 0]
+        max_pitches += [np.max(pitches) if len(pitches) > 0 else 0]
+
+    # Convert to NumPy arrays
+    min_pitches, max_pitches = np.array(min_pitches), np.array(max_pitches)
+
+    return min_pitches, max_pitches
 
 
 ##################################################
@@ -484,6 +994,107 @@ def pitch_list_to_midi(pitch_list):
     return pitch_list
 
 
+def slice_pitch_list(times, pitch_list, start_time, stop_time):
+    """
+    Retain pitch observations within a time window.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+    start_time : float
+      Earliest time for observations to keep
+    stop_time : float
+      Latest time for observations to keep
+
+    Returns
+    ----------
+    times : ndarray (L)
+      Time in seconds of beginning of each frame
+      L - number of time samples (frames)
+    pitch_list : list of ndarray (L x [...])
+      Array of pitches active during each frame
+      L - number of pitch observations (frames)
+    """
+
+    # Obtain a collection of valid indices for the slicing
+    valid_idcs = np.logical_and((times >= start_time), (times <= stop_time))
+    # Throw away observations occurring before the start time and after the stop time
+    times, pitch_list = times[valid_idcs], [pitch_list[idx] for idx in np.where(valid_idcs)[0]]
+
+    return times, pitch_list
+
+
+def cat_pitch_list(times, pitch_list, new_times, new_pitch_list):
+    """
+    Retain pitch observations within a time window.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+    new_times : ndarray (L)
+      Time in seconds of beginning of each frame
+      L - number of time samples (frames)
+    new_pitch_list : list of ndarray (L x [...])
+      Array of pitches active during each frame
+      L - number of pitch observations (frames)
+
+    Returns
+    ----------
+    times : ndarray (N+L)
+      Time in seconds of beginning of each frame
+      N+L - number of time samples (frames)
+    pitch_list : list of ndarray (N+L x [...])
+      Array of pitches active during each frame
+      N+L - number of pitch observations (frames)
+    """
+
+    # Concatenate the observations of both stacked pitch lists
+    times, pitch_list = np.append(times, new_times, axis=-1), pitch_list + new_pitch_list
+
+    return times, pitch_list
+
+
+def unroll_pitch_list(times, pitch_list):
+    """
+    Make a time-pitch pair for each active pitch in each frame.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+
+    Returns
+    ----------
+    times : ndarray (L)
+      Time in seconds corresponding to pitch observations
+      L - number of pitch observations
+    pitches : ndarray (L)
+      Array of pitch observations
+    """
+
+    # Repeat a frame time once for every active pitch in the frame and collapse into a single ndarray
+    times = np.concatenate([[times[i]] * len(pitch_list[i]) for i in range(len(pitch_list))])
+
+    # Collapse pitch list into a single ndarray
+    pitches = np.concatenate(pitch_list, axis=-1)
+
+    return times, pitches
+
+
 ##################################################
 # TO STACKED PITCH LIST                          #
 ##################################################
@@ -554,10 +1165,10 @@ def stacked_multi_pitch_to_stacked_pitch_list(stacked_multi_pitch, times, profil
         slice_multi_pitch = stacked_multi_pitch[slc]
 
         # Convert the multi pitch array to a pitch list
-        slice_pitch_list = multi_pitch_to_pitch_list(slice_multi_pitch, profile)
+        slice_pitch_list_ = multi_pitch_to_pitch_list(slice_multi_pitch, profile)
 
         # Add the pitch list to the stacked pitch list dictionary under the slice key
-        stacked_pitch_list.update(pitch_list_to_stacked_pitch_list(times, slice_pitch_list, slc))
+        stacked_pitch_list.update(pitch_list_to_stacked_pitch_list(times, slice_pitch_list_, slc))
 
     return stacked_pitch_list
 
@@ -622,12 +1233,73 @@ def stacked_pitch_list_to_midi(stacked_pitch_list):
     return stacked_pitch_list
 
 
+def slice_stacked_pitch_list(stacked_pitch_list, start_time, stop_time):
+    """
+    Retain pitch observations within a time window.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    start_time : float
+      Earliest time for observations to keep
+    stop_time : float
+      Latest time for observations to keep
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for slicing
+    stacked_pitch_list = deepcopy(stacked_pitch_list)
+
+    # Loop through the stack of pitch lists
+    for slc in stacked_pitch_list.keys():
+        # Get the times and pitches from the slice
+        times, pitch_list = stacked_pitch_list[slc]
+        # Slice the pitch list for this slice
+        stacked_pitch_list[slc] = slice_pitch_list(times, pitch_list, start_time, stop_time)
+
+    return stacked_pitch_list
+
+
+def cat_stacked_pitch_list(stacked_pitch_list, new_stacked_pitch_list):
+    """
+    Concatenate two stacked pitch lists.
+
+    Parameters
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    new_stacked_pitch_list : dict
+      Same as stacked_pitch_list
+      Note: must also have same number of slices
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Make a copy of the stacked pitch lists for concatenation
+    stacked_pitch_list = deepcopy(stacked_pitch_list)
+
+    # Loop through the stack of pitch lists
+    for slc in stacked_pitch_list.keys():
+        # Group the two pitch_lists at the slice and add back to stack
+        stacked_pitch_list[slc] = cat_pitch_list(*(stacked_pitch_list[slc] + new_stacked_pitch_list[slc]))
+
+    return stacked_pitch_list
+
+
 ##################################################
 # TO MULTI PITCH                                 #
 ##################################################
 
 
-def notes_to_multi_pitch(pitches, intervals, times, profile):
+def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=True):
     """
     Convert loose MIDI note groups into a multi pitch array.
 
@@ -644,6 +1316,8 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+    include_offsets : bool
+      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -660,8 +1334,15 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # Initialize an empty multi pitch array
     multi_pitch = np.zeros((num_pitches, num_frames))
 
-    # Convert the pitches to number of semitones from lowest note
+    # Round to nearest semitone and subtract the lowest
+    # note of the instrument to obtain relative pitches
     pitches = np.round(pitches - profile.low).astype(constants.UINT)
+
+    # Determine if and where there is underflow or overflow
+    valid_idcs = np.logical_and((pitches >= 0), (pitches < num_pitches))
+
+    # Remove any invalid pitches
+    pitches, intervals = pitches[valid_idcs], intervals[valid_idcs]
 
     # Duplicate the array of times for each note and stack along a new axis
     times = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
@@ -677,7 +1358,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # Loop through each note
     for i in range(len(pitches)):
         # Populate the multi pitch array with activations for the note
-        multi_pitch[pitches[i], onsets[i] : offsets[i] + 1] = 1
+        multi_pitch[pitches[i], onsets[i] : offsets[i] + int(include_offsets)] = 1
 
     return multi_pitch
 
@@ -689,6 +1370,7 @@ def pitch_list_to_multi_pitch(times, pitch_list, profile, tolerance=0.5):
     Parameters
     ----------
     times : ndarray (N)
+      TODO - this shouldn't be necessary
       Time in seconds of beginning of each frame
       N - number of time samples (frames)
     pitch_list : list of ndarray (N x [...])
@@ -736,7 +1418,7 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
 
     Parameters
     ----------
-    stacked_multi_pitch : ndarray (S x F x T)
+    stacked_multi_pitch : ndarray or tensor (..., S x F x T)
       Array of multiple discrete pitch activation maps
       S - number of slices in stack
       F - number of discrete pitches
@@ -744,14 +1426,84 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
 
     Returns
     ----------
-    multi_pitch : ndarray (F x T)
+    multi_pitch : ndarray or tensor (..., F x T)
       Discrete pitch activation map
       F - number of discrete pitches
       T - number of frames
     """
 
     # Collapse the stacked arrays into one using the max operation
-    multi_pitch = np.max(stacked_multi_pitch, axis=-3)
+    if isinstance(stacked_multi_pitch, torch.Tensor):
+        # PyTorch Tensor
+        multi_pitch = torch.max(stacked_multi_pitch, dim=-3)[0]
+    else:
+        # NumPy Ndarray
+        multi_pitch = np.max(stacked_multi_pitch, axis=-3)
+
+    return multi_pitch
+
+
+def logistic_to_multi_pitch(logistic, profile):
+    """
+    View logistic activations as a single multi pitch array.
+    TODO - fix this garbage so it works with differentiation
+
+    Parameters
+    ----------
+    logistic : ndarray or tensor (..., N x T)
+      Array of distinct activations (e.g. string/fret combinations)
+      N - number of individual activations
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+
+    Returns
+    ----------
+    multi_pitch : ndarray or tensor (..., F x T)
+      Discrete pitch activation map
+      F - number of discrete pitches
+      T - number of frames
+    """
+
+    # Obtain the tuning (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Determine the size of the multi pitch array to construct
+    dims = tuple(logistic.shape[:-1]) + tuple([profile.get_range_len()])
+
+    # Initialize an empty list to hold the logistic activations
+    if isinstance(logistic, np.ndarray):
+        multi_pitch = np.ones(dims)
+    else:
+        multi_pitch = torch.ones(dims)
+
+    # Loop through the multi pitch arrays
+    for dof in range(len(tuning)):
+        # Determine which activations correspond to this degree of freedom
+        start_idx = dof * profile.num_pitches
+        stop_idx = (dof + 1) * profile.num_pitches
+
+        # Obtain the logistic activations for the degree of freedom
+        activations = logistic[..., start_idx : stop_idx]
+
+        # Lower and upper pitch boundary for this degree of freedom
+        lower_bound = tuning[dof] - profile.low
+        upper_bound = lower_bound + profile.num_pitches
+
+        # Perform logical and with the current and new multipitch data
+        if isinstance(logistic, np.ndarray):
+            new_multi_pitch = np.logical_and(multi_pitch[..., lower_bound : upper_bound], activations)
+        else:
+            new_multi_pitch = torch.logical_and(multi_pitch[..., lower_bound : upper_bound], activations)
+
+        # Insert the ANDed multi pitch activations
+        multi_pitch[..., lower_bound : upper_bound] = new_multi_pitch
+
+    # Make sure the activations are integers
+    if isinstance(logistic, np.ndarray):
+        multi_pitch = multi_pitch.astype(constants.UINT)
+    else:
+        multi_pitch = multi_pitch.long()
 
     return multi_pitch
 
@@ -761,7 +1513,7 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
 ##################################################
 
 
-def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
+def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile, include_offsets=True):
     """
     Convert a dictionary of MIDI note groups into a stack of multi pitch arrays.
 
@@ -774,6 +1526,8 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+    include_offsets : bool
+      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -788,11 +1542,11 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
     stacked_multi_pitch = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to multi pitch and add to the list
-        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile)
+        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets)
         stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(slice_multi_pitch))
 
     # Collapse the list into an array
@@ -825,7 +1579,7 @@ def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
     stacked_multi_pitch = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_pitch_list)):
+    for slc in stacked_pitch_list.keys():
         # Get the pitches and intervals from the slice
         times, pitch_list = stacked_pitch_list[slc]
         multi_pitch = pitch_list_to_multi_pitch(times, pitch_list, profile)
@@ -871,7 +1625,7 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
 
     Parameters
     ----------
-    tablature : ndarray (S x T)
+    tablature : ndarray or tensor (..., S x T) (must consist of integers)
       Array of class membership for multiple degrees of freedom (e.g. strings)
       S - number of strings or degrees of freedom
       T - number of frames
@@ -880,7 +1634,7 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
 
     Returns
     ----------
-    stacked_multi_pitch : ndarray (S x F x T)
+    stacked_multi_pitch : ndarray or tensor (..., S x F x T)
       Array of multiple discrete pitch activation maps
       S - number of slices in stack
       F - number of discrete pitches
@@ -888,13 +1642,13 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     """
 
     # Determine the number of degrees of freedom and frames
-    num_dofs, num_frames = tablature.shape
+    num_dofs, num_frames = tablature.shape[-2:]
 
     # Determine the total number of pitches to be incldued
     num_pitches = profile.get_range_len()
 
     # Initialize and empty stacked multi pitch array
-    stacked_multi_pitch = np.zeros((num_dofs, num_pitches, num_frames))
+    stacked_multi_pitch = np.zeros(tablature.shape[:-2] + (num_dofs, num_pitches, num_frames))
 
     # Obtain the tuning for the tablature (lowest note for each degree of freedom)
     tuning = profile.get_midi_tuning()
@@ -902,17 +1656,37 @@ def tablature_to_stacked_multi_pitch(tablature, profile):
     # Determine the place in the stacked multi pitch array where each degree of freedom begins
     dof_start = np.expand_dims(tuning - profile.low, -1)
 
+    if isinstance(tablature, torch.Tensor):
+        # Convert these to tensor
+        dof_start = torch.Tensor(dof_start).to(tablature.device)
+
     # Determine which frames, by degree of freedom, contain pitch activity
     non_silent_frames = tablature >= 0
 
     # Determine the active pitches, relative to the start of the stacked multi pitch array
     pitch_idcs = (tablature + dof_start)[non_silent_frames]
 
-    # Break the non-silent frames indices into degree of freedom and frame
-    dof_idcs, frame_idcs = non_silent_frames.nonzero()
+    # Obtain the non-silent indices across each dimension
+    non_silent_idcs = non_silent_frames.nonzero()
+
+    if isinstance(tablature, torch.Tensor):
+        # Make sure pitch indices are integers
+        pitch_idcs = pitch_idcs.long()
+        # Extra step for PyTorch Tensors (tuple with indices for each dimension)
+        non_silent_idcs = tuple(non_silent_idcs.transpose(-2, -1))
+        # Convert to Tensor and add to the appropriate device
+        stacked_multi_pitch = torch.from_numpy(stacked_multi_pitch).to(tablature.device)
+        # Make sure the tensor has the same type as the input tablature
+        stacked_multi_pitch = stacked_multi_pitch.to(tablature.dtype)
+    else:
+        # Make sure pitch indices are integers
+        pitch_idcs = pitch_idcs.astype(constants.INT64)
+
+    # Split the non-silent indices by frame vs. everything else
+    other_idcs, frame_idcs = non_silent_idcs[:-1], non_silent_idcs[-1]
 
     # Populate the stacked multi pitch array
-    stacked_multi_pitch[(dof_idcs, pitch_idcs, frame_idcs)] = 1
+    stacked_multi_pitch[other_idcs + (pitch_idcs, frame_idcs)] = 1
 
     return stacked_multi_pitch
 
@@ -1008,6 +1782,177 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
     return tablature
 
 
+def logistic_to_tablature(logistic, profile, silence, silence_thr=0.):
+    """
+    View logistic activations as tablature class membership.
+
+    Parameters
+    ----------
+    logistic : tensor (..., N x T)
+      Array of distinct activations (e.g. string/fret combinations)
+      N - number of individual activations
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+    silence : bool
+      Whether to explicitly include an activation for silence
+    silence_thr : float
+      Threshold for maximum activation under which silence will be selected
+
+    Returns
+    ----------
+    tablature : tensor (S x T)
+      Array of class membership for multiple degrees of freedom (e.g. strings)
+      S - number of strings or degrees of freedom
+      T - number of frames
+    """
+
+    # Obtain the tuning (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Initialize an empty list to hold the tablature
+    tablature = list()
+
+    # Loop through the multi pitch arrays
+    for dof in range(len(tuning)):
+        # Determine which activations correspond to this degree of freedom
+        start_idx = dof * (profile.num_pitches + int(silence))
+        stop_idx = (dof + 1) * (profile.num_pitches + int(silence))
+
+        # Obtain the logistic activations for the degree of freedom
+        activations = logistic[..., start_idx : stop_idx, :]
+
+        # Determine which class has the highest activation across each frame
+        if isinstance(logistic, np.ndarray):
+            max_activations, highest_class = np.max(activations, axis=-2), np.argmax(activations, axis=-2)
+        else:
+            max_activations, highest_class = torch.max(activations, axis=-2)
+
+        if silence:
+            highest_class -= 1
+        else:
+            # Determine which frames correspond to silence
+            silent_frames = max_activations <= silence_thr
+            # Overwrite the highest class for the silent frames
+            highest_class[silent_frames] = -1
+
+        # Add the class membership to the tablature
+        if isinstance(logistic, np.ndarray):
+            tablature += [np.expand_dims(highest_class, axis=-2)]
+        else:
+            tablature += [highest_class.unsqueeze(-2)]
+
+    # Collapse the list to get the final tablature
+    if isinstance(logistic, np.ndarray):
+        tablature = np.concatenate(tablature, axis=-2)
+    else:
+        tablature = torch.cat(tablature, dim=-2)
+
+    return tablature
+
+
+##################################################
+# TO LOGISTIC                                    #
+##################################################
+
+
+def stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile, silence=False):
+    """
+    View stacked multi pitch arrays as a set of individual activations.
+
+    Parameters
+    ----------
+    stacked_multi_pitch : ndarray (S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
+      F - number of discrete pitches
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+    silence : bool
+      Whether to explicitly include an activation for silence
+
+    Returns
+    ----------
+    logistic : ndarray (N x T)
+      Array of distinct activations (e.g. string/fret combinations)
+      N - number of individual activations
+      T - number of frames
+    """
+
+    # Obtain the tuning (lowest note for each degree of freedom)
+    tuning = profile.get_midi_tuning()
+
+    # Initialize an empty list to hold the logistic activations
+    logistic = list()
+
+    # Loop through the multi pitch arrays
+    for dof in range(stacked_multi_pitch.shape[-3]):
+        # Obtain the multi pitch array for the degree of freedom
+        multi_pitch = stacked_multi_pitch[..., dof, :, :]
+
+        # Lower and upper pitch boundary for this degree of freedom
+        lower_bound = tuning[dof] - profile.low
+        upper_bound = lower_bound + profile.num_pitches
+
+        # Bound the multi pitch array by the support of the degree of freedom
+        multi_pitch = multi_pitch[..., lower_bound : upper_bound, :]
+
+        if silence:
+            if isinstance(multi_pitch, np.ndarray):
+                # Construct an array with activations for silence
+                silence_activations = np.sum(multi_pitch, axis=-2, keepdims=True) == 0
+                # Append the silence activations at the front of the multi pitch array
+                multi_pitch = np.append(silence_activations, multi_pitch, axis=-2)
+            else:
+                # Construct a tensor with activations for silence
+                silence_activations = torch.sum(multi_pitch, dim=-2, keepdims=True) == 0
+                # Append the silence activations at the front of the multi pitch array
+                multi_pitch = torch.cat((silence_activations.to(multi_pitch.device), multi_pitch), dim=-2)
+
+        # Add the multi pitch data to the logistic activations
+        logistic += [multi_pitch]
+
+    # Collapse the list to get the final logistic activations
+    if isinstance(stacked_multi_pitch, np.ndarray):
+        logistic = np.concatenate(logistic, axis=-2)
+    else:
+        logistic = torch.cat(logistic, dim=-2)
+
+    return logistic
+
+
+def tablature_to_logistic(tablature, profile, silence=False):
+    """
+    Helper function to convert tablature to unique string/fret combinations.
+
+    Parameters
+    ----------
+    tablature : tensor (S x T)
+      Array of class membership for multiple degrees of freedom (e.g. strings)
+      S - number of strings or degrees of freedom
+      T - number of frames
+    profile : TablatureProfile (instrument.py)
+      Tablature instrument profile detailing experimental setup
+    silence : bool
+      Whether to explicitly include an activation for silence
+
+    Returns
+    ----------
+    logistic_activations : ndarray (N x T)
+      Array of tablature activations (e.g. string/fret combinations)
+      N - number of unique string/fret activations
+      T - number of frames
+    """
+
+    # Convert the tablature data to a stacked multi pitch array
+    stacked_multi_pitch = tablature_to_stacked_multi_pitch(tablature, profile)
+
+    # Convert the stacked multi pitch array to logistic (unique string/fret) activations
+    logistic_activations = stacked_multi_pitch_to_logistic(stacked_multi_pitch, profile, silence)
+
+    return logistic_activations
+
 ##################################################
 # TO ONSETS                                      #
 ##################################################
@@ -1030,7 +1975,7 @@ def notes_to_onsets(pitches, intervals, times, profile, ambiguity=None):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each onset label should span
 
     Returns
@@ -1117,7 +2062,7 @@ def stacked_notes_to_stacked_onsets(stacked_notes, times, profile, ambiguity=Non
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each onset label should span
 
     Returns
@@ -1133,7 +2078,7 @@ def stacked_notes_to_stacked_onsets(stacked_notes, times, profile, ambiguity=Non
     stacked_onsets = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to onsets and add to the list
@@ -1313,7 +2258,7 @@ def stacked_notes_to_stacked_offsets(stacked_notes, times, profile, ambiguity):
     stacked_offsets = list()
 
     # Loop through the slices of notes
-    for slc in range(len(stacked_notes)):
+    for slc in stacked_notes.keys():
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to offsets and add to the list
@@ -1392,17 +2337,10 @@ def sort_batched_notes(batched_notes, by=0):
       N - number of notes
     """
 
-    # Define the attributes that can be used to sort the notes
-    attributes = ['onset', 'offset', 'pitch']
-
-    # Obtain the dtype of the batch-friendly notes before any manipulation
-    dtype = batched_notes.dtype
-    # Set a temporary dtype for sorting purposes
-    batched_notes.dtype = [(attributes[0], float), (attributes[1], float), (attributes[2], float)]
-    # Sort the notes along the row axis by the selected attribute
-    batched_notes = np.sort(batched_notes, axis=0, order=attributes[by])
-    # Reset the dtype of the batch-friendly notes
-    batched_notes.dtype = dtype
+    # Obtain the indices of the array to sort by the chosen attribute
+    sorted_idcs = np.argsort(batched_notes[..., by])
+    # Re-order the array according to the sorting indices
+    batched_notes = batched_notes[sorted_idcs]
 
     return batched_notes
 
@@ -1647,7 +2585,7 @@ def framify_activations(activations, win_length, hop_length=1, pad=True):
         # Determine the number of intermediary frames required to give back same size
         int_frames = num_frames + 2 * pad_length
         # Pad the activations with zeros
-        activations = librosa.util.pad_center(activations, int_frames)
+        activations = librosa.util.pad_center(activations, size=int_frames)
     else:
         # Number of intermediary frames is the same
         int_frames = num_frames
@@ -1789,6 +2727,7 @@ def seed_everything(seed):
       Seed to use for random number generation
     """
 
+    # TODO - look into 'torch.backends.cudnn.benchmark = False'
     torch.backends.cudnn.deterministic = True
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -1888,14 +2827,87 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
     return new_times, new_values
 
 
-def tensor_to_array(tensor):
+def get_frame_times(duration, sample_rate, hop_length):
+    """
+    Determine the start time of each frame for given audio parameters
+
+    Parameters
+    ----------
+    duration : float
+        Total length (seconds) of audio
+    sample_rate : int or float
+        Number of samples per second
+    hop_length : int or float
+        Number of samples between frames
+
+    Returns
+    -------
+    times : ndarray
+        Array of times corresponding to frames
+    """
+
+    # TODO - this seems too close to the FeatureModel function -
+    #        maybe that function should be made to work with a duration if no audio exists
+
+    # Determine the total number of frames in the sample
+    total_num_frames = int(1 + (duration * sample_rate - 1) // hop_length)
+
+    # We need the frame times for the tablature
+    times = librosa.frames_to_time(np.arange(total_num_frames), sr=sample_rate, hop_length=hop_length)
+
+    return times
+
+
+def apply_func_stacked_representation(stacked_representation, func, **kwargs):
+    """
+    Recursively apply a function to the contents of each slice in a stacked representation.
+    TODO - this can be probably be used in many places to avoid extra code
+
+    Parameters
+    ----------
+    stacked_representation : dict
+        Dictionary representing some stacked data structure
+    func : function
+        Function to run on each slice
+    kwargs : dict of keyword arguments
+        Arguments for the chosen function
+
+    Returns
+    -------
+    stacked_representation : dict
+        Dictionary representing some modified stacked data structure
+    """
+
+    # Make a copy of the stacked representation
+    stacked_representation = deepcopy(stacked_representation)
+
+    # Loop through the stack
+    for slc in stacked_representation.keys():
+        # Use the current slice contents as function arguments
+        args = stacked_representation[slc]
+
+        # Check if there is more than one argument
+        if isinstance(args, tuple):
+            # Unpack the arguments and run the function
+            output = func(*args, **kwargs)
+        else:
+            # Run the function with the single argument
+            output = func(args, **kwargs)
+
+        # Apply the given function
+        stacked_representation[slc] = output
+
+    return stacked_representation
+
+
+def tensor_to_array(data):
     """
     Simple helper function to convert a PyTorch tensor
     into a NumPy array in order to keep code readable.
 
     Parameters
     ----------
-    tensor : PyTorch tensor
+    data : PyTorch tensor
       Tensor to convert to array
 
     Returns
@@ -1904,22 +2916,24 @@ def tensor_to_array(tensor):
       Converted array
     """
 
-    # Change device to CPU,
-    # detach from gradient graph,
-    # and convert to NumPy array
-    array = tensor.cpu().detach().numpy()
+    # Make sure the input is a PyTorch tensor
+    if isinstance(data, torch.Tensor):
+        # Change device to CPU,
+        # detach from gradient graph,
+        # and convert to NumPy array
+        data = data.cpu().detach().numpy()
 
-    return array
+    return data
 
 
-def array_to_tensor(array, device=None):
+def array_to_tensor(data, device=None):
     """
     Simple helper function to convert a NumPy array
     into a PyTorch tensor in order to keep code readable.
 
     Parameters
     ----------
-    array : NumPy ndarray
+    data : NumPy ndarray
       Array to convert to tensor
     device : string, or None (optional)
       Add tensor to this device, if specified
@@ -1930,14 +2944,16 @@ def array_to_tensor(array, device=None):
       Converted tensor
     """
 
-    # Convert to PyTorch tensor
-    tensor = torch.from_numpy(array)
+    # Make sure the input is a NumPy array
+    if isinstance(data, np.ndarray):
+        # Convert to PyTorch tensor
+        data = torch.from_numpy(data)
 
-    # Add tensor to device, if specified
-    if device is not None:
-        tensor = tensor.to(device)
+        # Add tensor to device, if specified
+        if device is not None:
+            data = data.to(device)
 
-    return tensor
+    return data
 
 
 def save_pack_npz(path, keys, *args):
@@ -1999,7 +3015,7 @@ def load_unpack_npz(path):
     return data
 
 
-def track_to_dtype(track, dtype):
+def dict_to_dtype(track, dtype):
     """
     Convert all ndarray entries in a dictionary to a specified type.
 
@@ -2025,8 +3041,12 @@ def track_to_dtype(track, dtype):
 
     # Loop through the dictionary keys
     for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_to_dtype(track[key], dtype)
         # Check if the dictionary entry is an ndarray
-        if isinstance(track[key], np.ndarray):
+        elif isinstance(track[key], np.ndarray):
             # Convert the ndarray to the specified type
             track[key] = track[key].astype(dtype)
 
@@ -2037,7 +3057,7 @@ def track_to_dtype(track, dtype):
     return track
 
 
-def track_to_device(track, device):
+def dict_to_device(track, device):
     """
     Add all tensor entries in a dictionary to a specified device.
 
@@ -2062,15 +3082,19 @@ def track_to_device(track, device):
 
     # Loop through the dictionary keys
     for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_to_device(track[key], device)
         # Check if the dictionary entry is a tensor
-        if isinstance(track[key], torch.Tensor):
+        elif isinstance(track[key], torch.Tensor):
             # Add the tensor to the specified device
             track[key] = track[key].to(device)
 
     return track
 
 
-def track_to_cpu(track):
+def dict_to_array(track):
     """
     Convert all tensor entries in a dictionary to ndarray.
 
@@ -2094,21 +3118,21 @@ def track_to_cpu(track):
 
     # Loop through the dictionary keys
     for key in keys:
-        # Check if the entry us another dictionary
+        # Check if the entry is another dictionary
         if isinstance(track[key], dict):
             # Call this function recursively
-            track[key] = track_to_cpu(track[key])
+            track[key] = dict_to_array(track[key])
         # Check if the entry is a tensor
-        if isinstance(track[key], torch.Tensor):
-            # Squeeze the tensor and convert to ndarray and remove batch dimension
-            track[key] = tensor_to_array(track[key].squeeze())
+        elif isinstance(track[key], torch.Tensor):
+            # Convert the tensor to an array
+            track[key] = tensor_to_array(track[key])
 
     return track
 
 
-def track_to_batch(track):
+def dict_to_tensor(track):
     """
-    Treat track data as a batch of size one.
+    Convert all ndarray entries in a dictionary to tensors.
 
     Parameters
     ----------
@@ -2129,10 +3153,182 @@ def track_to_batch(track):
 
     # Loop through the dictionary keys
     for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_to_tensor(track[key])
+        # Check if the entry is an array
+        elif isinstance(track[key], np.ndarray):
+            # Convert the array to a tensor
+            track[key] = array_to_tensor(track[key])
+
+    return track
+
+
+def dict_squeeze(track, dim=None):
+    """
+    Collapse unnecessary dimensions of an array or tensor.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    dim : int or None
+      Dimension to collapse (any single dimensions if unspecified)
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    # TODO - can't copy tensors with gradients
+    #track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_squeeze(track[key])
+        # Check if the entry is a tensor or array
+        elif isinstance(track[key], torch.Tensor) or isinstance(track[key], np.ndarray):
+            if dim is None:
+                # Squeeze all unnecessary dimensions of the tensor or array
+                track[key] = track[key].squeeze()
+            elif track[key].shape[dim] == 1:
+                # Squeeze the chosen dimension of the tensor or array
+                track[key] = track[key].squeeze(dim)
+
+    return track
+
+
+def dict_unsqueeze(track, dim=0):
+    """
+    Add a new dimension to an array or tensor.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    dim : int
+      Insertion point of new dimension
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the entry is another dictionary
+        if isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_unsqueeze(track[key])
+        # Check if the dictionary entry is a Tensor
+        elif isinstance(track[key], torch.Tensor):
+            # Add a new dimension at the insertion point
+            track[key] = track[key].unsqueeze(dim)
+        # Check if the entry is an ndarray
+        elif isinstance(track[key], np.ndarray):
+            # Add a new dimension at the insertion point
+            track[key] = np.expand_dims(track[key], axis=dim)
+
+    return track
+
+
+def dict_append(track, additions, dim=-1):
+    """
+    Append together matching entries of two dictionaries. This
+    will deliberately skip tuples, as in stacked representations.
+    TODO - may be repeat of function defined in evaluate.py
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    additions : dict
+      Dictionary containing new data
+    dim : int
+      Dimension on which to append
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Copy the dictionary to avoid hard assignment
+    track = deepcopy(track)
+
+    # Obtain a list of the dictionary keys
+    keys = list(additions.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the entry exists
+        if key not in track:
+            # Add the new entry to the current dictionary
+            track[key] = additions[key]
+        # Check if the entry is another dictionary
+        elif isinstance(track[key], dict):
+            # Call this function recursively
+            track[key] = dict_append(track[key], additions[key], dim)
+        # Check if the entry is a list
+        elif isinstance(additions[key], list):
+            # Add the contents of the lists together
+            track[key] += additions[key]
         # Check if the dictionary entry is an ndarray
-        if isinstance(track[key], np.ndarray):
-            # Convert to tensor and add batch dimension
-            track[key] = array_to_tensor(track[key]).unsqueeze(0)
+        elif isinstance(additions[key], np.ndarray):
+            # Use the NumPy append function
+            track[key] = np.append(track[key], additions[key], axis=dim)
+        # Check if the dictionary entry is a tensor
+        elif isinstance(additions[key], torch.Tensor):
+            # Use the Torch cat function
+            track[key] = torch.cat((track[key], additions[key]), dim=dim)
+        # Check if the dictionary entry is a tuple
+        elif isinstance(additions[key], tuple):
+            # Insert a None to show we saw the tuple but refuse to process it
+            track[key] = None
+
+    return track
+
+
+def dict_detach(track):
+    """
+    Detach gradient computation for all tensors.
+
+    Parameters
+    ----------
+    track : dict
+      Dictionary containing data for a track
+
+    Returns
+    ----------
+    track : dict
+      Dictionary containing data for a track
+    """
+
+    # Obtain a list of the dictionary keys
+    keys = list(track.keys())
+
+    # Loop through the dictionary keys
+    for key in keys:
+        # Check if the dictionary entry is a Tensor
+        if isinstance(track[key], torch.Tensor):
+            # Detach the gradient from the Tensor
+            track[key] = track[key].detach()
 
     return track
 
@@ -2186,6 +3382,8 @@ def unpack_dict(data, key):
     """
 
     # Default the entry
+    # TODO - better to use None or False?
+    # TODO - can give me pointer to actual item, not copy
     entry = None
 
     # Check if a dictionary was provided and if the key is in the dictionary
@@ -2248,7 +3446,7 @@ def get_tag(tag=None):
     return tag
 
 
-def slice_track(track, start, stop, skip=None):
+def slice_track(track, start, stop, skip=None, pad=True):
     """
     Slice any ndarray or tensor entries of a dictionary along the last axis.
 
@@ -2262,6 +3460,8 @@ def slice_track(track, start, stop, skip=None):
       End index (excluded in slice)
     skip : list of str
       Keys to skip during this process
+    pad : bool
+      Whether to pad to implicit size (stop - start) when necessary
 
     Returns
     ----------
@@ -2287,12 +3487,100 @@ def slice_track(track, start, stop, skip=None):
             # Slice along the final axis
             track[key] = track[key][..., start : stop]
 
+            # Determine if the entry was long enough
+            num_missing = max(0, (stop - start) - track[key].shape[-1])
+
+            if num_missing:
+                # Create an array or tensor of zeros to add to the entry
+                if isinstance(track[key], np.ndarray):
+                    # Append a NumPy array of zeros
+                    zeros = np.zeros(track[key].shape[:-1] + tuple([num_missing]))
+                    track[key] = np.concatenate((track[key], zeros), axis=-1)
+                else:
+                    # Append a PyTorch tensor of zeros
+                    zeros = torch.zeros(track[key].shape[:-1] + tuple([num_missing])).to(track[key].device)
+                    track[key] = torch.cat((track[key], zeros), dim=-1)
+
+                if key == constants.KEY_TABLATURE:
+                    # Change the padded zeros to ones
+                    track[key][..., -num_missing:] = -1
+
     return track
 
 
-def feats_to_batch(feats, times):
-    # TODO - a function which accepts only feats (for deployment)
-    # TODO - I don't think I need this at all if fwd accepts raw features
-    # TODO - in pre_proc, catch non-dict and call this?
-    # TODO - while num_dims < 4: feats.unsqueeze(0)
-    pass
+def get_current_time(decimals=3):
+    """
+    Determine the current system time.
+
+    Parameters
+    ----------
+    decimals : int
+      Number of digits to keep when rounding
+
+    Returns
+    ----------
+    current_time : float
+      Current system time
+    """
+
+    # Get the current time and round to the specified number of digits
+    current_time = round(time.time(), decimals)
+
+    return current_time
+
+
+def print_time(t, label=None):
+    """
+    Print a time to the console.
+
+    Parameters
+    ----------
+    t : float
+      Arbitrary time
+    label : string or None (Optional)
+      Label for the time print statement
+    """
+
+    # Begin constructing the string
+    string = 'Time'
+
+    if label is not None:
+        # Add the label if it was specified
+        string += f' ({label})'
+
+    # Add the time to the string
+    string += f' : {t}'
+
+    # Print the constructed string
+    print(string)
+
+
+def compute_time_difference(start_time, pr=True, label=None, decimals=3):
+    """
+    Obtain the time elapsed since the given system time.
+
+    Parameters
+    ----------
+    start_time : float
+      Arbitrary system time
+    decimals : int
+      Number of digits to keep when rounding
+    pr : bool
+      Whether to print the time difference to the console
+    label : string or None (Optional)
+      Label for the optional print statement
+
+    Returns
+    ----------
+    elapsed_time : float
+      Time elapsed since specified time
+    """
+
+    # Take the difference between the current time and the paramterized time
+    elapsed_time = round(get_current_time() - start_time, decimals)
+
+    if pr:
+        # Print to console
+        print_time(elapsed_time, label)
+
+    return elapsed_time

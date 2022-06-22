@@ -5,7 +5,7 @@ from amt_tools.datasets import GuitarSet
 from amt_tools.models import TabCNN
 from amt_tools.features import CQT
 
-from amt_tools.train import train, validate
+from amt_tools.train import train
 from amt_tools.transcribe import *
 from amt_tools.evaluate import *
 
@@ -69,9 +69,6 @@ def config():
 @ex.automain
 def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoints,
                      batch_size, learning_rate, gpu_id, reset_data, seed, root_dir):
-    # Seed everything with the same seed
-    tools.seed_everything(seed)
-
     # Initialize the default guitar profile
     profile = tools.GuitarProfile()
 
@@ -102,6 +99,9 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
     # Perform each fold of cross-validation
     for k in range(6):
+        # Seed everything with the same seed
+        tools.seed_everything(seed)
+
         # Determine the name of the splits being removed
         test_hold_out = '0' + str(k)
 
@@ -133,7 +133,7 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
 
         print('Loading testing partition...')
 
-        # Create a dataset corresponding to the training partition
+        # Create a dataset corresponding to the testing partition
         gset_test = GuitarSet(splits=test_splits,
                               hop_length=hop_length,
                               sample_rate=sample_rate,

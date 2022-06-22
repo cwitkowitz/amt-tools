@@ -20,7 +20,7 @@ class TranscriptionModel(nn.Module):
     Implements a generic music transcription model.
     """
 
-    def __init__(self, dim_in, profile, in_channels=1, model_complexity=1, device='cpu'):
+    def __init__(self, dim_in, profile, in_channels=1, model_complexity=1, frame_width=1, device='cpu'):
         """
         Initialize parameters common to all models and instantiate
         model as a PyTorch Module.
@@ -35,27 +35,26 @@ class TranscriptionModel(nn.Module):
           Number of channels in input features
         model_complexity : int, optional (default 1)
           Scaling parameter for size of model's components
+        frame_width : int
+          Number of frames required for a single prediction
         device : string, optional (default /'cpu/')
           Device with which to perform processing steps
         """
 
-        super().__init__()
+        nn.Module.__init__(self)
 
         self.dim_in = dim_in
         self.profile = profile
         self.in_channels = in_channels
         self.model_complexity = model_complexity
+        self.frame_width = frame_width
         self.device = device
 
         # Initialize a counter to keep track of how many iterations have been run
         self.iter = 0
 
         # Placeholder for appending additional modules, such as learnable filterbanks
-        self.frontend = nn.Sequential(
-            nn.Identity()
-        )
-
-        self.change_device()
+        self.frontend = nn.Sequential()
 
     def change_device(self, device=None):
         """
@@ -103,29 +102,21 @@ class TranscriptionModel(nn.Module):
         # batch = deepcopy(batch)
 
         # Make sure all data is on correct device
-        batch = tools.track_to_device(batch, self.device)
+        batch = tools.dict_to_device(batch, self.device)
 
-        # Extract input audio and add a channel dimension
-        input_audio = batch[tools.KEY_AUDIO].unsqueeze(-2)
+        # Try to extract audio and features from the input data
+        audio = tools.unpack_dict(batch, tools.KEY_AUDIO)
+        feats = tools.unpack_dict(batch, tools.KEY_FEATS)
 
-        # Run audio through the feature extraction module, which does nothing by default
-        auto_feats = self.frontend(input_audio)
+        if audio is not None and len(self.frontend):
+            # Add a channel dimension to the audio
+            audio = audio.unsqueeze(-2)
+            # Run audio through the frontend module, which does nothing by default
+            frontend_feats = self.frontend(audio)
+            # Append precomputed features to the frontend output if they exist
+            feats = frontend_feats if feats is None else torch.cat((feats, frontend_feats), dim=1)
 
-        # If features exist, extract them
-        # TODO - this logic could probably be simplified
-        if tools.KEY_FEATS in batch.keys():
-            # Obtain any fixed features
-            feats = batch[tools.KEY_FEATS]
-            # Check if any features were calculated automatically
-            if not auto_feats.equal(input_audio):
-                # If so, add to fixed features (number of frames must match)
-                feats = torch.cat((feats, auto_feats), dim=1)
-        else:
-            # Otherwise we assume features were calculated automatically
-            # - if feature extraction module was left as
-            #   identity, our features are the audio itself
-            feats = auto_feats
-
+        # Add the features back to the input data
         batch[tools.KEY_FEATS] = feats
 
         return batch
@@ -186,8 +177,9 @@ class TranscriptionModel(nn.Module):
         # Post-process batch
         output = self.post_proc(batch)
 
-        # Add the frame times to the output
-        output[tools.KEY_TIMES] = batch[tools.KEY_TIMES]
+        # Add the frame times to the output if they exist
+        if tools.query_dict(batch, tools.KEY_TIMES):
+            output[tools.KEY_TIMES] = batch[tools.KEY_TIMES]
 
         return output
 
@@ -212,7 +204,7 @@ class OutputLayer(nn.Module):
     Implements a generic output layer for transcription models.
     """
 
-    def __init__(self, dim_in, dim_out):
+    def __init__(self, dim_in, dim_out, weights=None):
         """
         Initialize parameters common to all output layers as model fields
         and instantiate layers as a PyTorch processing Module.
@@ -223,12 +215,41 @@ class OutputLayer(nn.Module):
           Dimensionality of input features
         dim_out : int
           Dimensionality of output activations
+        weights : ndarray (G x C) or None (optional)
+          Class weights for calculating loss
+          G - number of independent softmax groups
+          C - number of classes per softmax group
         """
 
         super().__init__()
 
         self.dim_in = dim_in
         self.dim_out = dim_out
+
+        if weights is None:
+            self.weights = weights
+        else:
+            self.set_weights(self.weights.flatten())
+
+    def set_weights(self, weights, device='cpu'):
+        """
+        Update the class weighting.
+
+        Parameters
+        ----------
+        weights : ndarray (N) or None (optional)
+          Class weights for calculating loss
+          N - number of activations
+        device : string, optional (default /'cpu/')
+          Device to hold the weights
+        """
+
+        if isinstance(device, int):
+            # If device is an integer, assume device represents GPU number
+            device = torch.device(f'cuda:{device}'
+                                  if torch.cuda.is_available() else 'cpu')
+
+        self.weights = torch.Tensor(weights).to(device)
 
     @abstractmethod
     def forward(self, feats):
@@ -292,7 +313,7 @@ class SoftmaxGroups(OutputLayer):
     across the possibilities (the string's fretting).
     """
 
-    def __init__(self, dim_in, num_groups, num_classes):
+    def __init__(self, dim_in, num_groups, num_classes, weights=None):
         """
         Initialize fields of the multi-label softmax layer.
 
@@ -304,6 +325,8 @@ class SoftmaxGroups(OutputLayer):
           Number of independent softmax groups
         num_classes : int
           Number of classes per softmax group
+
+        See OutputLayer class for others...
         """
 
         self.num_groups = num_groups
@@ -312,7 +335,7 @@ class SoftmaxGroups(OutputLayer):
         # Total number of output neurons
         dim_out = self.num_groups * self.num_classes
 
-        super().__init__(dim_in, dim_out)
+        super().__init__(dim_in, dim_out, weights)
 
         # Intitialize the output layer
         self.output_layer = nn.Linear(self.dim_in, self.dim_out)
@@ -366,22 +389,50 @@ class SoftmaxGroups(OutputLayer):
           Loss or error for entire batch
         """
 
+        # Make clones so as not to modify originals out of function scope
+        estimated = estimated.clone()
+        reference = reference.clone()
+
         # Obtain the batch size before frame axis is collapsed
         batch_size = estimated.size(0)
 
-        # Fold the degrees of freedom axis into the pseudo-batch axis
-        estimated = estimated.view(-1, self.num_classes)
+        if self.weights is None:
+            # Fold the degrees of freedom axis into the pseudo-batch axis
+            estimated = estimated.view(-1, self.num_classes)
 
-        # Transform ground-truth tabs into 1D softmax labels
-        reference = reference.transpose(-2, -1)
-        reference[reference == -1] = self.num_classes - 1
-        reference = reference.flatten().long()
+            # Transform ground-truth tabs into 1D softmax labels
+            reference = reference.transpose(-2, -1)
+            reference[reference == -1] = self.num_classes - 1
+            reference = reference.flatten().long()
 
-        # Calculate the loss for the entire pseudo-batch
-        loss = F.cross_entropy(estimated.float(), reference, reduction='none')
-        loss = loss.view(batch_size, -1, self.num_groups)
-        # Average loss across degrees of freedom
-        loss = torch.mean(loss, dim=-1)
+            # Calculate the loss for the entire pseudo-batch
+            loss = F.cross_entropy(estimated.float(), reference, reduction='none')
+            loss = loss.view(batch_size, -1, self.num_groups)
+            # Sum loss across degrees of freedom
+            loss = torch.sum(loss, dim=-1)
+        else:
+            # TODO - does there really need to be two branches here?
+            # Initalize the loss
+            loss = 0
+
+            # Collapse the batch and frame dimension and break apart the activations by group
+            estimated = estimated.view(-1, self.num_groups, self.num_classes).float()
+
+            # Transform ground-truth tabs into 1D softmax labels
+            reference[reference == -1] = self.num_classes - 1
+
+            # Reshape activations to index by group
+            weight = self.weights.view(self.num_groups, -1)
+
+            # Loop through the Softmax groups
+            for smax in range(self.num_groups):
+                # Compute the weighted loss for each group
+                loss += F.cross_entropy(estimated[:, smax], reference[:, smax].flatten().long(),
+                                        weight=weight[smax], reduction='none')
+
+            # Uncollapse the batch dimension
+            loss = loss.view(batch_size, -1)
+
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
         # Average the loss across the batch
@@ -437,7 +488,7 @@ class LogisticBank(OutputLayer):
     or not the key is active.
     """
 
-    def __init__(self, dim_in, dim_out):
+    def __init__(self, dim_in, dim_out, weights=None):
         """
         Initialize fields of the multi-label logistic layer.
 
@@ -447,16 +498,14 @@ class LogisticBank(OutputLayer):
           Dimensionality of input features
         dim_out : int
           Dimensionality of output activations
+
+        See OutputLayer class for others...
         """
 
-        super().__init__(dim_in, dim_out)
+        super().__init__(dim_in, dim_out, weights)
 
         # Initialize the output layer
-        self.output_layer = nn.Sequential(
-            nn.Linear(self.dim_in, self.dim_out),
-            # TODO - make sure stability is not an issue - see ""_with_logits()
-            nn.Sigmoid()
-        )
+        self.output_layer = nn.Linear(self.dim_in, self.dim_out)
 
     def forward(self, feats):
         """
@@ -507,15 +556,23 @@ class LogisticBank(OutputLayer):
           Loss or error for entire batch
         """
 
+        # Make clones so as not to modify originals out of function scope
+        estimated = estimated.clone()
+        reference = reference.clone()
+
         # Switch the frame and key dimension
         estimated = estimated.transpose(-2, -1)
 
+        # Add a frame dimension to the weights for broadcasting
+        weight = self.weights.unsqueeze(-1) if self.weights is not None else None
+
         # Calculate the loss for the entire pseudo-batch
-        loss = F.binary_cross_entropy(estimated.float(), reference.float(), reduction='none')
+        loss = F.binary_cross_entropy_with_logits(estimated.float(), reference.float(),
+                                                  weight=weight, reduction='none')
         # Average loss across frames
         loss = torch.mean(loss, dim=-1)
-        # Average loss across keys
-        loss = torch.mean(loss, dim=-1)
+        # Sum loss across keys
+        loss = torch.sum(loss, dim=-1)
         # Average loss across the batch
         loss = torch.mean(loss)
 
@@ -544,6 +601,8 @@ class LogisticBank(OutputLayer):
 
         final_output = super().finalize_output(raw_output)
 
+        # Apply sigmoid activation
+        final_output = torch.sigmoid(final_output)
         # Switch the frame and key dimension
         final_output = final_output.transpose(-2, -1)
         # Convert output to binary values

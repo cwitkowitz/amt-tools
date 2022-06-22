@@ -1,15 +1,21 @@
 # TODO - probably want to whittle these down as much as possible
-numpy>=1.17.2
-librosa>=0.8.0
-torch>=1.4.0
-matplotlib>= 3.4.1
-sacred>= 0.8.2
-mir_eval>=0.6
+numpy>=1.21.6
+librosa>=0.9.1
+torch>=1.11.0
+matplotlib>=3.5.2
+sacred>=0.8.2
+mir_eval>=0.7
 jams>=0.3.4
-mido>=1.2.9
-requests>=2.25.1
-tqdm>=4.59.0
-tensorboardX>=2.1
-scipy>=1.6.2
-pandas>=1.2.3
-mirdata>=0.3.2
+mido>=1.2.10
+requests>=2.27.1
+tqdm>=4.64.0
+tensorboard>=2.9.0
+tensorboardX>=2.5
+scipy>=1.8.1
+pandas>=1.4.2
+mirdata>=0.3.6
+sounddevice>=0.4.4
+# protobuf==3.20
+# TODO - extras - examples?
+# TODO - extras - streaming?
+# TODO - sudo apt-get install libportaudio2

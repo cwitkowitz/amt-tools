@@ -8,3 +8,5 @@ generated
 
 build
 dist
+
+*.DS_Store

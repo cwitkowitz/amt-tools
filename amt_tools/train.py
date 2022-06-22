@@ -1,91 +1,19 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from .evaluate import append_results, average_results, log_results
+from .evaluate import validate, append_results, average_results, log_results
 from . import tools
 
 # Regular imports
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
-import torch.nn as nn
-import numpy as np
 import torch
 import os
 
-
-def file_sort(file_name):
-    """
-    Augment file names for sorting within the models directory. Since, e.g.,
-    /'500/' will by default be scored as higher than /'1500/'. One way to fix
-    this is by adding the length of the file to the beginning of the string.
-
-    Parameters
-    ----------
-    file_name : str
-      Path being sorted
-
-    Returns
-    ----------
-    sort_name : str
-      Character count concatenated with original file name
-    """
-
-    # Takes into account the number of digits by adding string length
-    sort_name = str(len(file_name)) + file_name
-
-    return sort_name
-
-
-def validate(model, dataset, evaluator, estimator=None):
-    """
-    Implements the validation or evaluation loop for a model and dataset partition.
-    Optionally save predictions and log results.
-
-    Parameters
-    ----------
-    model : TranscriptionModel
-      Model to validate or evalaute
-    dataset : TranscriptionDataset
-      Dataset (partition) to use for validation or evaluation
-    estimator : Estimator
-      Estimation protocol to use
-    evaluator : Evaluator
-      Evaluation protocol to use
-
-    Returns
-    ----------
-    average : dict
-      Dictionary containing all relevant results averaged across all tracks
-    """
-
-    # Make sure the model is in evaluation mode
-    model.eval()
-
-    # Turn off gradient computation
-    with torch.no_grad():
-        # Loop through the validation track ids
-        for track_id in dataset.tracks:
-            # Obtain the track data
-            track = dataset.get_track_data(track_id)
-
-            # Treat the track data as a batch
-            batch = tools.track_to_batch(track)
-
-            # Get the model predictions and convert them to NumPy arrays
-            predictions = tools.track_to_cpu(model.run_on_batch(batch))
-
-            if estimator is not None:
-                # Perform any estimation steps (e.g. note transcription)
-                predictions.update(estimator.process_track(predictions, track_id))
-
-            # Evaluate the predictions and track the results
-            evaluator.get_track_results(predictions, track, track_id)
-
-    # Obtain the average results from this validation loop
-    average = evaluator.average_results()
-
-    return average
+__all__ = [
+    'train'
+]
 
 
 def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.', scheduler=None,
@@ -146,16 +74,24 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
         log_files = os.listdir(log_dir)
 
         # Extract and sort files pertaining to the model
-        model_files = sorted([path for path in log_files if tools.PYT_MODEL in path], key=file_sort)
+        model_files = sorted([path for path in log_files if tools.PYT_MODEL in path], key=tools.file_sort)
         # Extract and sort files pertaining to the optimizer state
-        optimizer_files = sorted([path for path in log_files if tools.PYT_STATE in path], key=file_sort)
+        optimizer_files = sorted([path for path in log_files if tools.PYT_STATE in path], key=tools.file_sort)
 
         # Check if any previous checkpoints exist
         if len(model_files) > 0 and len(optimizer_files) > 0:
+            # Define the tags for the model and state at the selected number of iterations
+            max_model = f'{tools.PYT_MODEL}-{iterations}.{tools.PYT_EXT}'
+            max_state = f'{tools.PYT_STATE}-{iterations}.{tools.PYT_EXT}'
+
+            # Check if a model/state already exists for the selected iterations
+            model_index = model_files.index(max_model) if max_model in model_files else -1
+            state_index = optimizer_files.index(max_state) if max_state in optimizer_files else -1
+
             # Get the path to the latest model file
-            model_path = os.path.join(log_dir, model_files[-1])
+            model_path = os.path.join(log_dir, model_files[model_index])
             # Get the path to the latest optimizer state file
-            optimizer_path = os.path.join(log_dir, optimizer_files[-1])
+            optimizer_path = os.path.join(log_dir, optimizer_files[state_index])
 
             # Make the start iteration the iteration when the checkpoint was taken
             start_iter = int(''.join([ch for ch in model_files[-1] if ch.isdigit()]))
@@ -169,6 +105,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # Load the latest model and replace the parameterized version
             model = torch.load(model_path, map_location=device)
             model.change_device(device)
+            model.train()
             # Replace the randomly initialized parameters with the saved parameters
             # TODO - allow for saving/loading of optimizer with multiple parameter groups
             super(type(optimizer), optimizer).__init__(model.parameters(), optimizer.defaults)
@@ -192,7 +129,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
             # Compute gradients based on total loss
             batch_loss[tools.KEY_LOSS_TOTAL].backward()
             # Add all of the losses to the collection
-            train_loss = append_results(train_loss, tools.track_to_cpu(batch_loss))
+            train_loss = append_results(train_loss, tools.dict_to_array(batch_loss))
             # Perform gradient clipping
             # TODO = make optional
             #nn.utils.clip_grad_norm_(model.parameters(), 3)
@@ -230,6 +167,7 @@ def train(model, train_loader, optimizer, iterations, checkpoints=0, log_dir='.'
 
         # If we are at a checkpoint, or we have finished training
         if checkpoint or done_training:
+            # TODO - save random seed(s) from dataset(s) as well
             # Save the model
             torch.save(model,
                        os.path.join(log_dir, f'{tools.PYT_MODEL}-{global_iter + 1}.{tools.PYT_EXT}'))

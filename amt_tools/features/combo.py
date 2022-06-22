@@ -7,6 +7,8 @@ from .common import FeatureModule
 import numpy as np
 
 # TODO - redundant saving - maybe it should be a function of feature extraction module and not dataset
+# TODO - concatenate (feature dimension) option
+#      - if not selected, try to concat on channel dimension or put in list if not possible
 
 
 class FeatureCombo(FeatureModule):

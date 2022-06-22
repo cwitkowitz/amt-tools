@@ -25,5 +25,6 @@ from . import tools
 
 # Scripts
 from . import evaluate
+from . import inference
 from . import train
 from . import transcribe

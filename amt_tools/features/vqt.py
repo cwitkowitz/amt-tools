@@ -5,11 +5,14 @@ from .common import FeatureModule
 
 # Regular imports
 from librosa.core.constantq import __early_downsample_count as early_downsample_count
-from librosa.filters import window_bandwidth
+from librosa.filters import window_bandwidth, wavelet_lengths
 
 import numpy as np
 import librosa
 
+
+# TODO - the convention for alpha in librosa has changed, potentially invalidating things
+#        a lot of things have changed and I should go through and verify this wrapper again
 
 class VQT(FeatureModule):
     """
@@ -45,11 +48,13 @@ class VQT(FeatureModule):
         self.bins_per_octave = bins_per_octave
         self.window = 'hann'
 
+        # Compute the inverse of what would be the constant Q factor
+        self.alpha = 2.0 ** (1.0 / self.bins_per_octave) - 1
+
         # Default gamma using the procedure defined in
         # librosa.filters.constant_q.vqt documentation
         if gamma is None:
-            alpha = 2.0 ** (1.0 / self.bins_per_octave) - 1
-            gamma = 24.7 * alpha / 0.108
+            gamma = 24.7 * self.alpha / 0.108
         self.gamma = gamma
 
         # Determine the number of octaves does the transform span
@@ -188,3 +193,49 @@ class VQT(FeatureModule):
         feats = super().post_proc(vqt)
 
         return feats
+
+    def get_times(self, audio, at_start=False):
+        """
+        Determine the time, in seconds, associated with each frame.
+
+        Parameters
+        ----------
+        audio: ndarray
+          Mono-channel audio
+        at_start : bool
+          Whether time is associated with beginning of frame instead of center
+
+        Returns
+        ----------
+        times : ndarray
+          Time in seconds of each frame
+        """
+
+        # Get the times associated with the hops
+        times = super().get_times(audio)
+
+        if at_start:
+            # Determine the length of the lowest frequency filter
+            longest_length = wavelet_lengths(freqs=self.fmin,
+                                             sr=self.sample_rate,
+                                             window=self.window,
+                                             gamma=self.gamma,
+                                             alpha=self.alpha)
+            # Subtract half of the length of the longest filter
+            times -= ((longest_length // 2) / self.sample_rate)
+
+        return times
+
+    def get_feature_size(self):
+        """
+        Helper function to access dimensionality of features.
+
+        Returns
+        ----------
+        feature_size : int
+          Dimensionality along feature axis
+        """
+
+        feature_size = self.n_bins
+
+        return feature_size

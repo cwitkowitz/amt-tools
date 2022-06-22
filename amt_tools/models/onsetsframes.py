@@ -31,7 +31,7 @@ class OnsetsFrames(TranscriptionModel):
           Whether to feed the gradient of the pitch head back into the onset head
         """
 
-        super().__init__(dim_in, profile, in_channels, model_complexity, device)
+        super().__init__(dim_in, profile, in_channels, model_complexity, 1, device)
 
         self.detach_heads = detach_heads
 
@@ -470,7 +470,7 @@ class LanguageModel(nn.Module):
 
     def __init__(self, dim_in, dim_out, chunk_len=512, bidirectional=True):
         """
-        Initialize the acoustic model and establish parameter defaults in function signature.
+        Initialize the language model and establish parameter defaults in function signature.
 
         Parameters
         ----------
@@ -571,5 +571,89 @@ class LanguageModel(nn.Module):
                     chunk_out, (hidden, cell) = self.mlm(chunk_feats, (hidden, cell))
                     # Overwrite the first half of the embeddings with the chunk's output
                     out_feats[:, start : end, self.hidden_size:] = chunk_out[:, :, self.hidden_size:]
+
+        return out_feats
+
+
+class OnlineLanguageModel(LanguageModel):
+    """
+    Implements a uni-directional and online-capable LSTM language model.
+    """
+
+    def __init__(self, dim_in, dim_out):
+        """
+        Initialize the language model and establish parameter defaults in function signature.
+
+        Parameters
+        ----------
+        See LanguageModel class...
+        """
+
+        super().__init__(dim_in, dim_out, bidirectional=False)
+
+        # Initialize the hidden and cell state
+        self.hidden = None
+        self.cell = None
+
+        self.reset_state()
+
+    def reset_state(self):
+        """
+        Reset the hidden and cell state to None.
+        """
+
+        self.hidden = None
+        self.cell = None
+
+    def train(self, mode=True):
+        """
+        Reset the hidden and cell state every time the model is put into evaluation mode.
+
+        Parameters
+        ----------
+        mode : bool
+          Whether to set to training mode [True] or evaluation mode [False]
+        """
+
+        if not mode:
+            self.reset_state()
+
+        super().train(mode)
+
+    def forward(self, in_feats):
+        """
+        Feed features through the music language model.
+
+        Parameters
+        ----------
+        in_feats : Tensor (B x 1 x E)
+          Input features for a batch of tracks,
+          B - batch size
+          E - dimensionality of input embeddings (dim_in)
+
+        Returns
+        ----------
+        out_feats : Tensor (B x 1 x E)
+          Embeddings for a batch of tracks,
+          B - batch size
+          E - dimensionality of output embeddings (dim_out)
+        """
+
+        if self.training:
+            # Call the regular forward function
+            out_feats = super().forward(in_feats)
+        else:
+            # Determine the batch size of the features fed in
+            batch_size = in_feats.size(0)
+
+            if self.hidden is None:
+                # Initialize the hidden state
+                self.hidden = torch.zeros(self.num_directions, batch_size, self.hidden_size).to(in_feats.device)
+            if self.cell is None:
+                # Initialize the cell state
+                self.cell = torch.zeros(self.num_directions, batch_size, self.hidden_size).to(in_feats.device)
+
+            # Process the chunk, using the previous hidden and cell state
+            out_feats, (self.hidden, self.cell) = self.mlm(in_feats, (self.hidden, self.cell))
 
         return out_feats

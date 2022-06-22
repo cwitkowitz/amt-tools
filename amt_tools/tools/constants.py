@@ -35,6 +35,7 @@ JAMS_EXT = 'jams'
 NPZ_EXT = 'npz'
 TXT_EXT = 'txt'
 PYT_EXT = 'pt'
+CSV_EXT = 'csv'
 
 ##################################################
 # GROUND TRUTH / PREDICTION KEYS                 #
@@ -62,6 +63,8 @@ KEY_LOSS_OFFSETS = 'loss_offsets'
 KEY_LOSS_PITCH = 'loss_pitch'
 KEY_LOSS_TABS = 'loss_tabs'
 KEY_LOSS_KLD = 'loss_kld'
+KEY_LOSS_INH = 'loss_inhib'
+KEY_LOSS_REC = 'loss_recon'
 
 ##################################################
 # JAMS ATTRIBUTES                                #
@@ -69,6 +72,8 @@ KEY_LOSS_KLD = 'loss_kld'
 
 JAMS_NOTE_MIDI = 'note_midi'
 JAMS_PITCH_HZ = 'pitch_contour'
+JAMS_STRING_IDX = 'data_source'
+JAMS_METADATA = 'file_metadata'
 
 ##################################################
 # MIDI ATTRIBUTES                                #
@@ -103,6 +108,7 @@ KEY_TDR = 'tdr'
 ##################################################
 
 # Guitar
+DEFAULT_GUITAR_LABELS = ['E', 'A', 'D', 'G', 'B', 'e']
 DEFAULT_GUITAR_TUNING = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4']
 DEFAULT_GUITAR_NUM_FRETS = 19
 
@@ -117,6 +123,7 @@ DEFAULT_PIANO_HIGHEST_PITCH = 108
 UINT = 'uint'
 FLOAT = 'float'
 FLOAT32 = 'float32'
+INT64 = 'int64'
 
 ##################################################
 # MISCELLANEOUS                                  #

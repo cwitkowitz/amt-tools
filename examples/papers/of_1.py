@@ -1,11 +1,11 @@
 # Author: Frank Cwitkowitz <fcwitkow@ur.rochester.edu>
 
 # My imports
-from amt_tools.models import OnsetsFrames2
-from amt_tools.datasets import MAESTRO_V3, MAPS
+from amt_tools.models import OnsetsFrames
 from amt_tools.features import MelSpec
+from amt_tools.datasets import MAPS
 
-from amt_tools.train import train, validate
+from amt_tools.train import train
 from amt_tools.transcribe import *
 from amt_tools.evaluate import *
 
@@ -19,11 +19,11 @@ from sacred import Experiment
 import torch
 import os
 
-EX_NAME = '_'.join([OnsetsFrames2.model_name(),
-                    MAESTRO_V3.dataset_name(),
+EX_NAME = '_'.join([OnsetsFrames.model_name(),
+                    MAPS.dataset_name(),
                     MelSpec.features_name()])
 
-ex = Experiment('Onsets & Frames 2 w/ Mel Spectrogram on MAESTRO')
+ex = Experiment('Onsets & Frames 1 w/ Mel Spectrogram on MAPS')
 
 
 @ex.config
@@ -41,7 +41,7 @@ def config():
     iterations = 2000
 
     # How many equally spaced save/validation checkpoints - 0 to disable
-    checkpoints = 100
+    checkpoints = 40
 
     # Number of samples to gather for a batch
     batch_size = 8
@@ -54,7 +54,7 @@ def config():
 
     # Flag to re-acquire ground-truth data and re-calculate-features
     # This is useful if testing out different feature extraction parameters
-    reset_data = False
+    reset_data = True
 
     # The random seed for this experiment
     seed = 0
@@ -78,13 +78,12 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
 
     # Processing parameters
     dim_in = 229
-    model_complexity = 3
+    model_complexity = 2
 
     # Create the mel spectrogram data processing module
     data_proc = MelSpec(sample_rate=sample_rate,
-                        hop_length=hop_length,
                         n_mels=dim_in,
-                        htk=True)
+                        hop_length=hop_length)
 
     # Initialize the estimation pipeline
     validation_estimator = ComboEstimator([NoteTranscriber(profile=profile),
@@ -97,70 +96,52 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                   NoteEvaluator(offset_ratio=0.2, key=tools.KEY_NOTE_OFF)]
     validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1'])
 
-    # Construct the MAESTRO splits
-    train_split = ['train']
-    val_split = ['validation']
-    test_split = ['test']
+    # Get a list of the MAPS splits
+    splits = MAPS.available_splits()
+
+    # Initialize the testing splits as the real piano data
+    test_splits = ['ENSTDkAm', 'ENSTDkCl']
+    # Remove the real piano splits to get the training partition
+    train_splits = splits.copy()
+    for split in test_splits:
+        train_splits.remove(split)
 
     print('Loading training partition...')
 
     # Create a dataset corresponding to the training partition
-    mstro_train = MAESTRO_V3(splits=train_split,
-                             hop_length=hop_length,
-                             sample_rate=sample_rate,
-                             data_proc=data_proc,
-                             profile=profile,
-                             num_frames=num_frames,
-                             reset_data=reset_data,
-                             store_data=False)
+    maps_train = MAPS(splits=train_splits,
+                      hop_length=hop_length,
+                      sample_rate=sample_rate,
+                      data_proc=data_proc,
+                      profile=profile,
+                      num_frames=num_frames,
+                      reset_data=reset_data)
+
+    # Remove tracks in both partitions from the training partitions
+    print('Removing overlapping tracks from training partition')
+    maps_train.remove_overlapping(test_splits)
 
     # Create a PyTorch data loader for the dataset
-    train_loader = DataLoader(dataset=mstro_train,
+    train_loader = DataLoader(dataset=maps_train,
                               batch_size=batch_size,
                               shuffle=True,
-                              num_workers=8,
+                              num_workers=0,
                               drop_last=True)
 
-    print('Loading validation partition...')
+    print('Loading testing partition...')
 
-    # Create a dataset corresponding to the validation partition
-    mstro_val = MAESTRO_V3(splits=val_split,
-                           hop_length=hop_length,
-                           sample_rate=sample_rate,
-                           data_proc=data_proc,
-                           profile=profile,
-                           num_frames=num_frames,
-                           reset_data=reset_data,
-                           store_data=False)
-
-    print('Loading testing partitions...')
-
-    # Create a dataset corresponding to the MAESTRO testing partition
-    mstro_test = MAESTRO_V3(splits=test_split,
-                            hop_length=hop_length,
-                            sample_rate=sample_rate,
-                            data_proc=data_proc,
-                            profile=profile,
-                            reset_data=reset_data,
-                            store_data=False)
-
-    # Initialize the MAPS testing splits as the real piano data
-    test_splits = ['ENSTDkAm', 'ENSTDkCl']
-
-    # Create a dataset corresponding to the MAPS testing partition
-    # Need to reset due to HTK Mel-Spectrogram spacing
+    # Create a dataset corresponding to the testing partition
     maps_test = MAPS(splits=test_splits,
                      hop_length=hop_length,
                      sample_rate=sample_rate,
                      data_proc=data_proc,
                      profile=profile,
-                     reset_data=True,
-                     store_data=False)
+                     store_data=True)
 
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames2(dim_in, profile, data_proc.get_num_channels(), model_complexity, True, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, False, gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 
@@ -179,36 +160,19 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          iterations=iterations,
                          checkpoints=checkpoints,
                          log_dir=model_dir,
-                         val_set=mstro_val,
-                         estimator=validation_estimator,
-                         evaluator=validation_evaluator)
+                         val_set=None)
 
     print('Transcribing and evaluating test partition...')
 
     # Add save directories to the estimators
-    validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated', 'MAESTRO'), ['notes', 'pitch'])
+    validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated'), ['notes', 'pitch'])
 
     # Add a save directory to the evaluators and reset the patterns
-    validation_evaluator.set_save_dir(os.path.join(root_dir, 'results', 'MAESTRO'))
+    validation_evaluator.set_save_dir(os.path.join(root_dir, 'results'))
     validation_evaluator.set_patterns(None)
 
-    # Get the average results for the MAESTRO testing partition
-    results = validate(onsetsframes, mstro_test, evaluator=validation_evaluator, estimator=validation_estimator)
-
-    # Log the average results in metrics.json
-    ex.log_scalar('MAESTRO Results', results, 0)
-
-    # Reset the evaluator
-    validation_evaluator.reset_results()
-
-    # Update save directories for the estimators
-    validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated', 'MAPS'), ['notes', 'pitch'])
-
-    # Update save directory for the evaluators
-    validation_evaluator.set_save_dir(os.path.join(root_dir, 'results', 'MAPS'))
-
-    # Get the average results for the MAPS testing partition
+    # Get the average results for the testing partition
     results = validate(onsetsframes, maps_test, evaluator=validation_evaluator, estimator=validation_estimator)
 
     # Log the average results in metrics.json
-    ex.log_scalar('MAPS Results', results, 0)
+    ex.log_scalar('Final Results', results, 0)

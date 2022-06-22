@@ -20,8 +20,8 @@ from amt_tools.datasets.MAPS import MAPS
 MAPS()
 """
 
-from .combo import *
-from .common import *
-from .GuitarSet import *
-from .MAESTRO import *
-from .MAPS import *
+from .combo import DatasetCombo
+from .common import TranscriptionDataset
+from .GuitarSet import GuitarSet
+from .MAESTRO import _MAESTRO, MAESTRO_V1, MAESTRO_V2, MAESTRO_V3
+from .MAPS import MAPS

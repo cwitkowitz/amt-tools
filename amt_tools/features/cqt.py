@@ -3,9 +3,6 @@
 # My imports
 from .vqt import VQT
 
-# Regular imports
-# No imports used
-
 
 class CQT(VQT):
     """
