@@ -310,9 +310,10 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
             entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
 
             # Make sure the pitch list is uniform before resampling
+            # TODO - ignoring duration for now, see https://github.com/craffel/mir_eval/pull/336 for details
             entry_times, slice_pitch_list = utils.time_series_to_uniform(times=entry_times,
-                                                                         values=slice_pitch_list,
-                                                                         duration=jam.file_metadata.duration)
+                                                                         values=slice_pitch_list,)
+                                                                         #duration=jam.file_metadata.duration)
 
             # Resample the observation times if new times are specified
             slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)

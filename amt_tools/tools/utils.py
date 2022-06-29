@@ -1341,7 +1341,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=Tru
     # Determine if and where there is underflow or overflow
     valid_idcs = np.logical_and((pitches >= 0), (pitches < num_pitches))
 
-    # Remove any invalid pitches
+    # Remove any invalid (out-of-bounds) pitches
     pitches, intervals = pitches[valid_idcs], intervals[valid_idcs]
 
     # Duplicate the array of times for each note and stack along a new axis
@@ -1363,22 +1363,20 @@ def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=Tru
     return multi_pitch
 
 
-def pitch_list_to_multi_pitch(times, pitch_list, profile, tolerance=0.5):
+def pitch_list_to_multi_pitch(pitch_list, profile, tolerance=0.5):
     """
     Convert a MIDI pitch list into a dictionary of stacked pitch lists.
 
     Parameters
     ----------
-    times : ndarray (N)
-      TODO - this shouldn't be necessary
-      Time in seconds of beginning of each frame
-      N - number of time samples (frames)
     pitch_list : list of ndarray (N x [...])
-      Array of pitches corresponding to notes
+      Array of MIDI pitches corresponding to notes
       N - number of pitch observations (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
     tolerance : float
+      TODO - it doesn't really make sense to remove
+             pitches even if they violate the tolerance
       Amount of semitone deviation allowed
 
     Returns
@@ -1391,23 +1389,34 @@ def pitch_list_to_multi_pitch(times, pitch_list, profile, tolerance=0.5):
 
     # Determine the dimensionality of the multi pitch array
     num_pitches = profile.get_range_len()
-    num_frames = len(times)
+    num_frames = len(pitch_list)
 
     # Initialize an empty multi pitch array
     multi_pitch = np.zeros((num_pitches, num_frames))
 
-    # Loop through each note
+    # Loop through each frame
     for i in range(len(pitch_list)):
+        # Extract the pitch list associated with the frame
+        valid_pitches = pitch_list[i]
+        # Throw away out-of-bounds pitches
+        valid_pitches = valid_pitches[np.round(valid_pitches) >= profile.low]
+        valid_pitches = valid_pitches[np.round(valid_pitches) <= profile.high]
+
+        if len(valid_pitches) != len(pitch_list[i]):
+            # Print a warning message if continuous pitches were ignored
+            warnings.warn('Attempted to represent pitches in multi-pitch array '
+                          'which exceed boundaries. These will be ignored.', category=RuntimeWarning)
+
         # Calculate the pitch semitone difference from the lowest note
-        difference = pitch_list[i] - profile.low
+        difference = valid_pitches - profile.low
         # Determine the amount of semitone deviation for each pitch
         deviation = difference % 1
         deviation[deviation > 0.5] -= 1
         deviation = np.abs(deviation)
         # Convert the pitches to number of semitones from lowest note
-        pitches = np.round(difference[deviation < tolerance]).astype(constants.UINT)
+        pitch_idcs = np.round(difference[deviation < tolerance]).astype(constants.UINT)
         # Populate the multi pitch array with activations
-        multi_pitch[pitches, i] = 1
+        multi_pitch[pitch_idcs, i] = 1
 
     return multi_pitch
 
@@ -1582,7 +1591,7 @@ def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
     for slc in stacked_pitch_list.keys():
         # Get the pitches and intervals from the slice
         times, pitch_list = stacked_pitch_list[slc]
-        multi_pitch = pitch_list_to_multi_pitch(times, pitch_list, profile)
+        multi_pitch = pitch_list_to_multi_pitch(pitch_list, profile)
         stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(multi_pitch))
 
     # Collapse the list into an array
@@ -2750,6 +2759,9 @@ def estimate_hop_length(times):
       Estimated hop length (seconds)
     """
 
+    if not len(times):
+        raise ValueError("Cannot estimate hop length from an empty time array.")
+
     # Make sure the times are sorted
     times = np.sort(times)
 
@@ -2773,24 +2785,24 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
     Parameters
     ----------
     times : ndarray
-        Array of times corresponding to a time series
+      Array of times corresponding to a time series
     values : list of ndarray
-        Observations made at times
+      Observations made at times
     hop_length : number or None (optional)
-        Time interval (seconds) between each observation in the uniform series
+      Time interval (seconds) between each observation in the uniform series
     duration : number or None (optional)
-        Total length (seconds) of times series
-        If specified, should be greater than all observation times
+      Total length (seconds) of times series
+      If specified, should be greater than all observation times
 
     Returns
     -------
     times : ndarray
-        Uniform time array
+      Uniform time array
     values : ndarray
-        Observations corresponding to uniform times
+      Observations corresponding to uniform times
     """
 
-    if not len(times) and duration is None:
+    if not len(times) or not len(values):
         return np.array([]), []
 
     if hop_length is None:
