@@ -305,17 +305,19 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
             # Append the frequency
             slice_pitch_list.append(freq)
 
+        # Sort the pitch list before resampling just in case it is not already sorted
+        entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
+
+        # Make sure the pitch list is uniform before resampling
+        # TODO - ignoring duration for now, see https://github.com/craffel/mir_eval/pull/336 for details
+        entry_times, slice_pitch_list = utils.time_series_to_uniform(times=entry_times,
+                                                                     values=slice_pitch_list,)
+                                                                     #duration=jam.file_metadata.duration)
+
         if times is not None:
-            # Sort the pitch list before resampling just in case it is not already sorted
-            entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
-
-            # Make sure the pitch list is uniform before resampling
-            # TODO - ignoring duration for now, see https://github.com/craffel/mir_eval/pull/336 for details
-            entry_times, slice_pitch_list = utils.time_series_to_uniform(times=entry_times,
-                                                                         values=slice_pitch_list,)
-                                                                         #duration=jam.file_metadata.duration)
-
             # Resample the observation times if new times are specified
+            # TODO - due to resampling, onsets/offsets may differ up to 1 frame from representation derived from notes
+            #        at this point I think this is acceptable and to be expected even (notes are not perfectly aligned)
             slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)
             # Overwrite the entry times with the specified times
             entry_times = times

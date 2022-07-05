@@ -1032,7 +1032,7 @@ class GuitarTablatureVisualizer(Visualizer):
         self.stacked_frets = None
 
 
-def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=None):
+def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True, color='k', fig=None):
     """
     Static function for plotting a 2D pitch activation map or pianoroll.
 
@@ -1044,6 +1044,8 @@ def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=No
       T - number of frames
     times : ndarray or None (Optional)
       Times corresponding to waveform samples
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
     include_axes : bool
       Whether to include the axis in the visualizer
     color : string
@@ -1079,6 +1081,11 @@ def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=No
     # Use the relative pitch in the activation map for the y-axis
     y_min, y_max = 0, multi_pitch.shape[-2]
 
+    if profile is not None:
+        # Add the offset of the lowest pitch
+        y_min += profile.low
+        y_max += profile.low
+
     # Set the extent for marking the axes of the image
     extent = [x_min, x_max, y_max, y_min]
 
@@ -1101,7 +1108,8 @@ def plot_pianoroll(multi_pitch, times=None, include_axes=True, color='k', fig=No
         ax.axis('off')
     else:
         # Add axis labels
-        ax.set_ylabel('Relative Pitch (MIDI)')
+        y_label = 'Relative Pitch (MIDI)' if profile is None else 'Pitch (MIDI)'
+        ax.set_ylabel(y_label)
         ax.set_xlabel(x_label)
 
     return fig

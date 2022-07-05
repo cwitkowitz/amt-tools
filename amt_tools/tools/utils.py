@@ -35,6 +35,7 @@ __all__ = [
     'notes_to_hz',
     'notes_to_midi',
     'offset_notes',
+    'filter_notes',
     'notes_to_stacked_notes',
     'batched_notes_to_stacked_notes',
     'stacked_notes_to_hz',
@@ -50,6 +51,8 @@ __all__ = [
     'slice_pitch_list',
     'cat_pitch_list',
     'unroll_pitch_list',
+    'clean_pitch_list',
+    'filter_pitch_list',
     'pitch_list_to_stacked_pitch_list',
     'stacked_multi_pitch_to_stacked_pitch_list',
     'stacked_pitch_list_to_hz',
@@ -87,6 +90,7 @@ __all__ = [
     'framify_activations',
     'inhibit_activations',
     'remove_activation_blips',
+    'interpolate_gaps',
     'seed_everything',
     'estimate_hop_length',
     'time_series_to_uniform',
@@ -589,6 +593,50 @@ def offset_notes(pitches, intervals, semitones):
     return pitches, intervals
 
 
+def filter_notes(pitches, intervals, profile, suppress_warnings=True):
+    """
+    Remove notes with nominal pitch outside the supported range of a profile.
+
+    Parameters
+    ----------
+    pitches : ndarray (N)
+      Array of pitches corresponding to notes
+      N - number of notes
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs corresponding to notes
+      N - number of notes
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    suppress_warnings : bool
+      Whether to ignore warning messages
+
+    Returns
+    ----------
+    pitches : ndarray (K)
+      Pitches corresponding to filtered notes
+      K - number of within-bounds notes
+    intervals : ndarray (K x 2)
+      Intervals corresponding to filtered notes
+      K - number of within-bounds notes
+    """
+
+    # Round pitches to the nearest semitone
+    pitches_r = np.round(pitches)
+
+    # Determine if and where there are out-of-bounds notes
+    valid_idcs = np.logical_and((pitches_r >= profile.low), (pitches_r <= profile.high))
+
+    if np.sum(valid_idcs) != len(pitches) and not suppress_warnings:
+        # Print a warning message if notes were ignored
+        warnings.warn('Ignoring notes with nominal pitch exceeding ' +
+                      'supported boundaries.', category=RuntimeWarning)
+
+    # Remove any invalid (out-of-bounds) pitches
+    pitches, intervals = pitches[valid_idcs], intervals[valid_idcs]
+
+    return pitches, intervals
+
+
 ##################################################
 # TO STACKED NOTES                               #
 ##################################################
@@ -1029,9 +1077,15 @@ def slice_pitch_list(times, pitch_list, start_time, stop_time):
     return times, pitch_list
 
 
-def cat_pitch_list(times, pitch_list, new_times, new_pitch_list):
+def cat_pitch_list(times, pitch_list, new_times, new_pitch_list, decimals=6):
     """
-    Retain pitch observations within a time window.
+    Concatenate two pitch lists, appending observations with new times and blending
+    observations with preexisting times. This function assumes that all pitch lists
+    have the same time grid. In order to avoid the influence of miniscule timing
+    differences, timing comparisons are made with microsecond resolution.
+
+    TODO - should work for unordered pitch lists but verify
+    TODO - could resample to make sure same time grid is used
 
     Parameters
     ----------
@@ -1047,19 +1101,44 @@ def cat_pitch_list(times, pitch_list, new_times, new_pitch_list):
     new_pitch_list : list of ndarray (L x [...])
       Array of pitches active during each frame
       L - number of pitch observations (frames)
+    decimals : int
+      Decimal resolution for timing comparison
 
     Returns
     ----------
-    times : ndarray (N+L)
+    times : ndarray (K)
       Time in seconds of beginning of each frame
-      N+L - number of time samples (frames)
-    pitch_list : list of ndarray (N+L x [...])
+      K - number of time samples (frames)
+    pitch_list : list of ndarray (K x [...])
       Array of pitches active during each frame
-      N+L - number of pitch observations (frames)
+      K - number of pitch observations (frames)
     """
 
-    # Concatenate the observations of both stacked pitch lists
-    times, pitch_list = np.append(times, new_times, axis=-1), pitch_list + new_pitch_list
+    # Obtain microsecond resolution for both collections of times
+    times_us, new_times_us = list(np.round(times, decimals)), list(np.round(new_times, decimals))
+
+    # Obtain the indices where new times overlap with original times
+    overlapping_idcs_new = np.intersect1d(times_us, new_times_us, return_indices=True)[-1]
+
+    # Loop through overlapping indices w.r.t. the new times
+    for i in overlapping_idcs_new:
+        # Find the corresponding index w.r.t. the original times
+        k = times_us.index(new_times_us[i])
+        # Append the corresponding pitch observations
+        pitch_list[k] = np.append(pitch_list[k], new_pitch_list[i])
+
+    # Obtain the indices of new times which no not overlap with the original times
+    non_overlapping_idcs_new = np.setdiff1d(np.arange(len(new_times)), overlapping_idcs_new)
+
+    # Determine which (new) times do not exist in the original pitch list
+    non_overlapping_times = new_times[non_overlapping_idcs_new]
+
+    # Add the new entries to the pitch list
+    times = np.append(times, non_overlapping_times)
+    pitch_list = pitch_list + [new_pitch_list[i] for i in non_overlapping_idcs_new]
+
+    # Make sure the blended pitch list is sorted
+    times, pitch_list = sort_pitch_list(times, pitch_list)
 
     return times, pitch_list
 
@@ -1093,6 +1172,67 @@ def unroll_pitch_list(times, pitch_list):
     pitches = np.concatenate(pitch_list, axis=-1)
 
     return times, pitches
+
+
+def clean_pitch_list(pitch_list):
+    """
+    Remove null (zero-frequency) observations from the pitch list.
+
+    Parameters
+    ----------
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+
+    Returns
+    ----------
+    pitch_list : list of ndarray (N x [...])
+      Original pitch list with no null observations
+      N - number of pitch observations (frames)
+    """
+
+    # Loop through the pitch list and remove any zero-frequency entries
+    pitch_list = [p[p != 0] for p in pitch_list]
+
+    return pitch_list
+
+
+def filter_pitch_list(pitch_list, profile, suppress_warnings=True):
+    """
+    Remove pitch observations (MIDI) outside the supported range of a profile.
+
+    Parameters
+    ----------
+    pitch_list : list of ndarray (N x [...])
+      Array of MIDI pitches active during each frame
+      N - number of pitch observations (frames)
+    profile : InstrumentProfile (instrument.py)
+      Instrument profile detailing experimental setup
+    suppress_warnings : bool
+      Whether to ignore warning messages
+
+    Returns
+    ----------
+    pitch_list : list of ndarray (N x [...])
+      Original pitch list with no out-of-bounds observations
+      N - number of pitch observations (frames)
+    """
+
+    # Flatten the pitch observations into an array
+    flattened_observations = np.round(np.concatenate(pitch_list))
+
+    if (len(flattened_observations) and
+        (np.min(flattened_observations) < profile.low or
+         np.max(flattened_observations) > profile.high)) and not suppress_warnings:
+        # Print a warning message if pitch observations were ignored
+        warnings.warn('Ignoring pitch observations exceeding ' +
+                      'supported boundaries.', category=RuntimeWarning)
+
+    # Loop through the pitch list and remove out-of-bounds frequency observations
+    pitch_list = [p[np.logical_and((np.round(p) >= profile.low),
+                                   (np.round(p) <= profile.high))] for p in pitch_list]
+
+    return pitch_list
 
 
 ##################################################
@@ -1267,7 +1407,9 @@ def slice_stacked_pitch_list(stacked_pitch_list, start_time, stop_time):
 
 def cat_stacked_pitch_list(stacked_pitch_list, new_stacked_pitch_list):
     """
-    Concatenate two stacked pitch lists.
+    Concatenate two stacked pitch lists, appending observations with
+    new times and blending observations with preexisting times. This
+    function assumes that all pitch lists have the same time grid.
 
     Parameters
     ----------
@@ -1299,7 +1441,7 @@ def cat_stacked_pitch_list(stacked_pitch_list, new_stacked_pitch_list):
 ##################################################
 
 
-def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=True):
+def notes_to_multi_pitch(pitches, intervals, times, profile):
     """
     Convert loose MIDI note groups into a multi pitch array.
 
@@ -1316,8 +1458,6 @@ def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=Tru
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    include_offsets : bool
-      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -1334,17 +1474,17 @@ def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=Tru
     # Initialize an empty multi pitch array
     multi_pitch = np.zeros((num_pitches, num_frames))
 
+    # Remove notes with out-of-bounds nominal pitch
+    pitches, intervals = filter_notes(pitches, intervals, profile)
+
     # Round to nearest semitone and subtract the lowest
     # note of the instrument to obtain relative pitches
-    pitches = np.round(pitches - profile.low).astype(constants.UINT)
-
-    # Determine if and where there is underflow or overflow
-    valid_idcs = np.logical_and((pitches >= 0), (pitches < num_pitches))
-
-    # Remove any invalid (out-of-bounds) pitches
-    pitches, intervals = pitches[valid_idcs], intervals[valid_idcs]
+    pitches = np.round(pitches - profile.low).astype(constants.INT)
 
     # Duplicate the array of times for each note and stack along a new axis
+    # TODO - should onset/offset determination be under the for loop?
+    #        current methodology may not scale well w.r.t. memory and
+    #        we are already doing a for-loop
     times = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
 
     # Determine the frame where each note begins and ends
@@ -1358,14 +1498,14 @@ def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=Tru
     # Loop through each note
     for i in range(len(pitches)):
         # Populate the multi pitch array with activations for the note
-        multi_pitch[pitches[i], onsets[i] : offsets[i] + int(include_offsets)] = 1
+        multi_pitch[pitches[i], onsets[i] : offsets[i] + 1] = 1
 
     return multi_pitch
 
 
-def pitch_list_to_multi_pitch(pitch_list, profile, tolerance=0.5):
+def pitch_list_to_multi_pitch(pitch_list, profile):
     """
-    Convert a MIDI pitch list into a dictionary of stacked pitch lists.
+    Convert a MIDI pitch list into a multi pitch array.
 
     Parameters
     ----------
@@ -1374,10 +1514,6 @@ def pitch_list_to_multi_pitch(pitch_list, profile, tolerance=0.5):
       N - number of pitch observations (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    tolerance : float
-      TODO - it doesn't really make sense to remove
-             pitches even if they violate the tolerance
-      Amount of semitone deviation allowed
 
     Returns
     ----------
@@ -1386,6 +1522,9 @@ def pitch_list_to_multi_pitch(pitch_list, profile, tolerance=0.5):
       F - number of discrete pitches
       T - number of frames
     """
+
+    # Throw away out-of-bounds pitche observations
+    pitch_list = filter_pitch_list(pitch_list, profile)
 
     # Determine the dimensionality of the multi pitch array
     num_pitches = profile.get_range_len()
@@ -1396,25 +1535,10 @@ def pitch_list_to_multi_pitch(pitch_list, profile, tolerance=0.5):
 
     # Loop through each frame
     for i in range(len(pitch_list)):
-        # Extract the pitch list associated with the frame
-        valid_pitches = pitch_list[i]
-        # Throw away out-of-bounds pitches
-        valid_pitches = valid_pitches[np.round(valid_pitches) >= profile.low]
-        valid_pitches = valid_pitches[np.round(valid_pitches) <= profile.high]
-
-        if len(valid_pitches) != len(pitch_list[i]):
-            # Print a warning message if continuous pitches were ignored
-            warnings.warn('Attempted to represent pitches in multi-pitch array '
-                          'which exceed boundaries. These will be ignored.', category=RuntimeWarning)
-
         # Calculate the pitch semitone difference from the lowest note
-        difference = valid_pitches - profile.low
-        # Determine the amount of semitone deviation for each pitch
-        deviation = difference % 1
-        deviation[deviation > 0.5] -= 1
-        deviation = np.abs(deviation)
+        difference = pitch_list[i] - profile.low
         # Convert the pitches to number of semitones from lowest note
-        pitch_idcs = np.round(difference[deviation < tolerance]).astype(constants.UINT)
+        pitch_idcs = np.round(difference).astype(constants.UINT)
         # Populate the multi pitch array with activations
         multi_pitch[pitch_idcs, i] = 1
 
@@ -1522,7 +1646,7 @@ def logistic_to_multi_pitch(logistic, profile):
 ##################################################
 
 
-def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile, include_offsets=True):
+def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
     """
     Convert a dictionary of MIDI note groups into a stack of multi pitch arrays.
 
@@ -1535,8 +1659,6 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile, include_
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    include_offsets : bool
-      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -1555,7 +1677,7 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile, include_
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to multi pitch and add to the list
-        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets)
+        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile)
         stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(slice_multi_pitch))
 
     # Collapse the list into an array
@@ -2714,6 +2836,54 @@ def remove_activation_blips(activations):
     return activations
 
 
+def interpolate_gaps(arr, gap_val=0):
+    """
+    Linearly interpolate between gaps in a one-dimensional array.
+
+    Parameters
+    ----------
+    arr : ndarray
+      One-dimensional array
+    gap_val : float
+      Value which indicates an empty entry
+
+    Returns
+    ----------
+    arr : ndarray
+      One-dimensional array
+    """
+
+    # Determine which entries occur directly before gaps
+    gap_onsets = np.append(np.diff((arr == gap_val).astype(constants.INT)), [0]) == 1
+    # Determine which entries occur directly after gaps
+    gap_offsets = np.append([0], np.diff(np.logical_not(arr == gap_val).astype(constants.INT))) == 1
+    # Identify any onset and offset indices
+    onset_idcs, offset_idcs = np.where(gap_onsets)[0], np.where(gap_offsets)[0]
+
+    # Determine where the first onset and last offset occur
+    first_onset = np.min(onset_idcs) if len(onset_idcs) else len(arr)
+    last_offset = np.max(offset_idcs) if len(offset_idcs) else 0
+
+    # Ignore offsets before first onset
+    offset_idcs = offset_idcs[offset_idcs > first_onset]
+    # Ignore onsets after last offset
+    onset_idcs = onset_idcs[onset_idcs < last_offset]
+
+    # Construct a list of the indices surrounding gaps
+    gap_idcs = np.array([onset_idcs, offset_idcs]).T
+
+    # Loop through all gaps in the array
+    for start, end in [list(gap) for gap in gap_idcs]:
+        # Extract the gap boundaries to interpolate between
+        interp_start, interp_stop = arr[start], arr[end]
+        # Determine the number of values for the interpolation
+        num_values = end - start + 1
+        # Linearly interpolate across frames with empty pitch observations
+        arr[start: end + 1] = np.linspace(interp_start, interp_stop, num_values)
+
+    return arr
+
+
 ##################################################
 # UTILITY                                        #
 ##################################################
@@ -2809,7 +2979,7 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
         # If a hop length is not provided, estimate it and throw a warning
         warnings.warn(
             "Since hop length is unknown, it will be estimated. This may lead to "
-            "unwanted behavior if the observation times are sporadic or irregular.")
+            "unwanted behavior if the observation times are sporadic or irregular.", category=RuntimeWarning)
         hop_length = estimate_hop_length(times)
 
     # Add an extra entry when duration is unknown
@@ -2987,7 +3157,7 @@ def save_pack_npz(path, keys, *args):
 
     # Make sure there is agreement between dataset and features
     if len(keys) != len(args):
-        warnings.warn('Number of keys does not match number of entries provided.')
+        warnings.warn('Number of keys does not match number of entries provided.', category=RuntimeWarning)
 
     # Save the keys and entries as a NumPy zip at the specified path
     np.savez(path, keys, *args)
