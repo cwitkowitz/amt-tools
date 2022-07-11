@@ -52,6 +52,8 @@ __all__ = [
     'cat_pitch_list',
     'unroll_pitch_list',
     'clean_pitch_list',
+    'get_active_pitch_count',
+    'contains_empties_pitch_list',
     'filter_pitch_list',
     'pitch_list_to_stacked_pitch_list',
     'stacked_multi_pitch_to_stacked_pitch_list',
@@ -932,20 +934,13 @@ def stacked_pitch_list_to_pitch_list(stacked_pitch_list):
     # Obtain the time-pitch list pairs from the dictionary values
     pitch_list_pairs = list(stacked_pitch_list.values())
 
-    # Collapse the times from each pitch_list into one array
-    times = np.unique(np.concatenate([pair[0] for pair in pitch_list_pairs]))
-
-    # Initialize empty pitch arrays for each time entry
-    pitch_list = [np.empty(0)] * times.size
+    # Initialize an empty pitch list to start with
+    times, pitch_list = np.array([]), []
 
     # Loop through each pitch list
-    for slice_times, slice_pitch_arrays in pitch_list_pairs:
-        # Loop through the pitch list entries
-        for entry in range(len(slice_pitch_arrays)):
-            # Determine where this entry belongs in the new pitch list
-            idx = np.where(times == slice_times[entry])[0].item()
-            # Insert the frequencies at the corresponding time
-            pitch_list[idx] = np.append(pitch_list[idx], slice_pitch_arrays[entry])
+    for slice_times, slice_pitch_list in pitch_list_pairs:
+        # Concatenate the new pitch list with the current blend
+        times, pitch_list = cat_pitch_list(times, pitch_list, slice_times, slice_pitch_list)
 
     # Sort the time-pitch array pairs by time
     times, pitch_list = sort_pitch_list(times, pitch_list)
@@ -1197,6 +1192,52 @@ def clean_pitch_list(pitch_list):
     return pitch_list
 
 
+def get_active_pitch_count(pitch_list):
+    """
+    Count the number of active pitches in each frame of a pitch list.
+
+    Parameters
+    ----------
+    pitch_list : list of ndarray (N x [...])
+      Frame-level observations detailing active pitches
+      N - number of frames
+
+    Returns
+    ----------
+    active_pitch_count : ndarray
+      Number of active pitches in each frame
+    """
+
+    # Make sure there are no null observations in the pitch list
+    pitch_list = clean_pitch_list(pitch_list)
+    # Determine the amount of non-zero frequencies in each frame
+    active_pitch_count = np.array([len(p) for p in pitch_list])
+
+    return active_pitch_count
+
+
+def contains_empties_pitch_list(pitch_list):
+    """
+    Determine if a pitch list representation contains empty observations.
+
+    Parameters
+    ----------
+    pitch_list : list of ndarray (N x [...])
+      Frame-level observations detailing active pitches
+      N - number of frames
+
+    Returns
+    ----------
+    contains_empties : bool
+      Whether there are any frames with no observations
+    """
+
+    # Check if at any time there are no observations
+    contains_empties = np.sum(get_active_pitch_count(pitch_list) == 0) > 0
+
+    return contains_empties
+
+
 def filter_pitch_list(pitch_list, profile, suppress_warnings=True):
     """
     Remove pitch observations (MIDI) outside the supported range of a profile.
@@ -1218,19 +1259,20 @@ def filter_pitch_list(pitch_list, profile, suppress_warnings=True):
       N - number of pitch observations (frames)
     """
 
-    # Flatten the pitch observations into an array
-    flattened_observations = np.round(np.concatenate(pitch_list))
+    # Only check and filter if the pitch list is not empty
+    if np.sum(get_active_pitch_count(pitch_list)):
+        # Flatten the pitch observations into an array
+        flattened_observations = np.round(np.concatenate(pitch_list))
 
-    if (len(flattened_observations) and
-        (np.min(flattened_observations) < profile.low or
-         np.max(flattened_observations) > profile.high)) and not suppress_warnings:
-        # Print a warning message if pitch observations were ignored
-        warnings.warn('Ignoring pitch observations exceeding ' +
-                      'supported boundaries.', category=RuntimeWarning)
+        if (np.min(flattened_observations) < profile.low or
+            np.max(flattened_observations) > profile.high) and not suppress_warnings:
+            # Print a warning message if pitch observations were ignored
+            warnings.warn('Ignoring pitch observations exceeding ' +
+                          'supported boundaries.', category=RuntimeWarning)
 
-    # Loop through the pitch list and remove out-of-bounds frequency observations
-    pitch_list = [p[np.logical_and((np.round(p) >= profile.low),
-                                   (np.round(p) <= profile.high))] for p in pitch_list]
+        # Loop through the pitch list and remove out-of-bounds frequency observations
+        pitch_list = [p[np.logical_and((np.round(p) >= profile.low),
+                                       (np.round(p) <= profile.high))] for p in pitch_list]
 
     return pitch_list
 
@@ -1689,6 +1731,8 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
 def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
     """
     Convert a stacked MIDI pitch list into a stack of multi pitch arrays.
+    This function assumes that all pitch lists are relative to the same
+    timing grid.
 
     Parameters
     ----------
@@ -1712,7 +1756,7 @@ def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
     # Loop through the slices of notes
     for slc in stacked_pitch_list.keys():
         # Get the pitches and intervals from the slice
-        times, pitch_list = stacked_pitch_list[slc]
+        _, pitch_list = stacked_pitch_list[slc]
         multi_pitch = pitch_list_to_multi_pitch(pitch_list, profile)
         stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(multi_pitch))
 
@@ -2982,16 +3026,12 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
             "unwanted behavior if the observation times are sporadic or irregular.", category=RuntimeWarning)
         hop_length = estimate_hop_length(times)
 
-    # Add an extra entry when duration is unknown
-    extra = 0
-
     if duration is None:
         # Default the duration to the last reported time in the series
         duration = times[-1]
-        extra += 1
 
     # Determine the total number of observations in the uniform time series
-    num_entries = int(np.ceil(duration / hop_length)) + extra
+    num_entries = int(np.ceil(duration / hop_length)) + 1
 
     # Attempt to fill in blank frames with the appropriate value
     empty_fill = np.array([])

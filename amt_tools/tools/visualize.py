@@ -1079,7 +1079,7 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True, col
     x_min, x_max = np.min(times), np.max(times)
 
     # Use the relative pitch in the activation map for the y-axis
-    y_min, y_max = 0, multi_pitch.shape[-2]
+    y_min, y_max = -0.5, multi_pitch.shape[-2] - 0.5
 
     if profile is not None:
         # Add the offset of the lowest pitch
