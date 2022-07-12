@@ -13,6 +13,7 @@ import warnings
 import librosa
 import random
 import torch
+import scipy
 import time
 
 
@@ -93,6 +94,7 @@ __all__ = [
     'inhibit_activations',
     'remove_activation_blips',
     'interpolate_gaps',
+    'get_resample_idcs',
     'seed_everything',
     'estimate_hop_length',
     'time_series_to_uniform',
@@ -1529,9 +1531,11 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     #        we are already doing a for-loop
     times = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
 
-    # Determine the frame where each note begins and ends
+    # Determine the frame where each note begins and ends, defined
+    # for both onset and offset as the last frame beginning before
+    # (or at the same time as) that of the respective event
     onsets = np.argmin((times <= intervals[..., :1]), axis=1) - 1
-    offsets = np.argmin((times < intervals[..., 1:]), axis=1) - 1
+    offsets = np.argmin((times <= intervals[..., 1:]), axis=1) - 1
 
     # Clip all offsets at last frame - they will end up at -1 from
     # previous operation if they occurred beyond last frame time
@@ -2926,6 +2930,54 @@ def interpolate_gaps(arr, gap_val=0):
         arr[start: end + 1] = np.linspace(interp_start, interp_stop, num_values)
 
     return arr
+
+
+def get_resample_idcs(times, target_times):
+    """
+    Obtain indices to resample from a set of original times to
+    a set of target times using nearest neighbor interpolation.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Array of original times
+    target_times : ndarray (K)
+      Array of target times
+
+    Returns
+    ----------
+    resample_idcs : ndarray (K)
+      Indices corresponding to the original times nearest to the target times at each step
+    """
+
+    # Determine how many original and target times were given
+    num_times = len(times)
+    num_targets = len(target_times)
+
+    if not num_times:
+        # No original times exist, there is nothing to
+        # index and therefore no indices are returned
+        resample_idcs = None
+    elif not num_targets:
+        # No target times exist, so the indices would
+        # correspond to an empty array (of indices)
+        resample_idcs = np.empty(0, dtype=constants.INT)
+    else:
+        # Create an array of indices pointing to all original entries
+        original_idcs = np.arange(0, num_times)
+
+        # Clamp resampled indices within the valid range
+        fill_values = (original_idcs[0], original_idcs[-1])
+
+        # Obtain the indices to resample from the original to
+        # the target times using nearest neighbor interpolation
+        resample_idcs = scipy.interpolate.interp1d(times, original_idcs,
+                                                   kind='nearest',
+                                                   bounds_error=False,
+                                                   fill_value=fill_values,
+                                                   assume_sorted=True)(target_times).astype(constants.INT)
+
+    return resample_idcs
 
 
 ##################################################
