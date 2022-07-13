@@ -578,7 +578,7 @@ class LogisticBank(OutputLayer):
 
         return loss
 
-    def finalize_output(self, raw_output):
+    def finalize_output(self, raw_output, threshold=None):
         """
         Convert loss-friendly output into actual symbolic transcription.
 
@@ -589,6 +589,8 @@ class LogisticBank(OutputLayer):
           B - batch size,
           T - number of time steps (frames),
           O - number of output neurons (dim_out)
+        threshold : float (0, 1) or None (Optional)
+          Threshold at which activations are considered positive
 
         Returns
         ----------
@@ -605,7 +607,9 @@ class LogisticBank(OutputLayer):
         final_output = torch.sigmoid(final_output)
         # Switch the frame and key dimension
         final_output = final_output.transpose(-2, -1)
-        # Convert output to binary values
-        final_output = tools.threshold_activations(final_output, 0.5)
+
+        if threshold is not None:
+            # Convert output to binary values based on the threshold
+            final_output = tools.threshold_activations(final_output, threshold)
 
         return final_output

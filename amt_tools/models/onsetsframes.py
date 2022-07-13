@@ -190,8 +190,8 @@ class OnsetsFrames(TranscriptionModel):
             output[tools.KEY_LOSS] = loss
 
         # Finalize onset and pitch estimations
-        output[tools.KEY_ONSETS] = onset_output_layer.finalize_output(onsets_est)
-        output[tools.KEY_MULTIPITCH] = pitch_output_layer.finalize_output(multi_pitch_est)
+        output[tools.KEY_ONSETS] = onset_output_layer.finalize_output(onsets_est, 0.5)
+        output[tools.KEY_MULTIPITCH] = pitch_output_layer.finalize_output(multi_pitch_est, 0.5)
 
         return output
 
