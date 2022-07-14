@@ -1022,16 +1022,21 @@ class StackedPitchListEvaluator(Evaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, pitch_tolerance=0.5, key=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See Evaluator class for others...
+
+        pitch_tolerance : float
+          Semitone tolerance for considering a frequency estimate correct relative to a reference
         """
 
         super().__init__(key, save_dir, patterns, verbose)
+
+        self.pitch_tolerance = pitch_tolerance
 
     @staticmethod
     def get_default_key():
@@ -1064,15 +1069,19 @@ class StackedPitchListEvaluator(Evaluator):
         # Loop through the stack of pitch lists
         for key in estimated.keys():
             # Extract the pitch lists from the stack
-            times_ref, pitches_ref = estimated[key]
-            times_est, pitches_est = reference[key]
+            times_ref, pitches_ref = reference[key]
+            times_est, pitches_est = estimated[key]
 
             # Convert pitch lists to Hertz
             pitches_ref = tools.pitch_list_to_hz(pitches_ref)
             pitches_est = tools.pitch_list_to_hz(pitches_est)
 
             # Calculate frame-wise precision, recall, and f1 score for continuous pitches
-            frame_metrics = evaluate_frames(times_ref, pitches_ref, times_est, pitches_est)
+            frame_metrics = evaluate_frames(ref_time=times_ref,
+                                            ref_freqs=pitches_ref,
+                                            est_time=times_est,
+                                            est_freqs=pitches_est,
+                                            window=self.pitch_tolerance)
 
             # Extract observation-wise precision and recall
             p, r = frame_metrics['Precision'], frame_metrics['Recall']
@@ -1103,16 +1112,16 @@ class PitchListEvaluator(StackedPitchListEvaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, pitch_tolerance=0.5, key=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See StackedPitchListEvaluator class...
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(pitch_tolerance, key, save_dir, patterns, verbose)
 
     def evaluate(self, estimated, reference):
         """

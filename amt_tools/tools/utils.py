@@ -53,6 +53,8 @@ __all__ = [
     'cat_pitch_list',
     'unroll_pitch_list',
     'clean_pitch_list',
+    'pack_pitch_list',
+    'unpack_pitch_list',
     'get_active_pitch_count',
     'contains_empties_pitch_list',
     'filter_pitch_list',
@@ -103,6 +105,7 @@ __all__ = [
     'tensor_to_array',
     'array_to_tensor',
     'save_pack_npz',
+    'save_dict_npz',
     'load_unpack_npz',
     'dict_to_dtype',
     'dict_to_device',
@@ -1192,6 +1195,60 @@ def clean_pitch_list(pitch_list):
     pitch_list = [p[p != 0] for p in pitch_list]
 
     return pitch_list
+
+
+def pack_pitch_list(times, pitch_list):
+    """
+    Package together the loose times and observations of a pitch list in a save-friendly format.
+
+    Parameters
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+
+    Returns
+    ----------
+    packed_pitch_list : ndarray (2 x N)
+      Pitch list packaged in object ndarray
+      N - number of loose pairs (frames)
+    """
+
+    # Concatenate the times and pitch list and wrap with object dtype
+    packed_pitch_list = np.array([times, np.array(pitch_list, dtype=object)])
+
+    return packed_pitch_list
+
+
+def unpack_pitch_list(packed_pitch_list):
+    """
+    Unpack from save-friendly format the loose times and observations of a pitch list.
+
+    Parameters
+    ----------
+    packed_pitch_list : ndarray (2 x N)
+      Pitch list packaged in object ndarray
+      N - number of loose pairs (frames)
+
+    Returns
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches active during each frame
+      N - number of pitch observations (frames)
+    """
+
+    # Break apart along the concatenated dimension, convert
+    # to 64-bit floats, and cast observations as a list
+    times = packed_pitch_list[0].astype(constants.FLOAT64)
+    pitch_list = [p.astype(constants.FLOAT64) for p in packed_pitch_list[1]]
+
+    return times, pitch_list
 
 
 def get_active_pitch_count(pitch_list):
@@ -3237,6 +3294,8 @@ def save_pack_npz(path, keys, *args):
     This saves the desired keys (in-order) for the rest
     of the array in the first entry of the zipped array.
 
+    TODO - remove this function after updating all other code to use the following function
+
     Parameters
     ----------
     path : string
@@ -3251,16 +3310,32 @@ def save_pack_npz(path, keys, *args):
     if len(keys) != len(args):
         warnings.warn('Number of keys does not match number of entries provided.', category=RuntimeWarning)
 
-    # Save the keys and entries as a NumPy zip at the specified path
-    np.savez(path, keys, *args)
+    # Create key->value pairs to save
+    entries = dict(zip(keys, args))
+
+    # Save the entries as a NumPy zip at the specified path
+    np.savez_compressed(path, **entries)
+
+
+def save_dict_npz(path, d):
+    """
+    Simple helper function to save a dictionary as a compressed NumPy zip file.
+
+    Parameters
+    ----------
+    path : string
+      Path to save the NumPy zip file
+    d : dict
+      Dictionary of entries to save
+    """
+
+    # Save the dictionary as a NumPy zip at the specified path
+    np.savez_compressed(path, **d)
 
 
 def load_unpack_npz(path):
     """
-    Simple helper function to circumvent hardcoding of
-    keyword arguments for NumPy zip loading and saving.
-    This assumes that the first entry of the zipped array
-    contains the keys (in-order) for the rest of the array.
+    Simple helper function to load a NumPy zip file.
 
     Parameters
     ----------
@@ -3270,21 +3345,11 @@ def load_unpack_npz(path):
     Returns
     ----------
     data : dict
-      Unpacked dictionary with specified keys inserted
+      Unpacked dictionary
     """
 
     # Load the NumPy zip file at the path
     data = dict(np.load(path, allow_pickle=True))
-
-    # Extract the key names stored in the dictionary
-    keys = data.pop(list(data.keys())[0])
-
-    # Obtain the names of the saved keys
-    old_keys = list(data.keys())
-
-    # Re-add all of the entries of the data with the specified keys
-    for i in range(len(keys)):
-        data[keys[i]] = data.pop(old_keys[i])
 
     return data
 

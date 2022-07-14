@@ -195,6 +195,10 @@ class TranscriptionDataset(Dataset):
         if tools.query_dict(data, tools.KEY_NOTES):
             data.pop(tools.KEY_NOTES)
 
+        # Remove any pitch lists, as they cannot be batched
+        if tools.query_dict(data, tools.KEY_PITCHLIST):
+            data.pop(tools.KEY_PITCHLIST)
+
         # Remove sampling rate - it can cause problems if it is not an ndarray. Sample rate
         # should be able to be inferred from the dataset object, if no warnings are thrown
         if tools.query_dict(data, tools.KEY_FS):
@@ -317,9 +321,6 @@ class TranscriptionDataset(Dataset):
             # Calculate the features and add to the dictionary
             data.update(self.calculate_feats(data))
 
-        # Determine which keys exist after calculating features
-        keys = list(data.keys())
-
         # Check to see if a specific sequence length was given
         if seq_length is None:
             # If not, and this Dataset object has a sequence length, use it
@@ -347,28 +348,20 @@ class TranscriptionDataset(Dataset):
         # Slice the audio
         data[tools.KEY_AUDIO] = data[tools.KEY_AUDIO][..., sample_start : sample_end]
 
-        # Determine if there is note ground-truth and, if so, get it
-        if tools.KEY_NOTES in keys:
-            # Notes entry has not been popped by a dataloader
-            notes = data[tools.KEY_NOTES]
-        elif self.store_data and tools.KEY_NOTES in self.data[track_id].keys():
-            # Notes entry has been popped and must be added again
-            notes = self.data[track_id][tools.KEY_NOTES]
-        else:
-            # Notes entry never existed
-            notes = None
+        # Determine the time in seconds of the boundary samples
+        sec_start = sample_start / self.sample_rate
+        sec_stop = sample_end / self.sample_rate
 
-        # Slice the ground-truth notes
-        if notes is not None:
-            # Determine the time in seconds of the boundary samples
-            sec_start = sample_start / self.sample_rate
-            sec_stop = sample_end / self.sample_rate
+        if tools.query_dict(data, tools.KEY_NOTES):
+            # Slice the ground-truth notes if they exist in the ground-truth
+            data[tools.KEY_NOTES] = tools.slice_batched_notes(data[tools.KEY_NOTES], sec_start, sec_stop)
 
-            # Remove notes occurring outside of the sampled window
-            data[tools.KEY_NOTES] = tools.slice_batched_notes(notes, sec_start, sec_stop)
+        if tools.query_dict(data, tools.KEY_PITCHLIST):
+            # Slice ground-truth pitch list if exists in the ground-truth
+            data[tools.KEY_PITCHLIST] = tools.slice_pitch_list(*data[tools.KEY_PITCHLIST], sec_start, sec_stop)
 
         # Define list of entries to skip during slicing process
-        skipped_keys = [tools.KEY_AUDIO, tools.KEY_FS, tools.KEY_NOTES]
+        skipped_keys = [tools.KEY_AUDIO, tools.KEY_FS, tools.KEY_NOTES, tools.KEY_PITCHLIST]
         # Slice the remaining dictionary entries
         data = tools.slice_track(data, frame_start, frame_end, skipped_keys)
 
@@ -422,6 +415,10 @@ class TranscriptionDataset(Dataset):
         if data is None:
             # Initialize a new dictionary if there is no saved data
             data = {}
+        else:
+            if tools.query_dict(data, tools.KEY_PITCHLIST):
+                # Unpack the pitch list (which will be in save-friendly format)
+                data[tools.KEY_PITCHLIST] = tools.unpack_pitch_list(data[tools.KEY_PITCHLIST])
 
         # Add the track ID to the dictionary
         data[tools.KEY_TRACK] = track

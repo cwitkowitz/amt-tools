@@ -127,6 +127,7 @@ INT = 'int'
 UINT = 'uint'
 FLOAT = 'float'
 FLOAT32 = 'float32'
+FLOAT64 = 'float64'
 INT64 = 'int64'
 
 ##################################################
