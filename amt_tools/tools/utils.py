@@ -906,8 +906,8 @@ def find_pitch_bounds_stacked_notes(stacked_notes):
         min_pitches += [np.min(pitches) if len(pitches) > 0 else 0]
         max_pitches += [np.max(pitches) if len(pitches) > 0 else 0]
 
-    # Convert to NumPy arrays
-    min_pitches, max_pitches = np.array(min_pitches), np.array(max_pitches)
+    # Convert to NumPy arrays and round to the nearest semitone
+    min_pitches, max_pitches = np.round(np.array(min_pitches)), np.round(np.array(max_pitches))
 
     return min_pitches, max_pitches
 
