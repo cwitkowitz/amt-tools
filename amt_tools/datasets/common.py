@@ -404,7 +404,7 @@ class TranscriptionDataset(Dataset):
         gt_path = self.get_gt_dir(track)
 
         # Check if an entry for the data exists
-        if os.path.exists(gt_path):
+        if self.save_data and os.path.exists(gt_path):
             # Load and unpack the data
             data = tools.load_unpack_npz(gt_path)
 

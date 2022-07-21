@@ -2814,27 +2814,26 @@ def framify_activations(activations, win_length, hop_length=1, pad=True):
     # Determine the number of frames provided
     num_frames = activations.shape[-1]
 
-    # Determine the pad length (also used if not padding)
+    # Determine the pad length for the window (also used if not padding)
     pad_length = (win_length // 2)
 
     if pad:
-        # Determine the number of intermediary frames required to give back same size
-        int_frames = num_frames + 2 * pad_length
-        # Pad the activations with zeros
-        activations = librosa.util.pad_center(activations, size=int_frames)
+        # Determine the number of frames required to yield same size
+        num_frames_ = num_frames + 2 * pad_length
     else:
-        # Number of intermediary frames is the same
-        int_frames = num_frames
+        # Make sure there are at least enough frames to fill one window
+        num_frames_ = max(win_length, num_frames)
 
+    # Pad the activations with zeros
+    activations = librosa.util.pad_center(activations, size=num_frames_)
 
     # TODO - commented code is cleaner but breaks in PyTorch pipeline during model.pre_proc
-
     """
     # Convert the activations to a fortran array
     activations = np.asfortranarray(activations)
 
     # Framify the activations using librosa
-    activations = librosa.util.frame(activations, win_length, hop_length).copy()
+    activations = librosa.util.frame(activations, frame_length=win_length, hop_length=hop_length).copy()
 
     # Switch window index and time index axes
     activations = np.swapaxes(activations, -1, -2)
@@ -2843,7 +2842,7 @@ def framify_activations(activations, win_length, hop_length=1, pad=True):
     """
 
     # Determine the number of hops in the activations
-    num_hops = (int_frames - 2 * pad_length) // hop_length
+    num_hops = (num_frames_ - 2 * pad_length) // hop_length
     # Obtain the indices of the start of each chunk
     chunk_idcs = np.arange(0, num_hops) * hop_length
 

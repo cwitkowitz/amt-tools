@@ -24,6 +24,9 @@ class TabCNN(TranscriptionModel):
 
         super().__init__(dim_in, profile, in_channels, model_complexity, 9, device)
 
+        # Initialize a flag to check whether to pad input features
+        self.online = False
+
         # Number of filters for each stage
         nf1 = 32 * self.model_complexity
         nf2 = 64 * self.model_complexity
@@ -40,9 +43,6 @@ class TabCNN(TranscriptionModel):
         # Dropout percentages for each stage
         dp1 = 0.25
         dp2 = 0.50
-
-        # Number of neurons for each fully-connected stage
-        nn1 = 128
 
         self.conv = nn.Sequential(
             # 1st convolution
@@ -66,7 +66,10 @@ class TabCNN(TranscriptionModel):
         # Determine the height, width, and total size of the feature map
         feat_map_height = (self.dim_in - 6) // 2
         feat_map_width = (self.frame_width - 6) // 2
-        self.feat_map_size = nf3 * feat_map_height * feat_map_width
+        self.conv_embedding_size = nf3 * feat_map_height * feat_map_width
+
+        # Number of neurons for each fully-connected stage
+        self.fc_embedding_size = 128 * self.model_complexity
 
         # Extract tablature parameters
         num_groups = self.profile.get_num_dofs()
@@ -74,14 +77,25 @@ class TabCNN(TranscriptionModel):
 
         self.dense = nn.Sequential(
             # 1st fully-connected
-            nn.Linear(self.feat_map_size, nn1),
+            nn.Linear(self.conv_embedding_size, self.fc_embedding_size),
             # Activation function
             nn.ReLU(),
             # 2nd dropout
             nn.Dropout(dp2),
             # 2nd fully-connected
-            SoftmaxGroups(nn1, num_groups, num_classes)
+            SoftmaxGroups(self.fc_embedding_size, num_groups, num_classes)
         )
+
+    def toggle_online(self):
+        """
+        Toggle the flag for padding input features. This is necessary to differentiate
+        between training/validation, where there is ground-truth for each input frame,
+        and inference, where there are no labels to compare against and only one output
+        is desired for a group of input features filling the expected frame width.
+        """
+
+        # Switch the flag
+        self.online = not self.online
 
     def pre_proc(self, batch):
         """
@@ -107,9 +121,8 @@ class TabCNN(TranscriptionModel):
 
         # Extract the features from the batch as a NumPy array
         feats = tools.tensor_to_array(batch[tools.KEY_FEATS])
-        # Window the features to mimic real-time operation
-        # TODO - padding check is kind of hacky
-        feats = tools.framify_activations(feats, self.frame_width, pad=(feats.shape[-1] > self.frame_width))
+        # Window the features to mimic online/real-time operation
+        feats = tools.framify_activations(feats, self.frame_width, pad=(not self.online))
         # Convert the features back to PyTorch tensor and add to device
         feats = tools.array_to_tensor(feats, self.device)
         # Switch the sequence-frame and feature axes
