@@ -92,8 +92,8 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     # Initialize the evaluation pipeline
     evaluators = [LossWrapper(),
                   MultipitchEvaluator(),
-                  NoteEvaluator(key=tools.KEY_NOTE_ON),
-                  NoteEvaluator(offset_ratio=0.2, key=tools.KEY_NOTE_OFF)]
+                  NoteEvaluator(results_key=tools.KEY_NOTE_ON),
+                  NoteEvaluator(offset_ratio=0.2, results_key=tools.KEY_NOTE_OFF)]
     validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1'])
 
     # Get a list of the MAPS splits

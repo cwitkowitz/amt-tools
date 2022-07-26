@@ -12,6 +12,7 @@ from scipy.stats import hmean
 from copy import deepcopy
 
 import numpy as np
+import warnings
 import torch
 import sys
 import os
@@ -38,7 +39,6 @@ __all__ = [
 
 EPSILON = sys.float_info.epsilon
 
-# TODO - add warning when unpack returns None
 # TODO - none of the stacked evaluators have been tested independently
 #      - they will likely break during append, average, log, write, etc.
 
@@ -282,14 +282,16 @@ class Evaluator(object):
     Implements a generic music information retrieval evaluator.
     """
 
-    def __init__(self, key, save_dir, patterns, verbose):
+    def __init__(self, unpack_key=None, results_key=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters common to all evaluators and instantiate.
 
         Parameters
         ----------
-        key : string
-          Key to use when unpacking data and organizing results
+        unpack_key : string or None (optional)
+          Key to use when unpacking data for the evaluation
+        results_key : string or None (optional)
+          Key to use when organizing results
         save_dir : string or None (optional)
           Directory where results for each track will be written
         patterns : list of string or None (optional)
@@ -298,7 +300,9 @@ class Evaluator(object):
           Whether to print any written text to console as well
         """
 
-        self.key = key
+        # Set up the dictionary keys to use for extracting data and organizing results
+        self.unpack_key = self.get_default_key() if unpack_key is None else unpack_key
+        self.results_key = self.get_default_key() if results_key is None else results_key
 
         self.save_dir = None
         self.set_save_dir(save_dir)
@@ -375,25 +379,6 @@ class Evaluator(object):
 
         return average
 
-    def get_key(self):
-        """
-        Obtain the key being used for the Evaluator.
-
-        Returns
-        ----------
-        key : string
-          Key to use when unpacking data and organizing results
-        """
-
-        if self.key is None:
-            # Default the key
-            key = self.get_default_key()
-        else:
-            # Use the provided key
-            key = self.key
-
-        return key
-
     @staticmethod
     @abstractmethod
     def get_default_key():
@@ -402,31 +387,6 @@ class Evaluator(object):
         """
 
         return NotImplementedError
-
-    def unpack(self, data):
-        """
-        Unpack the relevant entry for evaluation if
-        a dictionary is provided and the entry exists.
-
-        Parameters
-        ----------
-        data : object
-          Presumably either a dictionary containing ground-truth
-          or model output, or the already-unpacked entry
-
-        Returns
-        ----------
-        data : object
-          Unpacked entry or same object provided if no dictionary
-        """
-
-        # Determine the relevant key for evaluation
-        key = self.get_key()
-
-        # Check if a dictionary was provided and if the key is in the dictionary
-        data = tools.try_unpack_dict(data, key)
-
-        return data
 
     def pre_proc(self, estimated, reference):
         """
@@ -450,9 +410,12 @@ class Evaluator(object):
           Reference relevant to the evaluation
         """
 
+        # TODO - add warning when unpacked estiamted/reference is None??
+        #      - useful for all cases except reference in LossWrapper
+
         # Unpacked estimate and reference if dictionaries were provided
-        estimated = self.unpack(estimated)
-        reference = self.unpack(reference)
+        estimated = tools.try_unpack_dict(estimated, self.unpack_key)
+        reference = tools.try_unpack_dict(reference, self.unpack_key)
 
         return estimated, reference
 
@@ -576,7 +539,7 @@ class ComboEvaluator(Evaluator):
 
         self.evaluators = evaluators
 
-        super().__init__(None, save_dir, patterns, verbose)
+        super().__init__(None, None, save_dir, patterns, verbose)
 
     def reset_results(self):
         """
@@ -603,17 +566,14 @@ class ComboEvaluator(Evaluator):
 
         # Loop through the evaluators
         for evaluator in self.evaluators:
+            # Check if there is already an entry for the evaluator's key
+            if tools.query_dict(average, evaluator.results_key):
+                warnings.warn(f'Already averaged results with key {evaluator.results_key}. ' +
+                              'These will be overwritten.', category=RuntimeWarning)
+
             # Average the tracked results for the evaluator
             # and place in average results under evaluator's key
-            results = average_results(evaluator.results)
-
-            # Check if there is already an entry for the evaluator's key
-            if tools.query_dict(average, evaluator.get_key()):
-                # Add new entries to the results
-                average[evaluator.get_key()].update(results)
-            else:
-                # Create a new entry for the results
-                average[evaluator.get_key()] = results
+            average[evaluator.results_key] = average_results(evaluator.results)
 
         return average
 
@@ -655,7 +615,7 @@ class ComboEvaluator(Evaluator):
         """
 
         # Copy the raw output dictionary and use it to hold estimates
-        results = {}
+        results = dict()
 
         # Loop through the evaluators
         for evaluator in self.evaluators:
@@ -666,12 +626,12 @@ class ComboEvaluator(Evaluator):
             new_results = evaluator.evaluate(estimated_, reference_)
 
             # Check if there is already an entry for the evaluator's key
-            if tools.query_dict(results, evaluator.get_key()):
-                # Add new entries to the results
-                results[evaluator.get_key()].update(new_results)
-            else:
-                # Create a new entry for the results
-                results[evaluator.get_key()] = new_results
+            if tools.query_dict(results, evaluator.results_key):
+                warnings.warn(f'Already tracking results with key {evaluator.results_key}. ' +
+                              'These will be overwritten before writing results.', category=RuntimeWarning)
+
+            # Add new entries to the results dictionary
+            results[evaluator.results_key] = new_results
 
             # Add the results to the tracked dictionary
             evaluator.results = append_results(evaluator.results, new_results)
@@ -686,17 +646,6 @@ class LossWrapper(Evaluator):
     """
     Simple wrapper for tracking, writing, and logging loss.
     """
-
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See Evaluator class...
-        """
-
-        super().__init__(key, save_dir, patterns, verbose)
 
     @staticmethod
     def get_default_key():
@@ -733,17 +682,6 @@ class StackedMultipitchEvaluator(Evaluator):
     Implements an evaluator for stacked multi pitch activation maps, i.e.
     independent multi pitch estimations across degrees of freedom or instruments.
     """
-
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See Evaluator class...
-        """
-
-        super().__init__(key, save_dir, patterns, verbose)
 
     @staticmethod
     def get_default_key():
@@ -812,17 +750,6 @@ class MultipitchEvaluator(StackedMultipitchEvaluator):
     Implements an evaluator for multi pitch activation maps.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See Evaluator class...
-        """
-
-        super().__init__(key, save_dir, patterns, verbose)
-
     def evaluate(self, estimated, reference):
         """
         Evaluate a multi pitch estimate with respect to a reference.
@@ -862,19 +789,20 @@ class StackedNoteEvaluator(Evaluator):
     Implements an evaluator for stacked (independent) note estimations.
     """
 
-    def __init__(self, offset_ratio=None, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, offset_ratio=None, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See Evaluator class for others...
 
         offset_ratio : float
           Ratio of the reference note's duration used to define the offset tolerance
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(unpack_key, results_key, save_dir, patterns, verbose)
 
         self.offset_ratio = offset_ratio
 
@@ -885,30 +813,6 @@ class StackedNoteEvaluator(Evaluator):
         """
 
         return tools.KEY_NOTES
-
-    def unpack(self, data):
-        """
-        Unpack notes using the default notes key rather than the specified key.
-
-        Parameters
-        ----------
-        data : object
-          Presumably either a dictionary containing ground-truth
-          or model output, or the already-unpacked notes
-
-        Returns
-        ----------
-        data : object
-          Unpacked notes or same object provided if no dictionary
-        """
-
-        # Determine the relevant key for evaluation
-        key = self.get_default_key()
-
-        # Check if a dictionary was provided and if the key is in the dictionary
-        data = tools.try_unpack_dict(data, key)
-
-        return data
 
     def evaluate(self, estimated, reference):
         """
@@ -967,17 +871,6 @@ class NoteEvaluator(StackedNoteEvaluator):
     Implements an evaluator for notes.
     """
 
-    def __init__(self, offset_ratio=None, key=None, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See StackedNoteEvaluator class...
-        """
-
-        super().__init__(offset_ratio, key, save_dir, patterns, verbose)
-
     def evaluate(self, estimated, reference):
         """
         Evaluate note estimates with respect to a reference.
@@ -1022,7 +915,8 @@ class StackedPitchListEvaluator(Evaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, pitch_tolerance=0.5, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, pitch_tolerance=0.5, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
@@ -1034,7 +928,7 @@ class StackedPitchListEvaluator(Evaluator):
           Semitone tolerance for considering a frequency estimate correct relative to a reference
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(unpack_key, results_key, save_dir, patterns, verbose)
 
         self.pitch_tolerance = pitch_tolerance
 
@@ -1112,17 +1006,6 @@ class PitchListEvaluator(StackedPitchListEvaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, pitch_tolerance=0.5, key=None, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See StackedPitchListEvaluator class...
-        """
-
-        super().__init__(pitch_tolerance, key, save_dir, patterns, verbose)
-
     def evaluate(self, estimated, reference):
         """
         Evaluate pitch list estimates with respect to a reference.
@@ -1168,7 +1051,8 @@ class TablatureEvaluator(Evaluator):
     Implements an evaluator for tablature.
     """
 
-    def __init__(self, profile, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, profile, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
@@ -1180,7 +1064,7 @@ class TablatureEvaluator(Evaluator):
           Instrument profile detailing experimental setup
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(unpack_key, results_key, save_dir, patterns, verbose)
 
         self.profile = profile
 
@@ -1295,24 +1179,13 @@ class SoftmaxAccuracy(Evaluator):
     Implements an evaluator for calculating accuracy of softmax groups.
     """
 
-    def __init__(self, key, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See Evaluator class for others...
-        """
-
-        super().__init__(key, save_dir, patterns, verbose)
-
     @staticmethod
     def get_default_key():
         """
-        A key must be provided for softmax groups accuracy.
+        Default key for accuracy.
         """
 
-        return NotImplementedError
+        return tools.KEY_ACCURACY
 
     def evaluate(self, estimated, reference):
         """

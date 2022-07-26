@@ -25,6 +25,8 @@ __all__ = [
     'TablatureWrapper'
 ]
 
+# TODO - allow parameterization of key to override default like in Evaluators?
+
 
 def filter_notes_by_duration(pitches, intervals, threshold=0.):
     """
@@ -162,7 +164,7 @@ class Estimator(object):
     Implements a generic music information retrieval estimator.
     """
 
-    def __init__(self, profile, save_dir):
+    def __init__(self, profile, save_dir=None):
         """
         Initialize parameters common to all estimators and instantiate.
 
@@ -318,7 +320,6 @@ class StackedNoteTranscriber(Estimator):
         self.minimum_duration = minimum_duration
 
     @staticmethod
-    @abstractmethod
     def get_key():
         """
         Default key for note estimates.
@@ -619,17 +620,6 @@ class NoteTranscriber(StackedNoteTranscriber):
     Estimate notes from a multi pitch activation map.
     """
 
-    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
-        """
-        Initialize parameters for the estimator.
-
-        Parameters
-        ----------
-        See StackedNoteTranscriber class...
-        """
-
-        super().__init__(profile, save_dir, inhibition_window, minimum_duration)
-
     def estimate(self, raw_output):
         """
         Estimate notes from a multi pitch activation map.
@@ -705,24 +695,6 @@ class IterativeNoteTranscriber(IterativeStackedNoteTranscriber):
     Estimate notes from a multi pitch activation map, one frame at a time.
     """
 
-    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
-        """
-        Initialize parameters for the estimator.
-
-        Parameters
-        ----------
-        See NoteTranscriber class...
-        """
-
-        super().__init__(profile, save_dir, inhibition_window, minimum_duration)
-
-        # Create an array to keep track of the previous pitch activations
-        self.previous_activations = None
-        # Create an array to keep track of onset times for active pitches
-        self.active_pitches = None
-
-        self.reset_state()
-
     def reset_state(self):
         """
         Zero-out the tracked state.
@@ -777,19 +749,7 @@ class StackedMultiPitchRefiner(StackedNoteTranscriber):
     predictions, by converting note estimates back into multi pitch activation.
     """
 
-    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
-        """
-        Initialize parameters for the estimator.
-
-        Parameters
-        ----------
-        See StackedNoteTranscriber class...
-        """
-
-        super().__init__(profile, save_dir, inhibition_window, minimum_duration)
-
     @staticmethod
-    @abstractmethod
     def get_key():
         """
         Default key for multi pitch activations.
@@ -852,19 +812,7 @@ class MultiPitchRefiner(NoteTranscriber):
     predictions, by converting note estimates back into multi pitch activation.
     """
 
-    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
-        """
-        Initialize parameters for the estimator.
-
-        Parameters
-        ----------
-        See StackedNoteTranscriber class...
-        """
-
-        super().__init__(profile, save_dir, inhibition_window, minimum_duration)
-
     @staticmethod
-    @abstractmethod
     def get_key():
         """
         Default key for multi pitch activations.
@@ -930,19 +878,7 @@ class StackedPitchListWrapper(Estimator):
     Wrapper for converting stacked multi pitch activations to stacked pitch lists.
     """
 
-    def __init__(self, profile, save_dir=None):
-        """
-        Initialize parameters for the estimator.
-
-        Parameters
-        ----------
-        See Estimator class...
-        """
-
-        super().__init__(profile, save_dir)
-
     @staticmethod
-    @abstractmethod
     def get_key():
         """
         Default key for pitch lists.
@@ -1011,23 +947,12 @@ class StackedPitchListWrapper(Estimator):
 
 class PitchListWrapper(StackedPitchListWrapper):
     """
-    Wrapper for converting a multi pitch activation map to a pitch lists.
+    Wrapper for converting a multi pitch activation map to a pitch list.
     """
-
-    def __init__(self, profile, save_dir=None):
-        """
-        Initialize parameters for the estimator.
-
-        Parameters
-        ----------
-        See Estimator class...
-        """
-
-        super().__init__(profile, save_dir)
 
     def estimate(self, raw_output):
         """
-        Convert a multi pitch activation map to a pitch lists.
+        Convert a multi pitch activation map to a pitch list.
 
         Parameters
         ----------
@@ -1100,7 +1025,8 @@ class TablatureWrapper(Estimator):
 
         self.stacked = stacked
 
-    def get_key(self):
+    @staticmethod
+    def get_key():
         """
         Default key for multi pitch activations.
         """

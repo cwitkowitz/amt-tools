@@ -89,7 +89,8 @@ def tabcnn_cross_val(sample_rate, hop_length, num_frames, iterations, checkpoint
     validation_evaluator = ComboEvaluator([LossWrapper(),
                                            MultipitchEvaluator(),
                                            TablatureEvaluator(profile=profile),
-                                           SoftmaxAccuracy(key=tools.KEY_TABLATURE)])
+                                           SoftmaxAccuracy(unpack_key=tools.KEY_TABLATURE,
+                                                           results_key=tools.KEY_TABLATURE)])
 
     # Get a list of the GuitarSet splits
     splits = GuitarSet.available_splits()
