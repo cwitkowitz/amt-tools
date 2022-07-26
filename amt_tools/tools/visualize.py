@@ -4,6 +4,8 @@
 from . import utils, constants
 
 # Regular imports
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.patches import Rectangle
 from abc import abstractmethod
 
 import matplotlib.pyplot as plt
@@ -28,7 +30,8 @@ __all__ = [
     'plot_guitar_tablature',
     'GuitarTablatureVisualizer',
     'plot_pianoroll',
-    'PianorollVisualizer'
+    'PianorollVisualizer',
+    'plot_notes'
 ]
 
 
@@ -812,7 +815,7 @@ class StackedPitchListVisualizer(Visualizer):
 def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
                           x_bounds=None, colors=None, labels=None, fig=None):
     """
-    Static function for plotting pitch contours (pitch_list).
+    Static function for plotting guitar tablature organized as notes by string.
     TODO - this does not scale well for big note groups
 
     Parameters
@@ -1032,7 +1035,8 @@ class GuitarTablatureVisualizer(Visualizer):
         self.stacked_frets = None
 
 
-def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True, color='k', fig=None):
+def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True,
+                   overlay=False, color='k', alpha=1.0, fig=None):
     """
     Static function for plotting a 2D pitch activation map or pianoroll.
 
@@ -1048,8 +1052,12 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True, col
       Instrument profile detailing experimental setup
     include_axes : bool
       Whether to include the axis in the visualizer
+    overlay : bool
+      Whether to overlay a new image on the plot rather than just modifying the data
     color : string
       Color for the waveform
+    alpha : float in range [0, 1]
+      Transparency of maximum activation
     fig : matplotlib Figure object
       Preexisting figure to use for plotting
 
@@ -1090,16 +1098,18 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True, col
     extent = [x_min, x_max, y_max, y_min]
 
     # Check if an activation map has already been plotted
-    if len(ax.images):
+    if len(ax.images) and not overlay:
         # Update the activation map with the new data
         ax.images[0].set_data(multi_pitch)
         # Update the images extent
         ax.images[0].set_extent(extent)
-        # Flip the axis for ascending pitch
-        ax.invert_yaxis()
     else:
+        # Construct the colormap
+        cmap = LinearSegmentedColormap.from_list('', ['white', color], N=256)
         # Plot the activation map as an image
-        ax.imshow(multi_pitch, cmap='gray_r', vmin=0, vmax=1, extent=extent, aspect='auto')
+        ax.imshow(multi_pitch, cmap=cmap, vmin=0, vmax=1, extent=extent, aspect='auto', alpha=alpha)
+
+    if ax.yaxis_inverted():
         # Flip the axis for ascending pitch
         ax.invert_yaxis()
 
@@ -1113,6 +1123,7 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True, col
         ax.set_xlabel(x_label)
 
     return fig
+
 
 class PianorollVisualizer(TFRVisualizer):
     """
@@ -1171,3 +1182,48 @@ class PianorollVisualizer(TFRVisualizer):
                                       include_axes=self.include_axes,
                                       fig=self.fig)
             self.post_update()
+
+
+def plot_notes(pitches, intervals, x_bounds=None, y_bounds=None, include_x_axis=True, color='k', fig=None):
+    """
+    TODO - description
+
+    TODO - bring this function up to snuff with, e.g. plot_guitar_tablature,
+           so that it works for real-time note plotting
+
+    Parameters
+    ----------
+    TODO - add parameter descriptions
+    fig : matplotlib Figure object
+      Preexisting figure to use for plotting
+
+    Returns
+    ----------
+    fig : matplotlib Figure object
+      A handle for the figure used to plot the waveform
+    """
+
+    if fig is None:
+        # Initialize a new figure if one was not given
+        fig = initialize_figure(interactive=False, figsize=(10, 5))
+
+    # Obtain a handle for the figure's current axis
+    ax = fig.gca()
+
+    if y_bounds is None:
+        # Get the dynamic y-axis boundaries if none were provided
+        y_bounds = get_dynamic_y_bounds(ax, pitches)
+    # Bound the y-axis
+    ax.set_ylim(y_bounds)
+
+    if x_bounds is None:
+        # Get the dynamic x-axis boundaries if none were provided
+        x_bounds = get_dynamic_x_bounds(ax, intervals.flatten())
+    # Bound the x-axis
+    ax.set_xlim(x_bounds)
+
+    for p, i in zip(pitches, intervals):
+        # Add a rectangle representing the note to the plot, applying an offset to center around the pitch
+        ax.add_patch(Rectangle((i[0], p - 0.5), (i[1] - i[0]), 1, linewidth=1, edgecolor=color, facecolor='none'))
+
+    return fig
