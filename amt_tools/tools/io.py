@@ -313,8 +313,6 @@ def extract_stacked_pitch_list_jams(jam, times=None):
 
         if times is not None:
             # Resample the observation times if new times are specified
-            # TODO - due to resampling, onsets/offsets may differ up to 1 frame from representation derived from notes
-            #        at this point I think this is acceptable and to be expected even (notes are not perfectly aligned)
             slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)
             # Overwrite the entry times with the specified times
             entry_times = times

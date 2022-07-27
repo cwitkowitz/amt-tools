@@ -959,6 +959,9 @@ def multi_pitch_to_pitch_list(multi_pitch, profile):
     Array of corresponding times does not change and is
     assumed to be managed outside of the function.
 
+    Note: the result of this function should be
+    invertible using pitch_list_to_multi_pitch()
+
     Parameters
     ----------
     multi_pitch : ndarray (F x T)
@@ -1586,13 +1589,13 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # TODO - should onset/offset determination be under the for loop?
     #        current methodology may not scale well w.r.t. memory and
     #        we are already doing a for-loop
-    times = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
+    times_broadcast = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
 
     # Determine the frame where each note begins and ends, defined
     # for both onset and offset as the last frame beginning before
     # (or at the same time as) that of the respective event
-    onsets = np.argmin((times <= intervals[..., :1]), axis=1) - 1
-    offsets = np.argmin((times <= intervals[..., 1:]), axis=1) - 1
+    onsets = np.argmin((times_broadcast <= intervals[..., :1]), axis=1) - 1
+    offsets = np.argmin((times_broadcast <= intervals[..., 1:]), axis=1) - 1
 
     # Clip all offsets at last frame - they will end up at -1 from
     # previous operation if they occurred beyond last frame time
@@ -1617,6 +1620,11 @@ def pitch_list_to_multi_pitch(pitch_list, profile):
       N - number of pitch observations (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+
+    Note: the result of this function should be
+    invertible (within a 0.5 semitone tolerance)
+    using multi_pitch_to_pitch_list(), assuming no
+    out-of-bounds pitches exist in the pitch list
 
     Returns
     ----------

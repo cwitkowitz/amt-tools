@@ -585,8 +585,9 @@ class TFRVisualizer(Visualizer):
         self.current_frame = 0
 
 
-def plot_pitch_list(times, pitch_list, hertz=False, point_size=5, include_axes=True,
-                    x_bounds=None, y_bounds=None, color='k', label=None, idx=0, fig=None):
+def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
+                    include_axes=True, x_bounds=None, y_bounds=None,
+                    color='k', alpha=1.0, label=None, idx=0, fig=None):
     """
     Static function for plotting pitch contours (pitch_list).
 
@@ -610,6 +611,8 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5, include_axes=T
       Lower and upper y-axis boundary to force
     color : string
       Color for the pitch contour
+    alpha : float in range [0, 1]
+      Transparency of maximum activation
     label : string or None (Optional)
       Labels to use for legend
     idx : int
@@ -640,7 +643,7 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5, include_axes=T
         collections[idx].set_offsets(np.c_[times, pitches])
     else:
         # Plot the points as a new collection
-        ax.scatter(times, pitches, s=point_size, color=color, label=label)
+        ax.scatter(times, pitches, s=point_size, color=color, label=label, alpha=alpha)
 
     if y_bounds is None:
         # Get the dynamic y-axis boundaries if none were provided
@@ -1047,7 +1050,7 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True,
       F - number of discrete pitches
       T - number of frames
     times : ndarray or None (Optional)
-      Times corresponding to waveform samples
+      Times corresponding to beginning of frames
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
     include_axes : bool
@@ -1084,7 +1087,7 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True,
         x_label = 'Time (s)'
 
     # Use the times (or frame indices) for the x-axis
-    x_min, x_max = np.min(times), np.max(times)
+    x_min, x_max = np.min(times), np.max(times) + utils.estimate_hop_length(times)
 
     # Use the relative pitch in the activation map for the y-axis
     y_min, y_max = -0.5, multi_pitch.shape[-2] - 0.5
