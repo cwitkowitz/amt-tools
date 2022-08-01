@@ -429,7 +429,7 @@ def plot_tfr(tfr, times=None, include_axes=True, fig=None):
       F - number of frequency bins
       T - number of frames
     times : ndarray or None (Optional)
-      Times corresponding to waveform samples
+      Times corresponding to frames
     include_axes : bool
       Whether to include the axis in the visualizer
     fig : matplotlib Figure object
@@ -438,7 +438,7 @@ def plot_tfr(tfr, times=None, include_axes=True, fig=None):
     Returns
     ----------
     fig : matplotlib Figure object
-      A handle for the figure used to plot the waveform
+      A handle for the figure used to plot the TFR
     """
 
     if fig is None:
@@ -585,9 +585,8 @@ class TFRVisualizer(Visualizer):
         self.current_frame = 0
 
 
-def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
-                    include_axes=True, x_bounds=None, y_bounds=None,
-                    overlay=False, color='k', alpha=1.0, label=None,
+def plot_pitch_list(times, pitch_list, hertz=False, point_size=5, marker='o', include_axes=True,
+                    x_bounds=None, y_bounds=None, overlay=False, color='k', alpha=1.0, label=None,
                     idx=0, fig=None):
     """
     Static function for plotting pitch contours (pitch_list).
@@ -604,6 +603,8 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
       Whether to expect pitches in Hertz as opposed to MIDI
     point_size : int or float
       Size of points within the scatter plot
+    marker : str
+      Marker to use for the scatter points
     include_axes : bool
       Whether to include the axis in the visualizer
     x_bounds : list (length 2) of float or None (Optional)
@@ -626,7 +627,7 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
     Returns
     ----------
     fig : matplotlib Figure object
-      A handle for the figure used to plot the waveform
+      A handle for the figure used to plot the pitch list
     """
 
     # Unroll the pitch list so it can be plotted
@@ -646,7 +647,7 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
         collections[idx].set_offsets(np.c_[times, pitches])
     else:
         # Plot the points as a new collection
-        ax.scatter(times, pitches, s=point_size, color=color, label=label, alpha=alpha)
+        ax.scatter(times, pitches, s=point_size, color=color, marker=marker, label=label, alpha=alpha)
 
     if y_bounds is None:
         # Get the dynamic y-axis boundaries if none were provided
@@ -706,7 +707,7 @@ def plot_stacked_pitch_list(stacked_pitch_list, hertz=False, point_size=5, inclu
     Returns
     ----------
     fig : matplotlib Figure object
-      A handle for the figure used to plot the waveform
+      A handle for the figure used to plot the stacked pitch list
     """
 
     # Loop through the stack of pitch lists, keeping track of the index
@@ -844,7 +845,7 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
     Returns
     ----------
     fig : matplotlib Figure object
-      A handle for the figure used to plot the waveform
+      A handle for the figure used to plot the tablature
     """
 
     if fig is None:
@@ -1061,7 +1062,7 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True,
     overlay : bool
       Whether to overlay a new image on the plot rather than just modifying the data
     color : string
-      Color for the waveform
+      Color for the pianoroll
     alpha : float in range [0, 1]
       Transparency of maximum activation
     fig : matplotlib Figure object
@@ -1070,7 +1071,7 @@ def plot_pianoroll(multi_pitch, times=None, profile=None, include_axes=True,
     Returns
     ----------
     fig : matplotlib Figure object
-      A handle for the figure used to plot the waveform
+      A handle for the figure used to plot the pianoroll
     """
 
     if fig is None:
@@ -1206,7 +1207,7 @@ def plot_notes(pitches, intervals, x_bounds=None, y_bounds=None, include_x_axis=
     Returns
     ----------
     fig : matplotlib Figure object
-      A handle for the figure used to plot the waveform
+      A handle for the figure used to plot the notes
     """
 
     if fig is None:

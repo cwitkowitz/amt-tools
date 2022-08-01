@@ -254,7 +254,7 @@ def load_duration_jams(jams_path):
     return duration
 
 
-def extract_stacked_pitch_list_jams(jam, times=None):
+def extract_stacked_pitch_list_jams(jam, times=None, uniform=True):
     """
     Extract pitch lists spread across slices (e.g. guitar strings) from JAMS annotations into a dictionary.
 
@@ -263,8 +263,10 @@ def extract_stacked_pitch_list_jams(jam, times=None):
     jam : JAMS object
       JAMS file data
     times : ndarray or None (optional) (N)
-      Time in seconds of beginning of each frame
+      Time in seconds for resampling
       N - number of times samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
 
     Returns
     ----------
@@ -306,10 +308,11 @@ def extract_stacked_pitch_list_jams(jam, times=None):
         # Sort the pitch list before resampling just in case it is not already sorted
         entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
 
-        # Make sure the pitch list is uniform before resampling
-        entry_times, slice_pitch_list = utils.time_series_to_uniform(times=entry_times,
-                                                                     values=slice_pitch_list,
-                                                                     duration=jam.file_metadata.duration)
+        if uniform:
+            # Align the pitch list with a uniform time grid
+            entry_times, slice_pitch_list = utils.time_series_to_uniform(times=entry_times,
+                                                                         values=slice_pitch_list,
+                                                                         duration=jam.file_metadata.duration)
 
         if times is not None:
             # Resample the observation times if new times are specified
@@ -323,7 +326,7 @@ def extract_stacked_pitch_list_jams(jam, times=None):
     return stacked_pitch_list
 
 
-def load_stacked_pitch_list_jams(jams_path):
+def load_stacked_pitch_list_jams(jams_path, times=None, uniform=True):
     """
     Helper function to load a JAMS file and extract a stacked pitch list.
 
@@ -331,6 +334,11 @@ def load_stacked_pitch_list_jams(jams_path):
     ----------
     jams_path : string
       Path to JAMS file to read
+    times : ndarray or None (optional) (N)
+      Time in seconds for resampling
+      N - number of times samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
 
     Returns
     ----------
@@ -342,12 +350,12 @@ def load_stacked_pitch_list_jams(jams_path):
     jam = jams.load(jams_path)
 
     # Extract the stacked pitch list
-    stacked_pitch_list = extract_stacked_pitch_list_jams(jam)
+    stacked_pitch_list = extract_stacked_pitch_list_jams(jam, times, uniform)
 
     return stacked_pitch_list
 
 
-def extract_pitch_list_jams(jam, times):
+def extract_pitch_list_jams(jam, _times=None, uniform=True):
     """
     Extract a pitch list from JAMS annotations.
 
@@ -355,14 +363,16 @@ def extract_pitch_list_jams(jam, times):
     ----------
     jam : JAMS object
       JAMS file data
-    times : ndarray or None (optional) (N)
-      Time in seconds of beginning of each frame
+    _times : ndarray or None (optional) (N)
+      Time in seconds for resampling
       N - number of times samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
 
     Returns
     ----------
     times : ndarray (N)
-      Time in seconds of beginning of each frame, sorted by time
+      Time in seconds of beginning of each frame
       N - number of time samples (frames)
     pitch_list : list of ndarray (N x [...])
       Array of pitches corresponding to notes
@@ -370,7 +380,7 @@ def extract_pitch_list_jams(jam, times):
     """
 
     # Extract the pitch lists into a stack
-    stacked_pitch_list = extract_stacked_pitch_list_jams(jam, times)
+    stacked_pitch_list = extract_stacked_pitch_list_jams(jam, _times, uniform)
 
     # Convert them to a single pitch list
     times, pitch_list = utils.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
@@ -378,7 +388,7 @@ def extract_pitch_list_jams(jam, times):
     return times, pitch_list
 
 
-def load_pitch_list_jams(jams_path):
+def load_pitch_list_jams(jams_path, _times=None, uniform=True):
     """
     Helper function to load a JAMS file and extract a pitch list.
 
@@ -386,6 +396,11 @@ def load_pitch_list_jams(jams_path):
     ----------
     jams_path : string
       Path to JAMS file to read
+    _times : ndarray or None (optional) (N)
+      Time in seconds for resampling
+      N - number of times samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
 
     Returns
     ----------
@@ -401,7 +416,7 @@ def load_pitch_list_jams(jams_path):
     jam = jams.load(jams_path)
 
     # Extract the pitch list
-    times, pitch_list = extract_pitch_list_jams(jam)
+    times, pitch_list = extract_pitch_list_jams(jam, _times, uniform)
 
     return times, pitch_list
 
