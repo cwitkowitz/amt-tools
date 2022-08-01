@@ -587,7 +587,8 @@ class TFRVisualizer(Visualizer):
 
 def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
                     include_axes=True, x_bounds=None, y_bounds=None,
-                    color='k', alpha=1.0, label=None, idx=0, fig=None):
+                    overlay=False, color='k', alpha=1.0, label=None,
+                    idx=0, fig=None):
     """
     Static function for plotting pitch contours (pitch_list).
 
@@ -609,6 +610,8 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
       Lower and upper x-axis boundary to force
     y_bounds : list (length 2) of float or None (Optional)
       Lower and upper y-axis boundary to force
+    overlay : bool
+      Whether to overlay a new scatter plot rather than just modifying the data
     color : string
       Color for the pitch contour
     alpha : float in range [0, 1]
@@ -638,7 +641,7 @@ def plot_pitch_list(times, pitch_list, hertz=False, point_size=5,
 
     # Check if scatter collections have already been plotted
     collections = ax.collections
-    if len(collections) and idx < len(collections):
+    if len(collections) and idx < len(collections) and not overlay:
         # Re-use the selected scatter collection and plot the new points
         collections[idx].set_offsets(np.c_[times, pitches])
     else:

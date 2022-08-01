@@ -1597,9 +1597,9 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     onsets = np.argmin((times_broadcast <= intervals[..., :1]), axis=1) - 1
     offsets = np.argmin((times_broadcast <= intervals[..., 1:]), axis=1) - 1
 
-    # Clip all offsets at last frame - they will end up at -1 from
-    # previous operation if they occurred beyond last frame time
-    offsets[offsets == -1] = num_frames - 1
+    # Clip all onsets/offsets at first/last frame - these will end up
+    # at -1 from previous operation if they occurred beyond boundaries
+    onsets[onsets == -1], offsets[offsets == -1] = 0, num_frames - 1
 
     # Loop through each note
     for i in range(len(pitches)):
