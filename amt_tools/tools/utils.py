@@ -67,7 +67,7 @@ __all__ = [
     'notes_to_multi_pitch',
     'pitch_list_to_multi_pitch',
     'stacked_multi_pitch_to_multi_pitch',
-    'logistic_to_multi_pitch',
+    'logistic_to_stacked_multi_pitch',
     'stacked_notes_to_stacked_multi_pitch',
     'stacked_pitch_list_to_stacked_multi_pitch',
     'multi_pitch_to_stacked_multi_pitch',
@@ -1687,10 +1687,9 @@ def stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch):
     return multi_pitch
 
 
-def logistic_to_multi_pitch(logistic, profile):
+def logistic_to_stacked_multi_pitch(logistic, profile, silence=True):
     """
-    View logistic activations as a single multi pitch array.
-    TODO - fix this garbage so it works with differentiation
+    View logistic activations as a stacked multi pitch array.
 
     Parameters
     ----------
@@ -1700,11 +1699,14 @@ def logistic_to_multi_pitch(logistic, profile):
       T - number of frames
     profile : TablatureProfile (instrument.py)
       Tablature instrument profile detailing experimental setup
+    silence : bool
+      Whether there is an activation for silence
 
     Returns
     ----------
-    multi_pitch : ndarray or tensor (..., F x T)
-      Discrete pitch activation map
+    stacked_multi_pitch : ndarray or tensor (..., S x F x T)
+      Array of multiple discrete pitch activation maps
+      S - number of slices in stack
       F - number of discrete pitches
       T - number of frames
     """
@@ -1712,44 +1714,33 @@ def logistic_to_multi_pitch(logistic, profile):
     # Obtain the tuning (lowest note for each degree of freedom)
     tuning = profile.get_midi_tuning()
 
-    # Determine the size of the multi pitch array to construct
-    dims = tuple(logistic.shape[:-1]) + tuple([profile.get_range_len()])
+    # Determine the appropriate dimensionality of the stacked multi pitch array
+    dims = (len(tuning), profile.get_range_len(), logistic.shape[-1])
 
-    # Initialize an empty list to hold the logistic activations
     if isinstance(logistic, np.ndarray):
-        multi_pitch = np.ones(dims)
+        # Initialize an array of zeros
+        stacked_multi_pitch = np.zeros(dims)
     else:
-        multi_pitch = torch.ones(dims)
+        # Initialize a tensor of zeros
+        stacked_multi_pitch = torch.zeros(dims, device=logistic.device)
 
-    # Loop through the multi pitch arrays
-    for dof in range(len(tuning)):
+    # Loop through the degrees of freedom
+    for dof in range(dims[0]):
         # Determine which activations correspond to this degree of freedom
-        start_idx = dof * profile.num_pitches
-        stop_idx = (dof + 1) * profile.num_pitches
+        start_idx = dof * (profile.num_pitches + int(silence))
+        stop_idx = (dof + 1) * (profile.num_pitches + int(silence))
 
         # Obtain the logistic activations for the degree of freedom
-        activations = logistic[..., start_idx : stop_idx]
+        activations = logistic[..., start_idx + int(silence) : stop_idx, :]
 
         # Lower and upper pitch boundary for this degree of freedom
         lower_bound = tuning[dof] - profile.low
         upper_bound = lower_bound + profile.num_pitches
 
-        # Perform logical and with the current and new multipitch data
-        if isinstance(logistic, np.ndarray):
-            new_multi_pitch = np.logical_and(multi_pitch[..., lower_bound : upper_bound], activations)
-        else:
-            new_multi_pitch = torch.logical_and(multi_pitch[..., lower_bound : upper_bound], activations)
+        # Insert the activations for this degree of freedom with the appropriate offset
+        stacked_multi_pitch[..., dof, lower_bound : upper_bound, :] = activations
 
-        # Insert the ANDed multi pitch activations
-        multi_pitch[..., lower_bound : upper_bound] = new_multi_pitch
-
-    # Make sure the activations are integers
-    if isinstance(logistic, np.ndarray):
-        multi_pitch = multi_pitch.astype(constants.UINT)
-    else:
-        multi_pitch = multi_pitch.long()
-
-    return multi_pitch
+    return stacked_multi_pitch
 
 
 ##################################################
@@ -2039,7 +2030,7 @@ def logistic_to_tablature(logistic, profile, silence, silence_thr=0.):
     profile : TablatureProfile (instrument.py)
       Tablature instrument profile detailing experimental setup
     silence : bool
-      Whether to explicitly include an activation for silence
+      Whether there is an activation for silence
     silence_thr : float
       Threshold for maximum activation under which silence will be selected
 
@@ -3735,6 +3726,7 @@ def unpack_dict(data, key):
     # Check if a dictionary was provided and if the key is in the dictionary
     if isinstance(data, dict) and query_dict(data, key):
         # Unpack the relevant entry
+        # TODO - return a copy?
         entry = data[key]
 
     return entry

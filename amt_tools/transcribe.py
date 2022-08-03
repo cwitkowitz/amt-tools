@@ -636,9 +636,6 @@ class NoteTranscriber(StackedNoteTranscriber):
           N - number of notes
         """
 
-        # Perform any pre-processing steps
-        raw_output = self.pre_proc(raw_output)
-
         # Obtain the multi pitch activation map to transcribe
         multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
 
@@ -711,9 +708,6 @@ class IterativeNoteTranscriber(IterativeStackedNoteTranscriber):
         TODO - verify transcription results are the same
         TODO - how to deal with active pitches when last frame is given
         """
-
-        # Perform any pre-processing steps
-        raw_output = self.pre_proc(raw_output)
 
         # Obtain the multi pitch activation map to transcribe
         multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
