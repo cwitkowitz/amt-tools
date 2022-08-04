@@ -25,8 +25,6 @@ __all__ = [
     'TablatureWrapper'
 ]
 
-# TODO - allow parameterization of key to override default like in Evaluators?
-
 
 def filter_notes_by_duration(pitches, intervals, threshold=0.):
     """
@@ -164,7 +162,7 @@ class Estimator(object):
     Implements a generic music information retrieval estimator.
     """
 
-    def __init__(self, profile, save_dir=None):
+    def __init__(self, profile, estimates_key=None, save_dir=None):
         """
         Initialize parameters common to all estimators and instantiate.
 
@@ -172,11 +170,16 @@ class Estimator(object):
         ----------
         profile : InstrumentProfile (instrument.py)
           Instrument profile detailing experimental setup
+        estimates_key : string or None (optional)
+          Key to use when packing estimates
         save_dir : string or None (optional)
           Directory where estimates for each track will be written
         """
 
         self.profile = profile
+
+        # Set up the key to use for organizing estimates
+        self.estimates_key = self.get_default_key() if estimates_key is None else estimates_key
 
         self.save_dir = None
         self.set_save_dir(save_dir)
@@ -199,9 +202,9 @@ class Estimator(object):
 
     @staticmethod
     @abstractmethod
-    def get_key():
+    def get_default_key():
         """
-        Default key describing estimates.
+        Default key describing estimates in the event no key was provided.
         """
 
         return NotImplementedError
@@ -290,7 +293,7 @@ class Estimator(object):
             self.write(estimate, track)
 
         # Return the output in a dictionary
-        output = {self.get_key() : estimate}
+        output = {self.estimates_key : estimate}
 
         return output
 
@@ -300,7 +303,9 @@ class StackedNoteTranscriber(Estimator):
     Estimate stacked notes from stacked multi pitch activation maps.
     """
 
-    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
+    def __init__(self, profile, inhibition_window=None, minimum_duration=None,
+                 multi_pitch_key=None, onsets_key=None, offsets_key=None,
+                 estimates_key=None, save_dir=None):
         """
         Initialize parameters for the estimator.
 
@@ -312,15 +317,28 @@ class StackedNoteTranscriber(Estimator):
           Amount of time after which another note of the same pitch cannot begin
         minimum_duration : float or None (optional)
           Minimum necessary duration to keep a note
+        multi_pitch_key : string or None (optional)
+          Key to use when unpacking multi pitch data
+        onsets_key : string or None (optional)
+          Key to use when unpacking onsets data
+        offsets_key : string or None (optional)
+          Key to use when unpacking offsets data
         """
 
-        super().__init__(profile, save_dir)
+        super().__init__(profile=profile,
+                         estimates_key=estimates_key,
+                         save_dir=save_dir)
 
         self.inhibition_window = inhibition_window
         self.minimum_duration = minimum_duration
 
+        # Default the keys for unpacking relevant data
+        self.multi_pitch_key = tools.KEY_MULTIPITCH if multi_pitch_key is None else multi_pitch_key
+        self.onsets_key = tools.KEY_ONSETS if onsets_key is None else onsets_key
+        self.offsets_key = tools.KEY_OFFSETS if offsets_key is None else offsets_key
+
     @staticmethod
-    def get_key():
+    def get_default_key():
         """
         Default key for note estimates.
         """
@@ -343,7 +361,7 @@ class StackedNoteTranscriber(Estimator):
         """
 
         # Obtain the multi pitch activation maps to transcribe
-        stacked_multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
+        stacked_multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
 
         # Determine the number of slices in the stacked multi pitch array
         stack_size = stacked_multi_pitch.shape[-3]
@@ -352,8 +370,8 @@ class StackedNoteTranscriber(Estimator):
         times = tools.unpack_dict(raw_output, tools.KEY_TIMES)
 
         # Obtain the onsets and offsets from the raw output if they exist
-        stacked_onsets = tools.unpack_dict(raw_output, tools.KEY_ONSETS)
-        stacked_offsets = tools.unpack_dict(raw_output, tools.KEY_OFFSETS)
+        stacked_onsets = tools.unpack_dict(raw_output, self.onsets_key)
+        stacked_offsets = tools.unpack_dict(raw_output, self.offsets_key)
 
         # If no onsets were provided, prepare a list of None's
         if stacked_onsets is None:
@@ -428,7 +446,9 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
     Estimate stacked notes from stacked multi pitch activation maps, one frame at a time.
     """
 
-    def __init__(self, profile, save_dir=None, inhibition_window=None, minimum_duration=None):
+    def __init__(self, profile, inhibition_window=None, minimum_duration=None,
+                 multi_pitch_key=None, onsets_key=None, offsets_key=None,
+                 estimates_key=None, save_dir=None):
         """
         Initialize parameters for the estimator.
 
@@ -437,7 +457,14 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
         See StackedNoteTranscriber class...
         """
 
-        super().__init__(profile, save_dir, inhibition_window, minimum_duration)
+        super().__init__(profile=profile,
+                         inhibition_window=inhibition_window,
+                         minimum_duration=minimum_duration,
+                         multi_pitch_key=multi_pitch_key,
+                         onsets_key=onsets_key,
+                         offsets_key=offsets_key,
+                         estimates_key=estimates_key,
+                         save_dir=save_dir)
 
         # Create an array to keep track of the previous pitch activations
         self.previous_activations = None
@@ -478,7 +505,7 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
         """
 
         # Obtain the multi pitch activation maps to transcribe
-        stacked_multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
+        stacked_multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
 
         # Determine the number of slices in the stacked multi pitch array
         stack_size = stacked_multi_pitch.shape[-3]
@@ -487,8 +514,8 @@ class IterativeStackedNoteTranscriber(StackedNoteTranscriber):
         time = tools.unpack_dict(raw_output, tools.KEY_TIMES)[-1:].item()
 
         # Obtain the onsets and offsets from the raw output if they exist
-        stacked_onsets = tools.unpack_dict(raw_output, tools.KEY_ONSETS)
-        stacked_offsets = tools.unpack_dict(raw_output, tools.KEY_OFFSETS)
+        stacked_onsets = tools.unpack_dict(raw_output, self.onsets_key)
+        stacked_offsets = tools.unpack_dict(raw_output, self.offsets_key)
 
         # Append the new pitch activations to the last frame of activations
         activations = np.concatenate((self.previous_activations, stacked_multi_pitch), axis=-1)
@@ -637,22 +664,22 @@ class NoteTranscriber(StackedNoteTranscriber):
         """
 
         # Obtain the multi pitch activation map to transcribe
-        multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
+        multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
 
         # Convert the multi pitch array to a stacked multi pitch array
-        raw_output[tools.KEY_MULTIPITCH] = tools.multi_pitch_to_stacked_multi_pitch(multi_pitch)
+        raw_output[self.multi_pitch_key] = tools.multi_pitch_to_stacked_multi_pitch(multi_pitch)
 
         # Obtain onsets and offsets from output if they exist
-        onsets = tools.unpack_dict(raw_output, tools.KEY_ONSETS)
-        offsets = tools.unpack_dict(raw_output, tools.KEY_OFFSETS)
+        onsets = tools.unpack_dict(raw_output, self.onsets_key)
+        offsets = tools.unpack_dict(raw_output, self.offsets_key)
 
         if onsets is not None:
             # Convert onsets to a stacked onset activation map
-            raw_output[tools.KEY_ONSETS] = tools.multi_pitch_to_stacked_multi_pitch(onsets)
+            raw_output[self.onsets_key] = tools.multi_pitch_to_stacked_multi_pitch(onsets)
 
         if offsets is not None:
             # Convert offsets to a stacked offset activation map
-            raw_output[tools.KEY_OFFSETS] = tools.multi_pitch_to_stacked_multi_pitch(offsets)
+            raw_output[self.offsets_key] = tools.multi_pitch_to_stacked_multi_pitch(offsets)
 
         # Call the parent class estimate function. Multi pitch is just a special
         # case of stacked multi pitch, where there is only one degree of freedom
@@ -705,27 +732,40 @@ class IterativeNoteTranscriber(IterativeStackedNoteTranscriber):
 
     def estimate(self, raw_output):
         """
+        Track notes within a multi pitch activation map,
+        acquiring note estimates when the notes are complete.
+
         TODO - verify transcription results are the same
         TODO - how to deal with active pitches when last frame is given
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        stacked_notes : dict
+          Dictionary containing batched notes
         """
 
         # Obtain the multi pitch activation map to transcribe
-        multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
+        multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
 
         # Convert the multi pitch array to a stacked multi pitch array
-        raw_output[tools.KEY_MULTIPITCH] = tools.multi_pitch_to_stacked_multi_pitch(multi_pitch)
+        raw_output[self.multi_pitch_key] = tools.multi_pitch_to_stacked_multi_pitch(multi_pitch)
 
         # Obtain onsets and offsets from output if they exist
-        onsets = tools.unpack_dict(raw_output, tools.KEY_ONSETS)
-        offsets = tools.unpack_dict(raw_output, tools.KEY_OFFSETS)
+        onsets = tools.unpack_dict(raw_output, self.onsets_key)
+        offsets = tools.unpack_dict(raw_output, self.offsets_key)
 
         if onsets is not None:
             # Convert onsets to a stacked onset activation map
-            raw_output[tools.KEY_ONSETS] = tools.multi_pitch_to_stacked_multi_pitch(onsets)
+            raw_output[self.onsets_key] = tools.multi_pitch_to_stacked_multi_pitch(onsets)
 
         if offsets is not None:
             # Convert offsets to a stacked offset activation map
-            raw_output[tools.KEY_OFFSETS] = tools.multi_pitch_to_stacked_multi_pitch(offsets)
+            raw_output[self.offsets_key] = tools.multi_pitch_to_stacked_multi_pitch(offsets)
 
         # Call the parent class estimate function. Multi pitch is just a special
         # case of stacked multi pitch, where there is only one degree of freedom
@@ -737,19 +777,61 @@ class IterativeNoteTranscriber(IterativeStackedNoteTranscriber):
         return batched_notes
 
 
-class StackedMultiPitchRefiner(StackedNoteTranscriber):
+class MultiPitchWrapper(Estimator):
     """
-    Refine stacked multi pitch activation maps, after using them to make note
-    predictions, by converting note estimates back into multi pitch activation.
+    Abstracts several functions that are common to estimators returning multi pitch arrays.
     """
 
     @staticmethod
-    def get_key():
+    def get_default_key():
         """
         Default key for multi pitch activations.
         """
 
         return tools.KEY_MULTIPITCH
+
+    def write(self, multi_pitch, track):
+        """
+        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
+        A more appropriate action might be converting them to pitch lists and writing those.
+
+        Parameters
+        ----------
+        multi_pitch : ndarray (... x F x T)
+          Discrete pitch activation maps
+          F - number of discrete pitches
+          T - number of frames
+        track : string
+          Name of the track being processed
+        """
+
+        pass
+
+
+class StackedMultiPitchRefiner(MultiPitchWrapper):
+    """
+    Refine stacked multi pitch activation maps, after using them to make note
+    predictions, by converting note estimates back into multi pitch activation.
+    """
+
+    def __init__(self, profile, notes_key=None, estimates_key=None, save_dir=None):
+        """
+        Initialize parameters for the estimator.
+
+        Parameters
+        ----------
+        See Estimator class...
+
+        notes_key : string or None (optional)
+          Key to use when unpacking notes data
+        """
+
+        super().__init__(profile=profile,
+                         estimates_key=estimates_key,
+                         save_dir=save_dir)
+
+        # Default the key for unpacking relevant data
+        self.notes_key = tools.KEY_NOTES if notes_key is None else notes_key
 
     def estimate(self, raw_output):
         """
@@ -770,49 +852,25 @@ class StackedMultiPitchRefiner(StackedNoteTranscriber):
         """
 
         # Attempt to extract pre-existing note estimates
-        stacked_notes = tools.unpack_dict(raw_output, tools.KEY_NOTES)
+        stacked_notes = tools.unpack_dict(raw_output, self.notes_key)
 
-        if stacked_notes is None:
-            # Obtain note estimates if they were not provided
-            stacked_notes = super().estimate(raw_output)
+        # Convert the batched notes in each slice to loose note groups
+        stacked_notes = tools.apply_func_stacked_representation(stacked_notes, tools.batched_notes_to_notes)
+
+        # Obtain the frame times associated with the multi pitch array
+        times = tools.unpack_dict(raw_output, tools.KEY_TIMES)
 
         # Convert the stacked notes back into stacked multi pitch activation maps
-        stacked_multi_pitch = tools.stacked_multi_pitch_to_stacked_onsets(stacked_notes)
+        stacked_multi_pitch = tools.stacked_notes_to_stacked_multi_pitch(stacked_notes, times, self.profile)
 
         return stacked_multi_pitch
 
-    def write(self, stacked_multi_pitch, track):
-        """
-        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
-        A more appropriate action might be converting them to pitch lists and writing those.
 
-        Parameters
-        ----------
-        stacked_multi_pitch : ndarray (S x F x T)
-          Array of multiple discrete pitch activation maps
-          S - number of slices in stack
-          F - number of discrete pitches
-          T - number of frames
-        track : string
-          Name of the track being processed
-        """
-
-        pass
-
-
-class MultiPitchRefiner(NoteTranscriber):
+class MultiPitchRefiner(StackedMultiPitchRefiner):
     """
     Refine a multi pitch activation map, after using it to make note
     predictions, by converting note estimates back into multi pitch activation.
     """
-
-    @staticmethod
-    def get_key():
-        """
-        Default key for multi pitch activations.
-        """
-
-        return tools.KEY_MULTIPITCH
 
     def estimate(self, raw_output):
         """
@@ -832,11 +890,7 @@ class MultiPitchRefiner(NoteTranscriber):
         """
 
         # Attempt to extract pre-existing note estimates
-        batched_notes = tools.unpack_dict(raw_output, tools.KEY_NOTES)
-
-        if batched_notes is None:
-            # Obtain note estimates if they were not provided
-            batched_notes = super().estimate(raw_output)
+        batched_notes = tools.unpack_dict(raw_output, self.notes_key)
 
         # Convert the batched notes to loose note groups
         pitches, intervals = tools.batched_notes_to_notes(batched_notes)
@@ -849,31 +903,33 @@ class MultiPitchRefiner(NoteTranscriber):
 
         return multi_pitch
 
-    def write(self, multi_pitch, track):
-        """
-        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
-        A more appropriate action might be converting them to pitch lists and writing those.
-
-        Parameters
-        ----------
-        multi_pitch : ndarray (F x T)
-          Discrete pitch activation map
-          F - number of discrete pitches
-          T - number of frames
-        track : string
-          Name of the track being processed
-        """
-
-        pass
-
 
 class StackedPitchListWrapper(Estimator):
     """
     Wrapper for converting stacked multi pitch activations to stacked pitch lists.
     """
 
+    def __init__(self, profile, multi_pitch_key=None, estimates_key=None, save_dir=None):
+        """
+        Initialize parameters for the estimator.
+
+        Parameters
+        ----------
+        See Estimator class...
+
+        multi_pitch_key : string or None (optional)
+          Key to use when unpacking multi pitch data
+        """
+
+        super().__init__(profile=profile,
+                         estimates_key=estimates_key,
+                         save_dir=save_dir)
+
+        # Default the key for unpacking relevant data
+        self.multi_pitch_key = tools.KEY_MULTIPITCH if multi_pitch_key is None else multi_pitch_key
+
     @staticmethod
-    def get_key():
+    def get_default_key():
         """
         Default key for pitch lists.
         """
@@ -896,7 +952,7 @@ class StackedPitchListWrapper(Estimator):
         """
 
         # Obtain the stacked multi pitch activation maps
-        stacked_multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
+        stacked_multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
 
         # Obtain the frame times associated with the stacked activation map
         times = tools.unpack_dict(raw_output, tools.KEY_TIMES)
@@ -964,7 +1020,7 @@ class PitchListWrapper(StackedPitchListWrapper):
         """
 
         # Obtain the multi pitch activation map
-        multi_pitch = tools.unpack_dict(raw_output, tools.KEY_MULTIPITCH)
+        multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
 
         # Obtain the frame times associated with the activation map
         times = tools.unpack_dict(raw_output, tools.KEY_TIMES)
@@ -998,12 +1054,12 @@ class PitchListWrapper(StackedPitchListWrapper):
         super().write(stacked_pitch_list, track)
 
 
-class TablatureWrapper(Estimator):
+class TablatureWrapper(MultiPitchWrapper):
     """
     Wrapper for converting tablature to multi pitch.
     """
 
-    def __init__(self, profile, save_dir=None, stacked=False):
+    def __init__(self, profile, stacked=False, tablature_key=None, estimates_key=None, save_dir=None):
         """
         Initialize parameters for the estimator.
 
@@ -1013,19 +1069,18 @@ class TablatureWrapper(Estimator):
 
         stacked : bool
           Whether to collapse into a single representation or leave stacked
+        tablature_key : string or None (optional)
+          Key to use when unpacking tablature data
         """
 
-        super().__init__(profile, save_dir)
+        super().__init__(profile=profile,
+                         estimates_key=estimates_key,
+                         save_dir=save_dir)
 
         self.stacked = stacked
 
-    @staticmethod
-    def get_key():
-        """
-        Default key for multi pitch activations.
-        """
-
-        return tools.KEY_MULTIPITCH
+        # Default the key for unpacking relevant data
+        self.tablature_key = tools.KEY_TABLATURE if tablature_key is None else tablature_key
 
     def estimate(self, raw_output):
         """
@@ -1046,7 +1101,7 @@ class TablatureWrapper(Estimator):
         """
 
         # Obtain the tablature
-        tablature = tools.unpack_dict(raw_output, tools.KEY_TABLATURE)
+        tablature = tools.unpack_dict(raw_output, self.tablature_key)
 
         # Perform the conversion
         multi_pitch = tools.tablature_to_stacked_multi_pitch(tablature, self.profile)
@@ -1056,20 +1111,5 @@ class TablatureWrapper(Estimator):
 
         return multi_pitch
 
-    def write(self, multi_pitch, track):
-        """
-        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
-        A more appropriate action might be converting them to pitch lists and writing those.
-
-        Parameters
-        ----------
-        multi_pitch : ndarray ((S) x F x T)
-          Discrete pitch activation map
-          S - number of slices in stack - only if stacked=True
-          F - number of discrete pitches
-          T - number of frames
-        track : string
-          Name of the track being processed
-        """
-
-        pass
+# TODO - create estimators to collapse stacked representations
+# TODO - remove stacked option from TablatureWrapper since it will be redundant
