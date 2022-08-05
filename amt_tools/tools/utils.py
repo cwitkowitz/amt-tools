@@ -1087,7 +1087,8 @@ def cat_pitch_list(times, pitch_list, new_times, new_pitch_list, decimals=6):
     have the same time grid. In order to avoid the influence of miniscule timing
     differences, timing comparisons are made with microsecond resolution.
 
-    TODO - should work for unordered pitch lists but verify
+    TODO - is there a less hacky way to circumvent float comparison issue?
+           - see https://stackoverflow.com/questions/32513424/find-intersection-of-numpy-float-arrays
     TODO - could resample to make sure same time grid is used
 
     Parameters
@@ -1118,7 +1119,7 @@ def cat_pitch_list(times, pitch_list, new_times, new_pitch_list, decimals=6):
     """
 
     # Obtain microsecond resolution for both collections of times
-    times_us, new_times_us = list(np.round(times, decimals)), list(np.round(new_times, decimals))
+    times_us, new_times_us = list(np.round(times * (10 ** decimals))), list(np.round(new_times * (10 ** decimals)))
 
     # Obtain the indices where new times overlap with original times
     overlapping_idcs_new = np.intersect1d(times_us, new_times_us, return_indices=True)[-1]
