@@ -102,6 +102,8 @@ __all__ = [
     'time_series_to_uniform',
     'get_frame_times',
     'apply_func_stacked_representation',
+    'pack_stacked_representation',
+    'unpack_stacked_representation',
     'tensor_to_array',
     'array_to_tensor',
     'save_pack_npz',
@@ -1222,6 +1224,7 @@ def pack_pitch_list(times, pitch_list):
     """
 
     # Concatenate the times and pitch list and wrap with object dtype
+    # TODO - tools.pack_stacked_pitch_list(tools.pitch_list_to_stacked_pitch_list(times, pitch_list))?
     packed_pitch_list = np.array([times, np.array(pitch_list, dtype=object)])
 
     return packed_pitch_list
@@ -1249,6 +1252,7 @@ def unpack_pitch_list(packed_pitch_list):
 
     # Break apart along the concatenated dimension, convert
     # to 64-bit floats, and cast observations as a list
+    # TODO - times, pitch_list = tools.stacked_pitch_list_to_pitch_list(tools.unpack_stacked_pitch_list(packed_pitch_list))?
     times = packed_pitch_list[0].astype(constants.FLOAT64)
     pitch_list = [p.astype(constants.FLOAT64) for p in packed_pitch_list[1]]
 
@@ -3226,6 +3230,50 @@ def apply_func_stacked_representation(stacked_representation, func, **kwargs):
 
         # Apply the given function
         stacked_representation[slc] = output
+
+    return stacked_representation
+
+
+def pack_stacked_representation(stacked_representation):
+    """
+    Package together the key-value pairs of a stacked representation in a save-friendly format.
+
+    Parameters
+    ----------
+    stacked_representation : dict
+      Dictionary containing (slice -> (...)) pairs
+
+    Returns
+    ----------
+    packed_stacked_representation : ndarray (S x 2)
+      Stacked representation packaged as object ndarray
+      S - number of slices in the stack
+    """
+
+    # Concatenate the key-value pairs of each slice and wrap with object dtype
+    packed_stacked_representation = np.array(list(stacked_representation.items()), dtype=object)
+
+    return packed_stacked_representation
+
+
+def unpack_stacked_representation(packed_stacked_representation):
+    """
+    Unpack from save-friendly format the key-value pairs of a stacked representation.
+
+    Parameters
+    ----------
+    packed_stacked_representation : ndarray (S x 2)
+      Stacked representation packaged in object ndarray
+      S - number of slices in the stack
+
+    Returns
+    ----------
+    stacked_representation : dict
+      Dictionary containing (slice -> (...)) pairs
+    """
+
+    # Simply treat each array along the first dimension as a separate key-value pair
+    stacked_representation = dict(packed_stacked_representation)
 
     return stacked_representation
 

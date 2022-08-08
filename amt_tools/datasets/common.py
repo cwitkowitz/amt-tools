@@ -353,12 +353,33 @@ class TranscriptionDataset(Dataset):
         sec_stop = sample_end / self.sample_rate
 
         if tools.query_dict(data, tools.KEY_NOTES):
-            # Slice the ground-truth notes if they exist in the ground-truth
-            data[tools.KEY_NOTES] = tools.slice_batched_notes(data[tools.KEY_NOTES], sec_start, sec_stop)
+            if isinstance(data[tools.KEY_NOTES], dict):
+                # TODO - assumes stack consists of standard note groups
+                # Extract the stacked notes and convert them to batched representations
+                temp_stacked_notes = tools.apply_func_stacked_representation(data[tools.KEY_NOTES],
+                                                                             tools.notes_to_batched_notes)
+                # Perform time slicing w.r.t. the batched notes along each slice of the stack
+                temp_stacked_notes = tools.apply_func_stacked_representation(temp_stacked_notes,
+                                                                             tools.slice_batched_notes,
+                                                                             start_time=sec_start,
+                                                                             stop_time=sec_stop)
+                # Convert back to standard note groups and update the dictionary
+                data[tools.KEY_NOTES] = tools.apply_func_stacked_representation(temp_stacked_notes,
+                                                                                tools.batched_notes_to_notes)
+            else:
+                # Slice the ground-truth notes if they exist in the ground-truth
+                data[tools.KEY_NOTES] = tools.slice_batched_notes(data[tools.KEY_NOTES], sec_start, sec_stop)
 
         if tools.query_dict(data, tools.KEY_PITCHLIST):
-            # Slice ground-truth pitch list if exists in the ground-truth
-            data[tools.KEY_PITCHLIST] = tools.slice_pitch_list(*data[tools.KEY_PITCHLIST], sec_start, sec_stop)
+            if isinstance(data[tools.KEY_PITCHLIST], dict):
+                # Slice ground-truth pitch list by slice if exists in the ground-truth
+                data[tools.KEY_PITCHLIST] = tools.apply_func_stacked_representation(data[tools.KEY_PITCHLIST],
+                                                                                    tools.slice_pitch_list,
+                                                                                    start_time=sec_start,
+                                                                                    stop_time=sec_stop)
+            else:
+                # Slice ground-truth pitch list if exists in the ground-truth
+                data[tools.KEY_PITCHLIST] = tools.slice_pitch_list(*data[tools.KEY_PITCHLIST], sec_start, sec_stop)
 
         # Define list of entries to skip during slicing process
         skipped_keys = [tools.KEY_AUDIO, tools.KEY_FS, tools.KEY_NOTES, tools.KEY_PITCHLIST]
@@ -416,9 +437,13 @@ class TranscriptionDataset(Dataset):
             # Initialize a new dictionary if there is no saved data
             data = {}
         else:
-            if tools.query_dict(data, tools.KEY_PITCHLIST):
-                # Unpack the pitch list (which will be in save-friendly format)
-                data[tools.KEY_PITCHLIST] = tools.unpack_pitch_list(data[tools.KEY_PITCHLIST])
+            if tools.query_dict(data, tools.KEY_NOTES) and data[tools.KEY_NOTES].dtype == object:
+                # Unpack the (stacked) notes (which will be in save-friendly format)
+                data[tools.KEY_NOTES] = tools.unpack_stacked_representation(data[tools.KEY_NOTES])
+            if tools.query_dict(data, tools.KEY_PITCHLIST) and data[tools.KEY_PITCHLIST].dtype == object:
+                # TODO - assumes pitch list with type object is always a stacked representation
+                # Unpack the (stacked) pitch list (which will be in save-friendly format)
+                data[tools.KEY_PITCHLIST] = tools.unpack_stacked_representation(data[tools.KEY_PITCHLIST])
 
         # Add the track ID to the dictionary
         data[tools.KEY_TRACK] = track
