@@ -14,6 +14,7 @@ __all__ = [
     'filter_notes_by_duration',
     'ComboEstimator',
     'Estimator',
+    'MultiPitchWrapper',
     'StackedNoteTranscriber',
     'IterativeStackedNoteTranscriber',
     'NoteTranscriber',
@@ -22,8 +23,16 @@ __all__ = [
     'MultiPitchRefiner',
     'StackedPitchListWrapper',
     'PitchListWrapper',
-    'TablatureWrapper'
+    'TablatureWrapper',
+    'Collapser',
+    'StackedMultiPitchCollapser',
+    'StackedNotesCollapser',
+    'StackedPitchListCollapser'
 ]
+
+# TODO - KeyChanger to simply change the dictionary key of an estimate??
+# TODO - Copier to simply copy an entry under a different key??
+# TODO - StackedOnset/OffsetWrapper
 
 
 def filter_notes_by_duration(pitches, intervals, threshold=0.):
@@ -94,6 +103,15 @@ class ComboEstimator(object):
         """
 
         self.estimators = estimators
+
+        ## Loop through all of the estimators
+        #for estimator in self.estimators:
+        #    if profile is None:
+        #        # Make sure a profile has been set
+        #        assert estimator.profile is not None
+        #    else:
+        #        # Set the profile for the estimator
+        #        estimator.set_profile(profile)
 
     def process_track(self, raw_output, track=None):
         """
@@ -296,6 +314,40 @@ class Estimator(object):
         output = {self.estimates_key : estimate}
 
         return output
+
+
+class MultiPitchWrapper(Estimator):
+    """
+    Abstracts several functions that are common to estimators dealing with multi pitch arrays.
+
+    TODO - create wrapper for pitch list / note estimators as well?
+           might not help too much to due stacked variations...
+    """
+
+    @staticmethod
+    def get_default_key():
+        """
+        Default key for multi pitch activations.
+        """
+
+        return tools.KEY_MULTIPITCH
+
+    def write(self, multi_pitch, track):
+        """
+        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
+        A more appropriate action might be converting them to pitch lists and writing those.
+
+        Parameters
+        ----------
+        multi_pitch : ndarray (... x F x T)
+          Discrete pitch activation maps
+          F - number of discrete pitches
+          T - number of frames
+        track : string
+          Name of the track being processed
+        """
+
+        pass
 
 
 class StackedNoteTranscriber(Estimator):
@@ -686,8 +738,7 @@ class NoteTranscriber(StackedNoteTranscriber):
         output = super().estimate(raw_output)
 
         # Add the estimated output to the raw output
-        pitches, intervals = tools.stacked_notes_to_notes(output)
-        batched_notes = tools.notes_to_batched_notes(pitches, intervals)
+        batched_notes = tools.notes_to_batched_notes(*tools.stacked_notes_to_notes(output))
 
         return batched_notes
 
@@ -777,37 +828,6 @@ class IterativeNoteTranscriber(IterativeStackedNoteTranscriber):
         return batched_notes
 
 
-class MultiPitchWrapper(Estimator):
-    """
-    Abstracts several functions that are common to estimators returning multi pitch arrays.
-    """
-
-    @staticmethod
-    def get_default_key():
-        """
-        Default key for multi pitch activations.
-        """
-
-        return tools.KEY_MULTIPITCH
-
-    def write(self, multi_pitch, track):
-        """
-        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
-        A more appropriate action might be converting them to pitch lists and writing those.
-
-        Parameters
-        ----------
-        multi_pitch : ndarray (... x F x T)
-          Discrete pitch activation maps
-          F - number of discrete pitches
-          T - number of frames
-        track : string
-          Name of the track being processed
-        """
-
-        pass
-
-
 class StackedMultiPitchRefiner(MultiPitchWrapper):
     """
     Refine stacked multi pitch activation maps, after using them to make note
@@ -851,7 +871,7 @@ class StackedMultiPitchRefiner(MultiPitchWrapper):
           T - number of frames
         """
 
-        # Attempt to extract pre-existing note estimates
+        # Extract pre-existing stacked note estimates
         stacked_notes = tools.unpack_dict(raw_output, self.notes_key)
 
         # Convert the batched notes in each slice to loose note groups
@@ -889,7 +909,7 @@ class MultiPitchRefiner(StackedMultiPitchRefiner):
           T - number of frames
         """
 
-        # Attempt to extract pre-existing note estimates
+        # Extract pre-existing note estimates
         batched_notes = tools.unpack_dict(raw_output, self.notes_key)
 
         # Convert the batched notes to loose note groups
@@ -1059,7 +1079,7 @@ class TablatureWrapper(MultiPitchWrapper):
     Wrapper for converting tablature to multi pitch.
     """
 
-    def __init__(self, profile, stacked=False, tablature_key=None, estimates_key=None, save_dir=None):
+    def __init__(self, profile, tablature_key=None, estimates_key=None, save_dir=None):
         """
         Initialize parameters for the estimator.
 
@@ -1067,8 +1087,6 @@ class TablatureWrapper(MultiPitchWrapper):
         ----------
         See Estimator class...
 
-        stacked : bool
-          Whether to collapse into a single representation or leave stacked
         tablature_key : string or None (optional)
           Key to use when unpacking tablature data
         """
@@ -1077,14 +1095,12 @@ class TablatureWrapper(MultiPitchWrapper):
                          estimates_key=estimates_key,
                          save_dir=save_dir)
 
-        self.stacked = stacked
-
         # Default the key for unpacking relevant data
         self.tablature_key = tools.KEY_TABLATURE if tablature_key is None else tablature_key
 
     def estimate(self, raw_output):
         """
-        Convert tablature into a single or stacked multi pitch activation map.
+        Convert tablature into a stacked multi pitch activation map.
 
         Parameters
         ----------
@@ -1093,9 +1109,9 @@ class TablatureWrapper(MultiPitchWrapper):
 
         Returns
         ----------
-        multi_pitch : ndarray ((S) x F x T)
+        multi_pitch : ndarray (S x F x T)
           Discrete pitch activation map
-          S - number of slices in stack - only if stacked=True
+          S - number of slices in stack
           F - number of discrete pitches
           T - number of frames
         """
@@ -1106,10 +1122,123 @@ class TablatureWrapper(MultiPitchWrapper):
         # Perform the conversion
         multi_pitch = tools.tablature_to_stacked_multi_pitch(tablature, self.profile)
 
-        if not self.stacked:
-            multi_pitch = tools.stacked_multi_pitch_to_multi_pitch(multi_pitch)
+        return multi_pitch
+
+
+class Collapser(Estimator):
+    """
+    Abstracts initialization functionality for wrappers meant to collapse stacked representations.
+    """
+
+    def __init__(self, profile, stacked_key=None, estimates_key=None, save_dir=None):
+        """
+        Initialize parameters for the estimator.
+
+        Parameters
+        ----------
+        See Estimator class...
+
+        stacked_key : string or None (optional)
+          Key to use when unpacking stacked data
+        """
+
+        super().__init__(profile=profile,
+                         estimates_key=estimates_key,
+                         save_dir=save_dir)
+
+        # Default the key for unpacking stacked data
+        self.stacked_key = self.estimates_key if stacked_key is None else stacked_key
+
+
+class StackedMultiPitchCollapser(Collapser, MultiPitchWrapper):
+    """
+    Wrapper for collapsing stacked multi pitch.
+    """
+
+    def estimate(self, raw_output):
+        """
+        Convert a stacked multi pitch activation map into a single multi pitch representation.
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        multi_pitch : ndarray (F x T)
+          Discrete pitch activation map
+          F - number of discrete pitches
+          T - number of frames
+        """
+
+        # Obtain the multi pitch data
+        stacked_multi_pitch = tools.unpack_dict(raw_output, self.stacked_key)
+
+        # Perform the collapsing
+        multi_pitch = tools.stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch)
 
         return multi_pitch
 
-# TODO - create estimators to collapse stacked representations
-# TODO - remove stacked option from TablatureWrapper since it will be redundant
+
+class StackedNotesCollapser(Collapser, NoteTranscriber):
+    """
+    Wrapper for collapsing stacked notes.
+    """
+
+    def estimate(self, raw_output):
+        """
+        Convert stacked notes into a single notes representation.
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        batched_notes : ndarray (N x 3)
+          Array of note intervals and pitches by row
+          N - number of notes
+        """
+
+        # Obtain the stacked notes data
+        stacked_notes = tools.unpack_dict(raw_output, self.stacked_key)
+
+        # Collapse the stacked notes representation into a batched representation
+        batched_notes = tools.notes_to_batched_notes(*tools.stacked_notes_to_notes(stacked_notes))
+
+        return batched_notes
+
+
+class StackedPitchListCollapser(Collapser, PitchListWrapper):
+    """
+    Wrapper for collapsing a stacked pitch list.
+    """
+
+    def estimate(self, raw_output):
+        """
+        Convert a stacked pitch list into a single representation.
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        times : ndarray (N)
+          Time in seconds of beginning of each frame
+          N - number of time samples (frames)
+        pitch_list : list of ndarray (N x [...])
+          Array of pitches corresponding to notes
+          N - number of pitch observations (frames)
+        """
+
+        # Obtain the stacked pitch list data
+        stacked_pitch_list = tools.unpack_dict(raw_output, self.stacked_key)
+
+        # Collapse the stacked representation into a single pitch list
+        times, pitch_list = tools.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
+
+        return times, pitch_list

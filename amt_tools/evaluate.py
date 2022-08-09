@@ -635,7 +635,7 @@ class ComboEvaluator(Evaluator):
         # Loop through the evaluators
         for evaluator in self.evaluators:
             # Unpack relevant data and calculate the results
-            new_results = evaluator.evaluate(*self.unpack(estimated, reference))
+            new_results = evaluator.evaluate(*evaluator.unpack(estimated, reference))
 
             # Check if there is already an entry for the evaluator's key
             if tools.query_dict(results, evaluator.results_key):
