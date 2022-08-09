@@ -117,7 +117,6 @@ __all__ = [
     'dict_unsqueeze',
     'dict_append',
     'dict_detach',
-    'try_unpack_dict',
     'unpack_dict',
     'query_dict',
     'get_tag',
@@ -3717,35 +3716,6 @@ def dict_detach(track):
             track[key] = track[key].detach()
 
     return track
-
-
-def try_unpack_dict(data, key):
-    """
-    Unpack a specified entry if a dictionary is provided and the entry exists.
-
-    TODO - can use this many places (e.g. datasets) to be safe and neat
-
-    Parameters
-    ----------
-    data : object
-      Object to query as being a dictionary and containing the specified key
-    key : string
-      Key specifying entry to unpack, if possible
-
-    Returns
-    ----------
-    data : object
-      Unpacked entry or same object provided if no dictionary
-    """
-
-    # Unpack the specified dictionary entry
-    entry = unpack_dict(data, key)
-
-    # Return the entry if it existed and the original data otherwise
-    if entry is not None:
-        data = entry
-
-    return data
 
 
 def unpack_dict(data, key):
