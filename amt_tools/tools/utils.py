@@ -601,9 +601,10 @@ def offset_notes(pitches, intervals, semitones):
     return pitches, intervals
 
 
-def filter_notes(pitches, intervals, profile, suppress_warnings=True):
+def filter_notes(pitches, intervals, profile, min_time=-np.inf, max_time=np.inf, suppress_warnings=True):
     """
-    Remove notes with nominal pitch outside the supported range of a profile.
+    Remove notes with nominal pitch outside the supported range of an instrument
+    profile and notes with intervals entirely outside of specified boundaries.
 
     Parameters
     ----------
@@ -615,6 +616,10 @@ def filter_notes(pitches, intervals, profile, suppress_warnings=True):
       N - number of notes
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+    min_time : float (Optional)
+      Note offsets must occur at or after this time to be considered valid
+    max_time : float (Optional)
+      Note onsets must occur at or before this time to be considered valid
     suppress_warnings : bool
       Whether to ignore warning messages
 
@@ -631,15 +636,37 @@ def filter_notes(pitches, intervals, profile, suppress_warnings=True):
     # Round pitches to the nearest semitone
     pitches_r = np.round(pitches)
 
-    # Determine if and where there are out-of-bounds notes
-    valid_idcs = np.logical_and((pitches_r >= profile.low), (pitches_r <= profile.high))
+    # Check for notes with out-of-bounds pitches (w.r.t. specified instrument profile)
+    in_bounds_pitch = np.logical_and((pitches_r >= profile.low), (pitches_r <= profile.high))
 
-    if np.sum(valid_idcs) != len(pitches) and not suppress_warnings:
+    if np.sum(np.logical_not(in_bounds_pitch)) and not suppress_warnings:
         # Print a warning message if notes were ignored
         warnings.warn('Ignoring notes with nominal pitch exceeding ' +
                       'supported boundaries.', category=RuntimeWarning)
 
-    # Remove any invalid (out-of-bounds) pitches
+    # Check for notes with onsets occurring after specified time maximum
+    in_bounds_interval_on = (intervals[:, 0] <= max_time)
+
+    if np.sum(np.logical_not(in_bounds_interval_on)) and not suppress_warnings:
+        # Print a warning message if notes were ignored
+        warnings.warn('Ignoring notes with onsets occurring after ' +
+                      'specified time maximum.', category=RuntimeWarning)
+
+    # Check for notes with offsets occurring before specified time minimum
+    in_bounds_interval_off = (intervals[:, 1] >= min_time)
+
+    if np.sum(np.logical_not(in_bounds_interval_off)) and not suppress_warnings:
+        # Print a warning message if notes were ignored
+        warnings.warn('Ignoring notes with offsets occurring before ' +
+                      'specified time minimum.', category=RuntimeWarning)
+
+    # Combine valid indices from onsets/offsets checks
+    in_bounds_interval = np.logical_and(in_bounds_interval_on, in_bounds_interval_off)
+
+    # Combine pitches/interval checks to determine if and where there are out-of-bounds notes
+    valid_idcs = np.logical_and(in_bounds_pitch, in_bounds_interval)
+
+    # Remove any invalid notes (out-of-bounds w.r.t. interval or pitch)
     pitches, intervals = pitches[valid_idcs], intervals[valid_idcs]
 
     return pitches, intervals
@@ -1582,8 +1609,16 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # Initialize an empty multi pitch array
     multi_pitch = np.zeros((num_pitches, num_frames))
 
-    # Remove notes with out-of-bounds nominal pitch
-    pitches, intervals = filter_notes(pitches, intervals, profile)
+    # Estimate the duration of the track (for bounding note offsets)
+    _times = np.append(times, times[-1] + estimate_hop_length(times))
+
+    # Remove notes with out-of-bounds intervals or nominal pitch
+    pitches, intervals = filter_notes(pitches, intervals, profile,
+                                      min_time=np.min(_times),
+                                      max_time=np.max(_times))
+
+    # Count the total number of notes
+    num_notes = len(pitches)
 
     # Round to nearest semitone and subtract the lowest
     # note of the instrument to obtain relative pitches
@@ -1593,7 +1628,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # TODO - should onset/offset determination be under the for loop?
     #        current methodology may not scale well w.r.t. memory and
     #        we are already doing a for-loop
-    times_broadcast = np.concatenate([[times]] * max(1, len(pitches)), axis=0)
+    times_broadcast = np.concatenate([[_times]] * max(1, num_notes), axis=0)
 
     # Determine the frame where each note begins and ends, defined
     # for both onset and offset as the last frame beginning before
@@ -1606,7 +1641,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     onsets[onsets == -1], offsets[offsets == -1] = 0, num_frames - 1
 
     # Loop through each note
-    for i in range(len(pitches)):
+    for i in range(num_notes):
         # Populate the multi pitch array with activations for the note
         multi_pitch[pitches[i], onsets[i] : offsets[i] + 1] = 1
 
@@ -2393,7 +2428,7 @@ def notes_to_offsets(pitches, intervals, times, profile, ambiguity=None):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each offset label should span
 
     Returns
@@ -2407,15 +2442,12 @@ def notes_to_offsets(pitches, intervals, times, profile, ambiguity=None):
     # Determine the absolute time of the offset
     offset_times = np.copy(intervals[..., 1:])
 
-    # Treat the time after offset as a note
+    # Make the duration zero
     onset_times = np.copy(offset_times)
 
     if ambiguity is not None:
         # Add the ambiguity to the "note" duration
         offset_times += ambiguity
-    else:
-        # Make the duration zero
-        offset_times = np.copy(onset_times)
 
     # Construct the intervals of the "note" following the offset
     post_note_intervals = np.concatenate((onset_times, offset_times), axis=-1)
@@ -2468,7 +2500,7 @@ def multi_pitch_to_offsets(multi_pitch):
 ##################################################
 
 
-def stacked_notes_to_stacked_offsets(stacked_notes, times, profile, ambiguity):
+def stacked_notes_to_stacked_offsets(stacked_notes, times, profile, ambiguity=None):
     """
     Obtain the offsets of stacked loose MIDI note groups in stacked multi pitch format.
 
@@ -2481,7 +2513,7 @@ def stacked_notes_to_stacked_offsets(stacked_notes, times, profile, ambiguity):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
-    ambiguity : float or None (optional
+    ambiguity : float or None (optional)
       Amount of time each onset label should span
 
     Returns

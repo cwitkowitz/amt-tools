@@ -110,7 +110,6 @@ def extract_stacked_notes_jams(jam):
 
     # Loop through the slices of the stack
     for slice_notes in note_data_slices:
-
         # Extract the string label for this slice
         string = slice_notes.annotation_metadata[constants.JAMS_STRING_IDX]
 
@@ -288,6 +287,9 @@ def extract_stacked_pitch_list_jams(jam, times=None, uniform=True):
         # Extract the pitch list pertaining to this slice
         slice_pitches = pitch_data_slices[slc]
 
+        # Extract the string label for this slice
+        string = slice_pitches.annotation_metadata[constants.JAMS_STRING_IDX]
+
         # Initialize an array/list to hold the times/frequencies associated with each observation
         entry_times, slice_pitch_list = np.empty(0), list()
 
@@ -321,7 +323,7 @@ def extract_stacked_pitch_list_jams(jam, times=None, uniform=True):
             entry_times = times
 
         # Add the pitch list to the stacked pitch list dictionary under the slice key
-        stacked_pitch_list.update(utils.pitch_list_to_stacked_pitch_list(entry_times, slice_pitch_list, slc))
+        stacked_pitch_list.update(utils.pitch_list_to_stacked_pitch_list(entry_times, slice_pitch_list, string))
 
     return stacked_pitch_list
 
