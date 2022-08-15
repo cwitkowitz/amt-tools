@@ -27,12 +27,13 @@ __all__ = [
     'Collapser',
     'StackedMultiPitchCollapser',
     'StackedNotesCollapser',
-    'StackedPitchListCollapser'
+    'StackedPitchListCollapser',
+    'StackedOnsetsWrapper',
+    'StackedOffsetsWrapper'
 ]
 
 # TODO - KeyChanger to simply change the dictionary key of an estimate??
 # TODO - Copier to simply copy an entry under a different key??
-# TODO - StackedOnset/OffsetWrapper
 
 
 def filter_notes_by_duration(pitches, intervals, threshold=0.):
@@ -103,15 +104,6 @@ class ComboEstimator(object):
         """
 
         self.estimators = estimators
-
-        ## Loop through all of the estimators
-        #for estimator in self.estimators:
-        #    if profile is None:
-        #        # Make sure a profile has been set
-        #        assert estimator.profile is not None
-        #    else:
-        #        # Set the profile for the estimator
-        #        estimator.set_profile(profile)
 
     def process_track(self, raw_output, track=None):
         """
@@ -1242,3 +1234,102 @@ class StackedPitchListCollapser(Collapser, PitchListWrapper):
         times, pitch_list = tools.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
 
         return times, pitch_list
+
+
+class StackedOnsetsWrapper(MultiPitchWrapper):
+    """
+    Wrapper for obtaining stacked onsets activations from stacked multi pitch.
+    """
+
+    def __init__(self, profile, multi_pitch_key=None, estimates_key=None, save_dir=None):
+        """
+        Initialize parameters for the estimator.
+
+        Parameters
+        ----------
+        See MultiPitchWrapper class...
+
+        multi_pitch_key : string or None (optional)
+          Key to use when unpacking multi pitch data
+        """
+
+        super().__init__(profile=profile,
+                         estimates_key=estimates_key,
+                         save_dir=save_dir)
+
+        # Default the key for unpacking relevant data
+        self.multi_pitch_key = tools.KEY_MULTIPITCH if multi_pitch_key is None else multi_pitch_key
+
+    @staticmethod
+    def get_default_key():
+        """
+        Default key for onsets activation maps.
+        """
+
+        return tools.KEY_ONSETS
+
+    def estimate(self, raw_output):
+        """
+        Convert a stacked multi pitch activation map into a stacked onsets activation map.
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        stacked_onsets : ndarray (S x F x T)
+          Array of multiple discrete onset activation maps
+          S - number of slices in stack
+          F - number of discrete pitches
+          T - number of frames
+        """
+
+        # Obtain the multi pitch data
+        stacked_multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
+
+        # Perform the conversion
+        stacked_onsets = tools.stacked_multi_pitch_to_stacked_onsets(stacked_multi_pitch)
+
+        return stacked_onsets
+
+
+class StackedOffsetsWrapper(StackedOnsetsWrapper):
+    """
+    Wrapper for obtaining stacked offsets activations from stacked multi pitch.
+    """
+
+    @staticmethod
+    def get_default_key():
+        """
+        Default key for offsets activation maps.
+        """
+
+        return tools.KEY_OFFSETS
+
+    def estimate(self, raw_output):
+        """
+        Convert a stacked multi pitch activation map into a stacked offsets activation map.
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing raw output relevant to estimation
+
+        Returns
+        ----------
+        stacked_offsets : ndarray (S x F x T)
+          Array of multiple discrete offset activation maps
+          S - number of slices in stack
+          F - number of discrete pitches
+          T - number of frames
+        """
+
+        # Obtain the multi pitch data
+        stacked_multi_pitch = tools.unpack_dict(raw_output, self.multi_pitch_key)
+
+        # Perform the conversion
+        stacked_offsets = tools.stacked_multi_pitch_to_stacked_offsets(stacked_multi_pitch)
+
+        return stacked_offsets

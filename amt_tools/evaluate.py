@@ -9,6 +9,7 @@ from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes
 from mir_eval.multipitch import evaluate as evaluate_frames
 from abc import abstractmethod
 from scipy.stats import hmean
+from mir_eval import util
 from copy import deepcopy
 
 import numpy as np
@@ -958,7 +959,7 @@ class StackedNoteEvaluator(StackedEvaluator):
             pitches_ref = tools.notes_to_hz(pitches_ref)
             pitches_est = tools.notes_to_hz(pitches_est)
 
-            # Calculate frame-wise precision, recall, and f1 score with or without offset
+            # Calculate precision, recall, and f1 score of matched notes with or without offset
             p, r, f, _ = evaluate_notes(ref_intervals=intervals_ref,
                                         ref_pitches=pitches_ref,
                                         est_intervals=intervals_est,
@@ -1229,7 +1230,7 @@ class TablatureEvaluator(Evaluator):
           Dictionary containing precision, recall, f-measure, and tdr
         """
 
-        # Convert from tablature format to stacked multi pitch format
+        # Convert from tablature format to logistic activations format
         tablature_est = tools.tablature_to_logistic(estimated, self.profile, silence=False)
         tablature_ref = tools.tablature_to_logistic(reference, self.profile, silence=False)
 
@@ -1251,7 +1252,7 @@ class TablatureEvaluator(Evaluator):
         recall = num_correct_tablature / (num_ground_truth + EPSILON)
 
         # Calculate the f1-score using the harmonic mean formula
-        f_measure = hmean([precision + EPSILON, recall + EPSILON]) - EPSILON
+        f_measure = util.f_measure(precision, recall)
 
         # Collapse the stacked multi pitch activations into a single representation
         multi_pitch_est = tools.stacked_multi_pitch_to_multi_pitch(
