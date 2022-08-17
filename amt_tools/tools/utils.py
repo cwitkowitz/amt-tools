@@ -1029,6 +1029,9 @@ def pitch_list_to_hz(pitch_list):
     Array of corresponding times does not change and is
     assumed to be managed outside of the function.
 
+    TODO - similar efficient implementations could be adopted elsewhere
+           rather than using list comprehension for parsing pitch lists
+
     Parameters
     ----------
     pitch_list : list of ndarray (T x [...])
@@ -1042,8 +1045,16 @@ def pitch_list_to_hz(pitch_list):
       T - number of pitch observations (frames)
     """
 
-    # Convert to Hertz
-    pitch_list = [librosa.midi_to_hz(pitch_list[i]) for i in range(len(pitch_list))]
+    # Convert all pitches in the pitch list to Hertz
+    all_pitches = librosa.midi_to_hz(np.concatenate(pitch_list))
+
+    # Count the number of pitch observations at each frame
+    frame_counts = get_active_pitch_count(pitch_list)
+    # Determine which pitches belong to each frame
+    pitch_idcs = np.append([0], np.cumsum(frame_counts))
+    # Reconstruct the pitch list using the frame counts
+    pitch_list = [all_pitches[pitch_idcs[k]: pitch_idcs[k + 1]]
+                  for k in range(len(pitch_idcs) - 1)]
 
     return pitch_list
 
@@ -1147,16 +1158,30 @@ def cat_pitch_list(times, pitch_list, new_times, new_pitch_list, decimals=6):
     """
 
     # Obtain microsecond resolution for both collections of times
-    times_us, new_times_us = list(np.round(times * (10 ** decimals))), list(np.round(new_times * (10 ** decimals)))
+    times_us, new_times_us = np.round(times * (10 ** decimals)), np.round(new_times * (10 ** decimals))
 
-    # Obtain the indices where new times overlap with original times
+    # Indentify indices where new times overlap with original times
     overlapping_idcs_new = np.intersect1d(times_us, new_times_us, return_indices=True)[-1]
 
-    # Loop through overlapping indices w.r.t. the new times
-    for i in overlapping_idcs_new:
-        # Find the corresponding index w.r.t. the original times
-        k = times_us.index(new_times_us[i])
-        # Append the corresponding pitch observations
+    # Count the number of new pitch observations at each frame
+    new_frame_counts = get_active_pitch_count(new_pitch_list)
+
+    # Determine which indices correspond to frames with observations
+    non_empty_idcs_new = np.where(new_frame_counts != 0)[0]
+
+    # Ignore indices where there are no new pitch observations
+    overlapping_non_empty_idcs_new = np.intersect1d(overlapping_idcs_new, non_empty_idcs_new)
+
+    # Determine which times overlap with the current pitch
+    # list and are associated with new pitch observations
+    overlapping_times = new_times_us[overlapping_non_empty_idcs_new]
+    # Obtain the indices corresponding to the sorted times of the current pitch list
+    sorter = times_us.argsort()
+    # Find the mapping of the current times w.r.t. the new overlapping times
+    corresponding_idcs = sorter[np.searchsorted(times_us, overlapping_times, sorter=sorter)]
+    # Loop through all pairs of pitch list entries with matching times
+    for (k, i) in zip(corresponding_idcs, overlapping_non_empty_idcs_new):
+        # Combine the pitch observations into a single array
         pitch_list[k] = np.append(pitch_list[k], new_pitch_list[i])
 
     # Obtain the indices of new times which no not overlap with the original times

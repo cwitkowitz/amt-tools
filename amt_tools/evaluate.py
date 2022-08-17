@@ -1038,7 +1038,7 @@ class StackedPitchListEvaluator(StackedEvaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, pitch_tolerance=0.5, average_slices=False, unpack_key=None,
+    def __init__(self, pitch_tolerances=None, average_slices=False, unpack_key=None,
                  results_key=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
@@ -1047,13 +1047,16 @@ class StackedPitchListEvaluator(StackedEvaluator):
         ----------
         See StackedEvaluator class for others...
 
-        pitch_tolerance : float
-          Semitone tolerance for considering a frequency estimate correct relative to a reference
+        pitch_tolerances : list of float
+          Semitone tolerances for considering a frequency estimate correct relative to a reference
         """
 
         super().__init__(average_slices, unpack_key, results_key, save_dir, patterns, verbose)
 
-        self.pitch_tolerance = pitch_tolerance
+        if pitch_tolerances is None:
+            pitch_tolerances = [1/2]
+
+        self.pitch_tolerances = pitch_tolerances
 
     @staticmethod
     def get_default_key():
@@ -1080,11 +1083,11 @@ class StackedPitchListEvaluator(StackedEvaluator):
           Dictionary containing (slice -> (precision, recall, and f-measure)) pairs
         """
 
-        # Initialize an empty dictionary to hold results for each degree of freedom
-        results = dict()
-
         # Obtain the keys of both the estimated and reference data
         keys_est, keys_ref = list(estimated.keys()), list(reference.keys())
+
+        # Initialize an empty dictionary to hold results for each degree of freedom
+        results = dict().fromkeys(keys_est, {})
 
         # Loop through the stack of pitch lists
         for k in range(len(keys_ref)):
@@ -1096,25 +1099,27 @@ class StackedPitchListEvaluator(StackedEvaluator):
             pitches_ref = tools.pitch_list_to_hz(pitches_ref)
             pitches_est = tools.pitch_list_to_hz(pitches_est)
 
-            # Calculate frame-wise precision, recall, and f1 score for continuous pitches
-            frame_metrics = evaluate_frames(ref_time=times_ref,
-                                            ref_freqs=pitches_ref,
-                                            est_time=times_est,
-                                            est_freqs=pitches_est,
-                                            window=self.pitch_tolerance)
+            for tol in self.pitch_tolerances:
+                # Calculate frame-wise precision, recall, and f1 score for continuous pitches
+                frame_metrics = evaluate_frames(ref_time=times_ref,
+                                                ref_freqs=pitches_ref,
+                                                est_time=times_est,
+                                                est_freqs=pitches_est,
+                                                window=tol)
 
-            # Extract observation-wise precision and recall
-            p, r = frame_metrics['Precision'], frame_metrics['Recall']
+                # Extract observation-wise precision and recall
+                p, r = frame_metrics['Precision'], frame_metrics['Recall']
 
-            # Calculate the f1-score using the harmonic mean formula
-            f = hmean([p + EPSILON, r + EPSILON]) - EPSILON
+                # Calculate the f1-score using the harmonic mean formula
+                f = hmean([p + EPSILON, r + EPSILON]) - EPSILON
 
-            # Package the results into a dictionary
-            results.update({keys_est[k] : {
-                tools.KEY_PRECISION : p,
-                tools.KEY_RECALL : r,
-                tools.KEY_F1 : f
-            }})
+                # Package the results into a dictionary
+                results[keys_est[k]].update({
+                    f'{tol}' : {
+                        tools.KEY_PRECISION : p,
+                        tools.KEY_RECALL : r,
+                        tools.KEY_F1 : f}
+                })
 
         if self.average_slices:
             # Average the results across the slices
@@ -1131,7 +1136,7 @@ class PitchListEvaluator(StackedPitchListEvaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, pitch_tolerance=0.5, unpack_key=None, results_key=None,
+    def __init__(self, pitch_tolerances=None, unpack_key=None, results_key=None,
                  save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
@@ -1141,7 +1146,7 @@ class PitchListEvaluator(StackedPitchListEvaluator):
         See StackedPitchListEvaluator class...
         """
 
-        super().__init__(pitch_tolerance, True, unpack_key, results_key, save_dir, patterns, verbose)
+        super().__init__(pitch_tolerances, True, unpack_key, results_key, save_dir, patterns, verbose)
 
     def evaluate(self, estimated, reference):
         """
