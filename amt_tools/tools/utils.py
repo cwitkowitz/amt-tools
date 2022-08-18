@@ -601,7 +601,7 @@ def offset_notes(pitches, intervals, semitones):
     return pitches, intervals
 
 
-def filter_notes(pitches, intervals, profile, min_time=-np.inf, max_time=np.inf, suppress_warnings=True):
+def filter_notes(pitches, intervals, profile=None, min_time=-np.inf, max_time=np.inf, suppress_warnings=True):
     """
     Remove notes with nominal pitch outside the supported range of an instrument
     profile and notes with intervals entirely outside of specified boundaries.
@@ -614,7 +614,7 @@ def filter_notes(pitches, intervals, profile, min_time=-np.inf, max_time=np.inf,
     intervals : ndarray (N x 2)
       Array of onset-offset time pairs corresponding to notes
       N - number of notes
-    profile : InstrumentProfile (instrument.py)
+    profile : InstrumentProfile or None (Optional)
       Instrument profile detailing experimental setup
     min_time : float (Optional)
       Note offsets must occur at or after this time to be considered valid
@@ -636,13 +636,14 @@ def filter_notes(pitches, intervals, profile, min_time=-np.inf, max_time=np.inf,
     # Round pitches to the nearest semitone
     pitches_r = np.round(pitches)
 
-    # Check for notes with out-of-bounds pitches (w.r.t. specified instrument profile)
-    in_bounds_pitch = np.logical_and((pitches_r >= profile.low), (pitches_r <= profile.high))
+    if profile is not None:
+        # Check for notes with out-of-bounds pitches (w.r.t. specified instrument profile)
+        in_bounds_pitch = np.logical_and((pitches_r >= profile.low), (pitches_r <= profile.high))
 
-    if np.sum(np.logical_not(in_bounds_pitch)) and not suppress_warnings:
-        # Print a warning message if notes were ignored
-        warnings.warn('Ignoring notes with nominal pitch exceeding ' +
-                      'supported boundaries.', category=RuntimeWarning)
+        if np.sum(np.logical_not(in_bounds_pitch)) and not suppress_warnings:
+            # Print a warning message if notes were ignored
+            warnings.warn('Ignoring notes with nominal pitch exceeding ' +
+                          'supported boundaries.', category=RuntimeWarning)
 
     # Check for notes with onsets occurring after specified time maximum
     in_bounds_interval_on = (intervals[:, 0] <= max_time)
@@ -661,10 +662,11 @@ def filter_notes(pitches, intervals, profile, min_time=-np.inf, max_time=np.inf,
                       'specified time minimum.', category=RuntimeWarning)
 
     # Combine valid indices from onsets/offsets checks
-    in_bounds_interval = np.logical_and(in_bounds_interval_on, in_bounds_interval_off)
+    valid_idcs = np.logical_and(in_bounds_interval_on, in_bounds_interval_off)
 
-    # Combine pitches/interval checks to determine if and where there are out-of-bounds notes
-    valid_idcs = np.logical_and(in_bounds_pitch, in_bounds_interval)
+    if profile is not None:
+        # Combine pitches/interval checks to determine if and where there are out-of-bounds notes
+        valid_idcs = np.logical_and(valid_idcs, in_bounds_pitch)
 
     # Remove any invalid notes (out-of-bounds w.r.t. interval or pitch)
     pitches, intervals = pitches[valid_idcs], intervals[valid_idcs]
