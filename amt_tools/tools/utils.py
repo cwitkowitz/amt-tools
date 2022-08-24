@@ -3130,7 +3130,8 @@ def seed_everything(seed):
 def estimate_hop_length(times):
     """
     Estimate hop length of a semi-regular but non-uniform series of times.
-    ***Taken from an mir_eval pull request.
+
+    Adapted from mir_eval pull request #336.
 
     Parameters
     ----------
@@ -3144,7 +3145,7 @@ def estimate_hop_length(times):
     """
 
     if not len(times):
-        raise ValueError("Cannot estimate hop length from an empty time array.")
+        raise ValueError('Cannot estimate hop length from an empty time array.')
 
     # Make sure the times are sorted
     times = np.sort(times)
@@ -3153,7 +3154,7 @@ def estimate_hop_length(times):
     non_gaps = np.append([False], np.isclose(np.diff(times, n=2), 0))
 
     if not np.sum(non_gaps):
-        raise ValueError("Time observations are too irregular.")
+        raise ValueError('Time observations are too irregular.')
 
     # Take the median of the time differences at non-gaps
     hop_length = np.median(np.diff(times)[non_gaps])
@@ -3161,10 +3162,11 @@ def estimate_hop_length(times):
     return hop_length
 
 
-def time_series_to_uniform(times, values, hop_length=None, duration=None):
+def time_series_to_uniform(times, values, hop_length=None, duration=None, suppress_warnings=True):
     """
     Convert a semi-regular time series with gaps into a uniform time series.
-    ***Taken from an mir_eval pull request.
+
+    Adapted from mir_eval pull request #336.
 
     Parameters
     ----------
@@ -3177,6 +3179,8 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
     duration : number or None (optional)
       Total length (seconds) of times series
       If specified, should be greater than all observation times
+    suppress_warnings : bool
+      Whether to ignore warning messages
 
     Returns
     -------
@@ -3190,10 +3194,12 @@ def time_series_to_uniform(times, values, hop_length=None, duration=None):
         return np.array([]), []
 
     if hop_length is None:
-        # If a hop length is not provided, estimate it and throw a warning
-        warnings.warn(
-            "Since hop length is unknown, it will be estimated. This may lead to "
-            "unwanted behavior if the observation times are sporadic or irregular.", category=RuntimeWarning)
+        if not suppress_warnings:
+            warnings.warn('Since hop length is unknown, it will be estimated. ' +
+                          'This may lead to unwanted behavior if the observation ' +
+                          'times are sporadic or irregular.', category=RuntimeWarning)
+
+        # Estimate the hop length if it was not provided
         hop_length = estimate_hop_length(times)
 
     if duration is None:

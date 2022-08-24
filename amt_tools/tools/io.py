@@ -263,7 +263,7 @@ def extract_stacked_pitch_list_jams(jam, times=None, uniform=True):
       JAMS file data
     times : ndarray or None (optional) (N)
       Time in seconds for resampling
-      N - number of times samples
+      N - number of time samples
     uniform : bool
       Whether to place annotations on a uniform time grid
 
@@ -299,7 +299,7 @@ def extract_stacked_pitch_list_jams(jam, times=None, uniform=True):
             freq = np.array([pitch.value['frequency']])
 
             # Don't keep track of zero-frequencies
-            if np.sum(freq) == 0:
+            if np.sum(freq) == 0 or not pitch.value['voiced']:
                 freq = np.empty(0)
 
             # Append the observation time
