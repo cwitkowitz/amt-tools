@@ -27,6 +27,6 @@ from .hcqt import HCQT
 from .hvqt import HVQT
 from .mel import MelSpec
 from .stft import STFT
-from .stream import FeatureStream, MicrophoneStream, AudioStream, AudioFileStream
+#from .stream import FeatureStream, MicrophoneStream, AudioStream, AudioFileStream
 from .vqt import VQT
 from .waveform import WaveformWrapper
