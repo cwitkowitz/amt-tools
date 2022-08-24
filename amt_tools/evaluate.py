@@ -15,6 +15,7 @@ from copy import deepcopy
 import numpy as np
 import warnings
 import torch
+import json
 import sys
 import os
 
@@ -175,7 +176,7 @@ def append_results(tracked_results, new_results):
     return tracked_results
 
 
-def log_results(results, writer, step=0, patterns=None, tag=''):
+def log_results(results, writer, step=0, patterns=None, tag='', prnt=True):
     """
     Log results using TensorBoardX.
 
@@ -191,6 +192,8 @@ def log_results(results, writer, step=0, patterns=None, tag=''):
       Only write metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
     tag : string
       Tag for organizing different types of results (e.g. 'validation')
+    prnt : bool
+      Whether to additionally print results to console
     """
 
     # Loop through the keys in the dictionary
@@ -207,6 +210,10 @@ def log_results(results, writer, step=0, patterns=None, tag=''):
             if pattern_match(key, patterns) or patterns is None:
                 # Log the entry under the specified key
                 writer.add_scalar(f'{tag}/{key}', entry, global_step=step)
+
+                if prnt:
+                    # Print the results for the entry to the console
+                    print(json.dumps({'iter': step, f'{tag}/{key}': entry}))
 
 
 def write_results(results, file, patterns=None, verbose=False):
