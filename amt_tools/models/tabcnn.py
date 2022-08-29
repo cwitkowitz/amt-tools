@@ -127,8 +127,8 @@ class TabCNN(TranscriptionModel):
         feats = tools.array_to_tensor(feats, self.device)
         # Switch the sequence-frame and feature axes
         feats = feats.transpose(-2, -3)
-        # Remove the single channel dimension
-        feats = feats.squeeze(1)
+        # Switch the sequence-frame and channel axes
+        feats = feats.transpose(-3, -4)
 
         batch[tools.KEY_FEATS] = feats
 
@@ -140,9 +140,10 @@ class TabCNN(TranscriptionModel):
 
         Parameters
         ----------
-        feats : Tensor (B x T x F x W)
+        feats : Tensor (B x C x T x F x W)
           Input features for a batch of tracks,
           B - batch size
+          C - number of channels in features
           T - number of frames
           F - number of features (frequency bins)
           W - frame width of each sample
@@ -166,7 +167,7 @@ class TabCNN(TranscriptionModel):
         # so that each windowed group of frames is treated as one
         # independent sample. This is not done during pre-processing
         # in order to maintain consistency with the notion of batch size
-        feats = feats.reshape(-1, 1, self.dim_in, self.frame_width)
+        feats = feats.reshape(-1, self.in_channels, self.dim_in, self.frame_width)
 
         # Obtain the feature embeddings
         embeddings = self.conv(feats)
