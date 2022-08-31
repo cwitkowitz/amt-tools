@@ -6,16 +6,21 @@ from .. import tools
 
 # Regular imports
 from abc import abstractmethod
-from pynput import keyboard
 
 import warnings
 import time
 
 try:
+    from pynput import keyboard
+except ImportError:
+    warnings.warn('Could not import keyboard, likely because an X ' +
+                  'connection could not be acquired.', category=RuntimeWarning)
+
+try:
     import sounddevice as sd
 except OSError:
-    print('Cannot import sounddevice. Please install PortAudio and try again.')
-    print('  >>> sudo apt-get install libportaudio2')
+    warnings.warn('Could not import sounddevice. Please install PortAudio and ' +
+                  'try again.\n  >>> sudo apt-get install libportaudio2', category=RuntimeWarning)
 
 import numpy as np
 import threading
