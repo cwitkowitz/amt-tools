@@ -36,6 +36,7 @@ __all__ = [
     'notes_to_hz',
     'notes_to_midi',
     'offset_notes',
+    'detect_overlap_notes',
     'filter_notes',
     'notes_to_stacked_notes',
     'batched_notes_to_stacked_notes',
@@ -57,6 +58,7 @@ __all__ = [
     'unpack_pitch_list',
     'get_active_pitch_count',
     'contains_empties_pitch_list',
+    'detect_overlap_pitch_list',
     'filter_pitch_list',
     'pitch_list_to_stacked_pitch_list',
     'stacked_multi_pitch_to_stacked_pitch_list',
@@ -599,6 +601,32 @@ def offset_notes(pitches, intervals, semitones):
     pitches += semitones
 
     return pitches, intervals
+
+
+def detect_overlap_notes(intervals, decimals=3):
+    """
+    Determine if a set of intervals contains any overlap.
+
+    Parameters
+    ----------
+    intervals : ndarray (N x 2)
+      Array of onset-offset time pairs
+      N - number of notes
+    decimals : int (Optional - millisecond by default)
+      Decimal resolution for timing comparison
+
+    Returns
+    ----------
+    overlap : bool
+      Whether any intervals overlap
+    """
+
+    # Make sure the intervals are sorted by onset (abusing this function slightly)
+    intervals = sort_batched_notes(intervals, by=0)
+    # Check if any onsets occur before the offset of a previous interval
+    overlap = np.sum(np.round(np.diff(intervals).flatten(), decimals) < 0) > 0
+
+    return overlap
 
 
 def filter_notes(pitches, intervals, profile=None, min_time=-np.inf, max_time=np.inf, suppress_warnings=True):
@@ -1356,6 +1384,28 @@ def contains_empties_pitch_list(pitch_list):
     contains_empties = np.sum(get_active_pitch_count(pitch_list) == 0) > 0
 
     return contains_empties
+
+
+def detect_overlap_pitch_list(pitch_list):
+    """
+    Determine if a pitch list representation contains overlapping pitch contours.
+
+    Parameters
+    ----------
+    pitch_list : list of ndarray (N x [...])
+      Frame-level observations detailing active pitches
+      N - number of frames
+
+    Returns
+    ----------
+    overlap : bool
+      Whether there are overlapping pitch contours
+    """
+
+    # Check if at any time there is more than one observation
+    overlap = np.sum(get_active_pitch_count(pitch_list) > 1) > 0
+
+    return overlap
 
 
 def filter_pitch_list(pitch_list, profile, suppress_warnings=True):
