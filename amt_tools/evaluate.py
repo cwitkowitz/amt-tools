@@ -212,6 +212,7 @@ def log_results(results, writer, step=0, patterns=None, tag='', prnt=True):
                 writer.add_scalar(f'{tag}/{key}', entry, global_step=step)
 
                 if prnt:
+                    # TODO - I haven't fully decided if this should be here
                     # Print the results for the entry to the console
                     print(json.dumps({'iter': step, f'{tag}/{key}': entry}))
 
