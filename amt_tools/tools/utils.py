@@ -2133,7 +2133,7 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
     return tablature
 
 
-def logistic_to_tablature(logistic, profile, silence, silence_thr=0.):
+def logistic_to_tablature(logistic, profile, silence, silence_thr=0.05):
     """
     View logistic activations as tablature class membership.
 
