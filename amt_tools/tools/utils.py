@@ -1831,7 +1831,8 @@ def logistic_to_stacked_multi_pitch(logistic, profile, silence=True):
     tuning = profile.get_midi_tuning()
 
     # Determine the appropriate dimensionality of the stacked multi pitch array
-    dims = (len(tuning), profile.get_range_len(), logistic.shape[-1])
+    dims = tuple(logistic.shape[:-2] +
+                 (len(tuning), profile.get_range_len(), logistic.shape[-1]))
 
     if isinstance(logistic, np.ndarray):
         # Initialize an array of zeros
@@ -1841,7 +1842,7 @@ def logistic_to_stacked_multi_pitch(logistic, profile, silence=True):
         stacked_multi_pitch = torch.zeros(dims, device=logistic.device)
 
     # Loop through the degrees of freedom
-    for dof in range(dims[0]):
+    for dof in range(dims[-3]):
         # Determine which activations correspond to this degree of freedom
         start_idx = dof * (profile.num_pitches + int(silence))
         stop_idx = (dof + 1) * (profile.num_pitches + int(silence))

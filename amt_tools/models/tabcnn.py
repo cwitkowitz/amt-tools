@@ -140,11 +140,11 @@ class TabCNN(TranscriptionModel):
 
         Parameters
         ----------
-        feats : Tensor (B x C x T x F x W)
+        feats : Tensor (B x T x C x F x W)
           Input features for a batch of tracks,
           B - batch size
-          C - number of channels in features
           T - number of frames
+          C - number of channels in features
           F - number of features (frequency bins)
           W - frame width of each sample
 
