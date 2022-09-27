@@ -176,6 +176,43 @@ class TablatureProfile(InstrumentProfile):
         pitch_ranges = np.array([np.arange(tuning[i], tuning[i] + self.num_pitches) for i in range(num_dofs)])
 
         return pitch_ranges
+    
+    def get_fret(self, midi_pitch, string):
+        """
+        Get the fret for a given MIDI pitch and string.
+        """
+
+        midi_tuning = self.get_midi_tuning()
+        #TODO: check if this note is out of bounds
+        return midi_pitch - midi_tuning[string]
+        
+    def get_valid_positions(self, midi_pitch):
+        """
+        Get all the possible fretboard positions (string, fret) 
+        for a given MIDI pitch.
+        """
+
+        positions = []
+        midi_tuning = self.get_midi_tuning()
+
+        for i, open_string in enumerate(midi_tuning):
+            
+            diff = midi_pitch - open_string
+
+            if diff >= 0 and diff <= self.num_pitches:
+                positions.append((i, diff))
+
+        return positions
+    
+    def get_midi_note(self, string, fret):
+        """
+        Get the MIDI note for a given string and fret.
+        """
+        # TODO: fret should be less than the number of pitches
+        
+        midi_tuning = self.get_midi_tuning()
+
+        return midi_tuning[string] + fret
 
 
 class GuitarProfile(TablatureProfile):
