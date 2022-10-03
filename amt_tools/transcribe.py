@@ -324,10 +324,31 @@ class MultiPitchWrapper(Estimator):
 
         return tools.KEY_MULTIPITCH
 
+    def estimate(self, raw_output):
+        """
+        Here, just simply pass through the raw multi pitch data.
+
+        Parameters
+        ----------
+        raw_output : dict
+          Dictionary containing multi pitch
+
+        Returns
+        ----------
+        multi_pitch : ndarray (... x F x T)
+          Raw discrete pitch activation map
+          F - number of discrete pitches
+          T - number of frames
+        """
+
+        # Obtain the multi pitch activation map
+        multi_pitch = tools.unpack_dict(raw_output, self.estimates_key)
+
+        return multi_pitch
+
     def write(self, multi_pitch, track):
         """
-        Do nothing. There is no protocol for writing multi pitch activation maps to a file.
-        A more appropriate action might be converting them to pitch lists and writing those.
+        Write the multi pitch activation maps to a file.
 
         Parameters
         ----------
@@ -339,7 +360,14 @@ class MultiPitchWrapper(Estimator):
           Name of the track being processed
         """
 
-        pass
+        # Determine how to name the results
+        tag = tools.get_tag(track)
+
+        # Construct a path for saving the estimates
+        path = os.path.join(self.save_dir, f'{tag}')
+
+        # Save the multi pitch array
+        np.save(path, multi_pitch)
 
 
 class StackedNoteTranscriber(Estimator):
