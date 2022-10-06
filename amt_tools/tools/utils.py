@@ -492,7 +492,7 @@ def batched_notes_to_notes(batched_notes):
     return pitches, intervals
 
 
-def stacked_notes_to_notes(stacked_notes):
+def stacked_notes_to_notes(stacked_notes, sort_by=0):
     """
     Convert a dictionary of stacked notes into a single representation.
 
@@ -500,6 +500,9 @@ def stacked_notes_to_notes(stacked_notes):
     ----------
     stacked_notes : dict
       Dictionary containing (slice -> (pitches, intervals)) pairs
+    sort_by : int or None (Optional)
+      Index to sort notes by
+      0 - onset | 1 - offset | 2 - pitch
 
     Returns
     ----------
@@ -518,8 +521,9 @@ def stacked_notes_to_notes(stacked_notes):
     pitches = np.concatenate([pair[0] for pair in note_pairs])
     intervals = np.concatenate([pair[1] for pair in note_pairs])
 
-    # Sort the notes by onset
-    pitches, intervals = sort_notes(pitches, intervals)
+    if sort_by is not None:
+        # Sort the notes by the specified attribute
+        pitches, intervals = sort_notes(pitches, intervals, by=sort_by)
 
     return pitches, intervals
 
