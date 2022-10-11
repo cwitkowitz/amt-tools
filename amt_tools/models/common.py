@@ -440,7 +440,7 @@ class SoftmaxGroups(OutputLayer):
 
         return loss
 
-    def finalize_output(self, raw_output):
+    def finalize_output(self, raw_output, last_negative=True):
         """
         Convert loss-friendly output into actual symbolic transcription.
 
@@ -451,6 +451,8 @@ class SoftmaxGroups(OutputLayer):
           B - batch size,
           T - number of time steps (frames),
           O - number of output neurons (dim_out)
+        last_negative : bool
+          Whether to set the final class to -1
 
         Returns
         ----------
@@ -470,8 +472,11 @@ class SoftmaxGroups(OutputLayer):
         final_output = final_output.view(batch_size, -1, self.num_groups, self.num_classes)
         # Pick the choice with the most weight for each softmax group
         final_output = torch.argmax(torch.softmax(final_output, dim=-1), dim=-1)
-        # Convert the last choice to the value representing silent tablature (-1)
-        final_output[final_output == self.num_classes - 1] = -1
+
+        if last_negative:
+            # Convert the last choice to the value representing silent tablature (-1)
+            final_output[final_output == self.num_classes - 1] = -1
+
         # Switch the DOF and frame dimension to end up with tabs
         final_output = final_output.transpose(-2, -1)
 
