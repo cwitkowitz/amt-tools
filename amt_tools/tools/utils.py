@@ -320,7 +320,7 @@ def batched_notes_to_midi(batched_notes):
     return batched_notes
 
 
-def slice_batched_notes(batched_notes, start_time, stop_time):
+def slice_batched_notes(batched_notes, start_time, stop_time, relative_times=False):
     """
     Remove note entries occurring outside of time window.
 
@@ -333,6 +333,8 @@ def slice_batched_notes(batched_notes, start_time, stop_time):
       Beginning of time window
     stop_time : float
       End of time window
+    relative_times : bool
+      Whether onsets/offsets should be relative to time origin
 
     Returns
     ----------
@@ -352,6 +354,10 @@ def slice_batched_notes(batched_notes, start_time, stop_time):
 
     # Clip offsets at the slice stop time
     batched_notes[:, 1] = np.minimum(batched_notes[:, 1], stop_time)
+
+    if relative_times:
+        # Adjust onset/offset times
+        batched_notes[:, :2] -= start_time
 
     return batched_notes
 

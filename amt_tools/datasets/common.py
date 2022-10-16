@@ -236,7 +236,7 @@ class TranscriptionDataset(Dataset):
         feats_path = self.get_feats_dir(track)
 
         # Check if the features already exist
-        if os.path.exists(feats_path):
+        if self.save_data and os.path.exists(feats_path):
             # If so, load the features
             feats_dict = tools.load_unpack_npz(feats_path)
             feats = feats_dict[tools.KEY_FEATS]
