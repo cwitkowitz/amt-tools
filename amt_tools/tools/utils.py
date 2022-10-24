@@ -1058,7 +1058,7 @@ def multi_pitch_to_pitch_list(multi_pitch, profile):
     # Loop through the frames containing pitch activity
     for i in list(non_silent_frames):
         # Determine the MIDI pitches active in the frame and add to the list
-        pitch_list[i] = profile.low + np.where(multi_pitch[..., i])[-1]
+        pitch_list[i] = (profile.low + np.where(multi_pitch[..., i])[-1]).astype(constants.FLOAT)
 
     return pitch_list
 
