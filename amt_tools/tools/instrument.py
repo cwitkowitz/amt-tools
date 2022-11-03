@@ -221,12 +221,12 @@ class TablatureProfile(InstrumentProfile):
           MIDI pitch corresponding to the specified string/fret
         """
 
+        # TODO - throw warning for out of bounds (f < 0 || f > num_frets) fret?
+
         # Determine the lowest pitch for each string
         midi_tuning = self.get_midi_tuning()
         # Add the chosen string's lowest pitch
         midi_pitch = midi_tuning[string] + fret
-
-        # TODO - throw warning for out of bounds (f < 0 || f > num_frets) fret?
 
         return midi_pitch
 

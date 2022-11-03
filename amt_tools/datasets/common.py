@@ -124,6 +124,7 @@ class TranscriptionDataset(Dataset):
             save_loc = tools.DEFAULT_FEATURES_GT_DIR
         self.save_loc = save_loc
 
+        # TODO - shouldn't be any reason to save this
         self.reset_data = reset_data
         # Remove any saved ground-truth for the dataset if reset_data is selected
         if os.path.exists(self.get_gt_dir()) and self.reset_data:
@@ -238,7 +239,7 @@ class TranscriptionDataset(Dataset):
         # Check if the features already exist
         if self.save_data and os.path.exists(feats_path):
             # If so, load the features
-            feats_dict = tools.load_unpack_npz(feats_path)
+            feats_dict = tools.load_dict_npz(feats_path)
             feats = feats_dict[tools.KEY_FEATS]
             feats = feats.item() if feats.size == 1 else feats
 
@@ -257,8 +258,9 @@ class TranscriptionDataset(Dataset):
                 # Get the appropriate path for saving the features
                 os.makedirs(os.path.dirname(feats_path), exist_ok=True)
                 # Save the features to memory as a NumPy zip file
-                keys = (tools.KEY_FEATS, tools.KEY_FS, tools.KEY_HOP)
-                tools.save_pack_npz(feats_path, keys, feats, fs, hop_length)
+                tools.save_dict_npz(feats_path, {tools.KEY_FS : fs,
+                                                 tools.KEY_HOP : hop_length,
+                                                 tools.KEY_FEATS : feats})
 
         # Make sure there is agreement between dataset and features
         if self.sample_rate != fs or self.hop_length != hop_length:
@@ -427,7 +429,7 @@ class TranscriptionDataset(Dataset):
         # Check if an entry for the data exists
         if self.save_data and os.path.exists(gt_path):
             # Load and unpack the data
-            data = tools.load_unpack_npz(gt_path)
+            data = tools.load_dict_npz(gt_path)
 
             # Make sure there is agreement between dataset and saved data
             if self.sample_rate != data[tools.KEY_FS].item():

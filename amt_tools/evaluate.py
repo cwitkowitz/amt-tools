@@ -176,7 +176,7 @@ def append_results(tracked_results, new_results):
     return tracked_results
 
 
-def log_results(results, writer, step=0, patterns=None, tag='', prnt=True):
+def log_results(results, writer, step=0, patterns=None, tag='', prnt=False):
     """
     Log results using TensorBoardX.
 
@@ -212,7 +212,6 @@ def log_results(results, writer, step=0, patterns=None, tag='', prnt=True):
                 writer.add_scalar(f'{tag}/{key}', entry, global_step=step)
 
                 if prnt:
-                    # TODO - I haven't fully decided if this should be here
                     # Print the results for the entry to the console
                     print(json.dumps({'iter': step, f'{tag}/{key}': entry}))
 
@@ -720,7 +719,7 @@ class LossWrapper(Evaluator):
           Dictionary containing loss
         """
 
-        # Package the results into a dictionary
+        # Pass the loss directly through
         results = estimated
 
         return results
@@ -1095,7 +1094,7 @@ class StackedPitchListEvaluator(StackedEvaluator):
         keys_est, keys_ref = list(estimated.keys()), list(reference.keys())
 
         # Initialize an empty dictionary to hold results for each degree of freedom
-        results = dict().fromkeys(keys_est, {})
+        results = dict()
 
         # Loop through the stack of pitch lists
         for k in range(len(keys_ref)):
@@ -1122,12 +1121,12 @@ class StackedPitchListEvaluator(StackedEvaluator):
                 f = hmean([p + EPSILON, r + EPSILON]) - EPSILON
 
                 # Package the results into a dictionary
-                results[keys_est[k]].update({
+                results.update({keys_est[k]: {
                     f'{tol}' : {
                         tools.KEY_PRECISION : p,
                         tools.KEY_RECALL : r,
                         tools.KEY_F1 : f}
-                })
+                }})
 
         if self.average_slices:
             # Average the results across the slices

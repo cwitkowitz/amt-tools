@@ -947,7 +947,7 @@ def plot_guitar_tablature(stacked_frets, point_size=100, include_x_axis=True,
 
     if not include_x_axis:
         # Hide the x-axis
-        ax.axis['bottom'].set_visible(False)
+        ax.axes.get_xaxis().set_visible(False)
     else:
         # Add x-axis labels
         ax.set_xlabel('Time (s)')
@@ -1191,16 +1191,25 @@ class PianorollVisualizer(TFRVisualizer):
             self.post_update()
 
 
-def plot_notes(pitches, intervals, x_bounds=None, y_bounds=None, include_x_axis=True, color='k', fig=None):
+def plot_notes(pitches, intervals, x_bounds=None, y_bounds=None, color='k', fig=None):
     """
-    TODO - description
+    Static function for plotting note groups.
 
-    TODO - bring this function up to snuff with, e.g. plot_guitar_tablature,
-           so that it works for real-time note plotting
+    TODO - make compatible w/ real-time note plotting like other visualization functions
 
     Parameters
     ----------
-    TODO - add parameter descriptions
+    pitches : ndarray (K)
+      Array of pitches corresponding to notes in MIDI format
+      (K - number of notes)
+    intervals : ndarray (K x 2)
+      Array of onset-offset time pairs corresponding to notes
+    x_bounds : list (length 2) of float or None (Optional)
+      Lower and upper x-axis boundary to force
+    y_bounds : list (length 2) of float or None (Optional)
+      Lower and upper y-axis boundary to force
+    color : string
+      Color for the note outlines
     fig : matplotlib Figure object
       Preexisting figure to use for plotting
 
@@ -1232,5 +1241,10 @@ def plot_notes(pitches, intervals, x_bounds=None, y_bounds=None, include_x_axis=
     for p, i in zip(pitches, intervals):
         # Add a rectangle representing the note to the plot, applying an offset to center around the pitch
         ax.add_patch(Rectangle((i[0], p - 0.5), (i[1] - i[0]), 1, linewidth=1, edgecolor=color, facecolor='none'))
+
+    # Add x-axis label
+    ax.set_xlabel('Time (s)')
+    # Ad y-axis label
+    ax.set_ylabel('Pitch (MIDI)')
 
     return fig

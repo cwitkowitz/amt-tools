@@ -8,7 +8,6 @@ import os
 
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
 SCPT_DIR = os.path.dirname(os.path.join(TOOL_DIR))
-
 ROOT_DIR = os.path.dirname(os.path.join(SCPT_DIR))
 
 ##################################################
@@ -123,12 +122,12 @@ DEFAULT_PIANO_HIGHEST_PITCH = 108
 # DATA TYPES                                     #
 ##################################################
 
-INT = 'int'
 UINT = 'uint'
+INT = 'int'
+INT64 = 'int64'
 FLOAT = 'float'
 FLOAT32 = 'float32'
 FLOAT64 = 'float64'
-INT64 = 'int64'
 
 ##################################################
 # MISCELLANEOUS                                  #

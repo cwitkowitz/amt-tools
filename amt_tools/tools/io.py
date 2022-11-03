@@ -298,7 +298,7 @@ def extract_stacked_pitch_list_jams(jam, times=None, uniform=True):
             # Extract the pitch
             freq = np.array([pitch.value['frequency']])
 
-            # Don't keep track of zero-frequencies
+            # Don't keep track of zero or unvoiced frequencies
             if np.sum(freq) == 0 or not pitch.value['voiced']:
                 freq = np.empty(0)
 

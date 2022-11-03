@@ -108,9 +108,8 @@ __all__ = [
     'unpack_stacked_representation',
     'tensor_to_array',
     'array_to_tensor',
-    'save_pack_npz',
     'save_dict_npz',
-    'load_unpack_npz',
+    'load_dict_npz',
     'dict_to_dtype',
     'dict_to_device',
     'dict_to_array',
@@ -1663,7 +1662,7 @@ def cat_stacked_pitch_list(stacked_pitch_list, new_stacked_pitch_list):
 ##################################################
 
 
-def notes_to_multi_pitch(pitches, intervals, times, profile):
+def notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets=True):
     """
     Convert loose MIDI note groups into a multi pitch array.
 
@@ -1680,6 +1679,8 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+    include_offsets : bool
+      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -1720,6 +1721,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # Determine the frame where each note begins and ends, defined
     # for both onset and offset as the last frame beginning before
     # (or at the same time as) that of the respective event
+    # TODO - should offsets comparison be < instead of <=?
     onsets = np.argmin((times_broadcast <= intervals[..., :1]), axis=1) - 1
     offsets = np.argmin((times_broadcast <= intervals[..., 1:]), axis=1) - 1
 
@@ -1730,7 +1732,7 @@ def notes_to_multi_pitch(pitches, intervals, times, profile):
     # Loop through each note
     for i in range(num_notes):
         # Populate the multi pitch array with activations for the note
-        multi_pitch[pitches[i], onsets[i] : offsets[i] + 1] = 1
+        multi_pitch[pitches[i], onsets[i] : offsets[i] + int(include_offsets)] = 1
 
     return multi_pitch
 
@@ -1875,7 +1877,7 @@ def logistic_to_stacked_multi_pitch(logistic, profile, silence=True):
 ##################################################
 
 
-def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
+def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile, include_offsets=True):
     """
     Convert a dictionary of MIDI note groups into a stack of multi pitch arrays.
 
@@ -1888,6 +1890,8 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
       N - number of time samples (frames)
     profile : InstrumentProfile (instrument.py)
       Instrument profile detailing experimental setup
+    include_offsets : bool
+      Whether to include an activation at the very last frame of a note
 
     Returns
     ----------
@@ -1906,7 +1910,7 @@ def stacked_notes_to_stacked_multi_pitch(stacked_notes, times, profile):
         # Get the pitches and intervals from the slice
         pitches, intervals = stacked_notes[slc]
         # Convert to multi pitch and add to the list
-        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile)
+        slice_multi_pitch = notes_to_multi_pitch(pitches, intervals, times, profile, include_offsets)
         stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(slice_multi_pitch))
 
     # Collapse the list into an array
@@ -1942,12 +1946,14 @@ def stacked_pitch_list_to_stacked_multi_pitch(stacked_pitch_list, profile):
 
     # Loop through the slices of notes
     for slc in stacked_pitch_list.keys():
-        # Get the pitches and intervals from the slice
+        # Get the pitch observations from the slice
         _, pitch_list = stacked_pitch_list[slc]
+        # Convert the pitch observations to multi pitch activations
         multi_pitch = pitch_list_to_multi_pitch(pitch_list, profile)
+        # Add the multi pitch activations to the list
         stacked_multi_pitch.append(multi_pitch_to_stacked_multi_pitch(multi_pitch))
 
-    # Collapse the list into an array
+    # Stack all of the multi pitch arrays along the first dimension
     stacked_multi_pitch = np.concatenate(stacked_multi_pitch)
 
     return stacked_multi_pitch
@@ -3459,36 +3465,6 @@ def array_to_tensor(data, device=None):
     return data
 
 
-def save_pack_npz(path, keys, *args):
-    """
-    Simple helper function to circumvent hardcoding of
-    keyword arguments for NumPy zip loading and saving.
-    This saves the desired keys (in-order) for the rest
-    of the array in the first entry of the zipped array.
-
-    TODO - remove this function after updating all other code to use the following function
-
-    Parameters
-    ----------
-    path : string
-      Path to save the NumPy zip file
-    keys : list of str
-      Keys corresponding to the rest of the entries
-    *args : object
-      Any objects to save to the array
-    """
-
-    # Make sure there is agreement between dataset and features
-    if len(keys) != len(args):
-        warnings.warn('Number of keys does not match number of entries provided.', category=RuntimeWarning)
-
-    # Create key->value pairs to save
-    entries = dict(zip(keys, args))
-
-    # Save the entries as a NumPy zip at the specified path
-    np.savez_compressed(path, **entries)
-
-
 def save_dict_npz(path, d):
     """
     Simple helper function to save a dictionary as a compressed NumPy zip file.
@@ -3505,7 +3481,7 @@ def save_dict_npz(path, d):
     np.savez_compressed(path, **d)
 
 
-def load_unpack_npz(path):
+def load_dict_npz(path):
     """
     Simple helper function to load a NumPy zip file.
 

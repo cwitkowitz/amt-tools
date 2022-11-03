@@ -15,8 +15,6 @@ scipy>=1.8.1
 pandas>=1.4.2
 mirdata>=0.3.6
 sounddevice>=0.4.4
-# protobuf==3.20
 pynput>=1.7.6
 # TODO - extras - examples?
 # TODO - extras - streaming?
-# TODO - sudo apt-get install libportaudio2
