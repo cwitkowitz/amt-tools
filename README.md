@@ -7,13 +7,13 @@ The framework is a work-in-progress. Its development is ongoing to meet my evolv
 
 ## Installation
 ##### Standard (PyPI)
-Recommended for standard/quick usage
+Recommended for standard/quick usage:
 ```
 pip install amt-tools
 ```
 
 ##### Cloning Repository
-Recommended for running example scripts or making experimental changes.
+Recommended for running example scripts or making experimental changes:
 ```
 git clone https://github.com/cwitkowitz/amt-tools
 pip install -e amt-tools
@@ -21,6 +21,7 @@ pip install -e amt-tools
 
 ## Usage
 This repository can be used for many different purposes.
-Please see the ReadMe within each subpackage for more information.
+Please see the ```README.md``` within each subpackage for more information.
 
 Additionally, several papers are implemented under the ```examples/papers``` subdirectory in standalone scripts which utilize the framework.
+These examples demonstrate the versatility of the framework and serve as guides for how one might use it.

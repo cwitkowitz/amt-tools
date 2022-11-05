@@ -14,28 +14,27 @@ Each example script can be run from the command line as follows:
 python <path_to_script>/<script>.py
 ```
 
-Relevant parameters are defined at the top of each example script.
+Mutable parameters are defined at the top of each example script.
 
 ## Generated Files (Paper Scripts)
 Execution of a script will generate the following under ```<root_dir>```:
-- ```n/``` - folder (beginning at ```n = 1```) containing [sacred](https://sacred.readthedocs.io/en/stable/quickstart.html) experiment files:
+- ```n/``` - folder (beginning at ```n = 1```)<sup>1</sup> containing [sacred](https://sacred.readthedocs.io/en/stable/quickstart.html) experiment files:
   - ```config.json``` - parameter values used for the experiment
   - ```cout.txt``` - contains any text printed to console
   - ```metrics.json``` - evaluation results for the experiment
   - ```run.json``` system and experiment information
-- ```models/``` - folder containing saved model and optimizer state at each checkpoint, as well as events file (for each execution) readable by [tensorboard](https://www.tensorflow.org/tensorboard)
-- ```estimated/``` - folder containing predictions for each track within the test set
+- ```models/``` - folder containing saved model and optimizer state at each checkpoint, as well as an events file (for each execution) readable by [tensorboard](https://www.tensorflow.org/tensorboard)
+- ```estimated/``` - folder containing final predictions for each track within the test set
 - ```results/``` - folder containing separate evaluation results for each track within the test set
 - ```_sources/``` - folder containing copies of scripts at the time(s) execution
 
-An additional folder (```n += 1```) containing similar files is created for each execution with the same experiment name ```<EX_NAME>```.
+<sup>1</sup>An additional folder (```n += 1```) containing similar files is created for each execution with the same experiment name ```<EX_NAME>```.
 
 ## Analysis (Paper Scripts)
 During training, losses and various validation metrics can be analyzed in real-time by running:
 ```
 tensorboard --logdir=<root_dir>/models --port=<port>
 ```
-Here we assume the current working directory contains ```<root_dir>```.
- ```<port>``` is an integer corresponding to an available port (```port = 6006``` if unspecified).
+Here we assume the current working directory contains ```<root_dir>```, and ```<port>``` is an integer corresponding to an available port (```port = 6006``` if unspecified).
 
-After running the command, navigate to <http://localhost:<port>> with an internet browser to view any reported training or validation observations within the tensorboard interface.
+After running the above command, navigate to [http://localhost:&lt;port&gt;]() with an internet browser to view any reported training or validation observations within the tensorboard interface.
