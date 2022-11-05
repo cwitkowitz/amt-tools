@@ -16,7 +16,9 @@ ROOT_DIR = os.path.dirname(os.path.join(SCPT_DIR))
 
 # TODO - should I explicitly state DIR vs. PATH?
 HOME = os.path.expanduser('~')
+
 DEFAULT_DATASETS_DIR = os.path.join(HOME, 'Desktop', 'Datasets')
+
 DEFAULT_GENERATED_DIR = os.path.abspath(os.path.join(ROOT_DIR, 'generated'))
 GROUND_TRUTH_DIR = 'ground_truth'
 
@@ -121,9 +123,11 @@ DEFAULT_PIANO_HIGHEST_PITCH = 108
 ##################################################
 
 UINT = 'uint'
+INT = 'int'
+INT64 = 'int64'
 FLOAT = 'float'
 FLOAT32 = 'float32'
-INT64 = 'int64'
+FLOAT64 = 'float64'
 
 ##################################################
 # MISCELLANEOUS                                  #

@@ -7,15 +7,27 @@ from .. import tools
 # Regular imports
 from abc import abstractmethod
 
+import warnings
+import time
+
+try:
+    from pynput import keyboard
+except ImportError:
+    warnings.warn('Could not import keyboard, likely because an X ' +
+                  'connection could not be acquired.', category=RuntimeWarning)
+
 try:
     import sounddevice as sd
 except OSError:
-    print('Cannot import sounddevice. Please install PortAudio and try again.')
-    print('  >>> sudo apt-get install libportaudio2')
+    warnings.warn('Could not import sounddevice. Please install PortAudio and ' +
+                  'try again.\n  >>> sudo apt-get install libportaudio2', category=RuntimeWarning)
 
 import numpy as np
-
 import threading
+import librosa
+
+# Tolerance past which we consider ourselves falling behind on processing
+MIC_LAG_TOL = 0.250 # seconds
 
 
 class FeatureStream(object):
@@ -245,20 +257,29 @@ class MicrophoneStream(FeatureStream, threading.Thread):
     """
     Implements a streaming wrapper which interfaces with a microphone.
     """
-    def __init__(self, module, frame_buffer_size=1, audio_buffer_size=None, device=None, enforce_continuity=True):
+    def __init__(self, module, frame_buffer_size=1, audio_norm=None,
+                 audio_buffer_size=None, device=None, enforce_continuity=True,
+                 suppress_warnings=True):
         """
         Initialize parameters for the microphone streaming interface.
 
         Parameters
         ----------
         See FeatureStream class for others...
-        device : int or None (Optional)
-          Index of the device to use for data input (see query_devices() for options...)
+        audio_norm : float or None
+          Type of normalization to perform when loading audio
+          -1 - root-mean-square
+          See librosa for others...
+            - None case is handled here
         audio_buffer_size : int
           Size (in samples) of the audio buffer
+        device : int or None (Optional)
+          Index of the device to use for data input (see query_devices() for options...)
         enforce_continuity : bool
           TODO - bring this functionality into a separate class (no current_sample, buffer_size = samples_required)
           Whether to extract frames according to explicit hops or by using the most recent samples
+        suppress_warnings : bool
+          Whether to ignore warning messages
         """
 
         FeatureStream.__init__(self, module, frame_buffer_size)
@@ -269,6 +290,9 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
         # Field for the audio stream
         self.stream = None
+
+        # Type of normalization to perform on each new chunk of audio
+        self.audio_norm = audio_norm
 
         # Create the audio buffer
         if audio_buffer_size is None:
@@ -282,6 +306,8 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
         # Instant vs. continuous streaming
         self.enforce_continuity = enforce_continuity
+        # Flag for printing warning messages
+        self.suppress_warnings = suppress_warnings
 
         # Streaming parameters
         self.previous_time = None
@@ -295,6 +321,11 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
         # Start the thread
         self.start()
+
+        # Create a new thread to listen for key presses/releases
+        self.key_listener = keyboard.Listener(on_press=self.on_press,
+                                              on_release=self.on_release)
+        self.key_listener.start()
 
     @staticmethod
     def query_devices(verbose=True):
@@ -363,7 +394,10 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         Clear everything related to any previous streams.
         """
 
-        # TODO - check self.killed
+        if self.killed and not self.suppress_warnings:
+            # Print a warning message if the thread was already killed, since it cannot be restarted
+            warnings.warn('The MicrophoneStream Thread was already killed. A new ' +
+                          'MicrophoneStream instance should be created.', category=RuntimeWarning)
 
         # Stop streaming and clear the feature buffer
         super().reset_stream()
@@ -385,7 +419,10 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         Begin streaming audio from the microphone.
         """
 
-        # TODO - check self.killed
+        if self.killed and not self.suppress_warnings:
+            # Print a warning message if the thread was already killed, since it cannot be restarted
+            warnings.warn('The MicrophoneStream Thread was already killed. A new ' +
+                          'MicrophoneStream instance should be created.', category=RuntimeWarning)
 
         # Check if the microphone stream was previously closed
         if self.query_finished():
@@ -437,9 +474,14 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
                 if num_samples_available > 0:
                     # Read the available samples (mono-channel) and normalize them
-                    # TODO - abstract normalization type
-                    new_audio = tools.rms_norm(self.stream.read(num_samples_available)[0][:, 0])
-                    #new_audio = self.stream.read(num_samples_available)[0][:, 0]
+                    new_audio = self.stream.read(num_samples_available)[0][:, 0]
+
+                    if self.audio_norm == -1:
+                        # Perform root-mean-square normalization
+                        new_audio = tools.rms_norm(new_audio)
+                    else:
+                        # Normalize the audio using librosa
+                        new_audio = librosa.util.normalize(new_audio, norm=self.audio_norm)
 
                     # Advance the buffer by the amount of new samples
                     self.audio_buffer = np.roll(self.audio_buffer, -num_samples_available)
@@ -449,7 +491,22 @@ class MicrophoneStream(FeatureStream, threading.Thread):
                     if self.enforce_continuity:
                         # Update the pointer to the next frame start, clipping it at the oldest sample
                         self.current_sample = max(0, self.current_sample - num_samples_available)
-                        # TODO - warning when not fast enough for real-time (current_sample <= 0) or MIC_LAG_TOL
+
+                        if not self.suppress_warnings:
+                            # Compute the current time lag
+                            time_lag = (len(self.audio_buffer) - self.current_sample) / self.module.sample_rate
+
+                            if self.current_sample == 0:
+                                # Print a warning message describing the situation
+                                warnings.warn(f'Processing might be too slow. Audio ' +
+                                              f'buffer currently maxed out.', category=RuntimeWarning)
+                            elif time_lag > MIC_LAG_TOL:
+                                # Print a warning message with the current time lag
+                                warnings.warn(f'Processing might be too slow. Currently ' +
+                                              f'{time_lag} seconds of audio to process.', category=RuntimeWarning)
+                            else:
+                                # Everything is OK, no need to print anything
+                                pass
 
     def extract_frame_features(self):
         """
@@ -464,6 +521,7 @@ class MicrophoneStream(FeatureStream, threading.Thread):
         if self.enforce_continuity:
             # Wait until there are enough new samples in the buffer for an entire frame
             while self.current_sample > len(self.audio_buffer) - self.module.get_num_samples_required():
+                # This means we are ahead on processing
                 continue
 
             # Take a full frame of audio starting at the current pointer
@@ -544,12 +602,44 @@ class MicrophoneStream(FeatureStream, threading.Thread):
 
         self.killed = True
 
+    @staticmethod
+    def on_press(key):
+        """
+        Function called when a key is pressed.
+
+        Parameters
+        ----------
+        key : pynput.keyboard.Key
+          Key which was pressed
+        """
+
+        pass
+
+    def on_release(self, key):
+        """
+        Function called when a key is released.
+
+        Parameters
+        ----------
+        key : pynput.keyboard.Key
+          Key which was released
+        """
+
+        if key == keyboard.Key.enter:
+            # Stop thread execution
+            self.stop_thread()
+            # Wait to continue until the thread has been properly stopped
+            self.join()
+            # Stop the current stream
+            self.stop_streaming()
+
 
 class AudioStream(FeatureStream):
     """
     Implements a streaming wrapper which processes audio in real-time.
     """
-    def __init__(self, module, frame_buffer_size=1, audio=None, real_time=False, playback=False):
+    def __init__(self, module, frame_buffer_size=1, audio=None,
+                 real_time=False, playback=False, suppress_warnings=True):
         """
         Initialize parameters for the audio streaming interface.
 
@@ -562,6 +652,9 @@ class AudioStream(FeatureStream):
           Whether to process the audio in a real-time fashion
         playback : bool
           Whether to playback the audio when streaming in real-time
+        TODO - variant where we don't automatically enforce continuity (or at least have the option here)?
+        suppress_warnings : bool
+          Whether to ignore warning messages
         """
 
         FeatureStream.__init__(self, module, frame_buffer_size)
@@ -573,6 +666,7 @@ class AudioStream(FeatureStream):
         # Real-time parameters
         self.playback = playback
         self.real_time = real_time
+        self.suppress_warnings = suppress_warnings
 
         # Reset audio and streaming markers
         self.reset_stream(audio)
@@ -640,8 +734,16 @@ class AudioStream(FeatureStream):
             sample_time = (self.current_sample + self.module.get_num_samples_required()) / self.module.sample_rate
 
             if self.real_time:
+                if not self.suppress_warnings:
+                    # Compute the current time lag
+                    time_lag = self.get_elapsed_time() - sample_time
+
+                    if time_lag > MIC_LAG_TOL:
+                        # Print a warning message with the current time lag
+                        warnings.warn(f'Processing might be too slow. Currently ' +
+                                      f'out of sync by {time_lag} seconds.', category=RuntimeWarning)
+
                 # Wait until it is time to acquire the next frame
-                # TODO - add warning when model is not fast enough for real-time
                 while self.get_elapsed_time() < sample_time:
                     continue
 
@@ -680,7 +782,8 @@ class AudioFileStream(AudioStream):
     """
     Implements a streaming wrapper which processes an audio file in real-time.
     """
-    def __init__(self, module, frame_buffer_size=1, audio_path=None, real_time=False, playback=False):
+    def __init__(self, module, frame_buffer_size=1, audio_path=None, audio_norm=-1,
+                 real_time=False, playback=False, suppress_warnings=True):
         """
         Initialize parameters for the audio file streaming interface.
 
@@ -689,19 +792,20 @@ class AudioFileStream(AudioStream):
         See AudioStream class for others...
         audio_path : string
           Path to audio to stream
+        audio_norm : float or None
+          Type of normalization to perform when loading audio
+          -1 - root-mean-square
+          See librosa for others...
+            - None case is handled here
         """
 
-        # Load the audio at the specified path, with no normalization by default
-        audio, _ = tools.load_normalize_audio(audio_path, fs=module.sample_rate, norm=None)
+        # Load the audio at the specified path, with rms normalization by default
+        audio, _ = tools.load_normalize_audio(audio_path, fs=module.sample_rate, norm=audio_norm)
 
         self.original_audio = audio
 
-        # TODO - abstract normalization type
-        # Normalize the audio
-        audio = tools.rms_norm(audio)
-
         # Call the parent class constructor - the rest of the functionality is the same
-        AudioStream.__init__(self, module, frame_buffer_size, audio, real_time, playback)
+        AudioStream.__init__(self, module, frame_buffer_size, audio, real_time, playback, suppress_warnings)
 
     def start_streaming(self):
         """

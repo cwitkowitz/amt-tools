@@ -135,7 +135,7 @@ class WaveformWrapper(FeatureModule):
 
         if audio.shape[-1] == 0:
             # Handle case of empty audio array
-            return np.zeros((0, self.win_length))
+            return np.zeros((self.win_length, 0))
 
         if self.center:
             # Pad the audio such that the first sample

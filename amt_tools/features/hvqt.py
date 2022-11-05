@@ -177,6 +177,7 @@ class HVQT(FeatureModule):
           Dimensionality along feature axis
         """
 
-        feature_size = self.n_bins
+        # Obtain the feature size from the lowest harmonic
+        feature_size = self.modules[0].get_feature_size()
 
         return feature_size

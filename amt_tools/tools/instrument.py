@@ -8,6 +8,7 @@ import numpy as np
 import librosa
 
 # TODO - some sort of combo class for multi-instrument transcription? - Tablature can be used?
+# TODO - this file is due for a cleanup
 
 
 class InstrumentProfile(object):
@@ -176,6 +177,87 @@ class TablatureProfile(InstrumentProfile):
         pitch_ranges = np.array([np.arange(tuning[i], tuning[i] + self.num_pitches) for i in range(num_dofs)])
 
         return pitch_ranges
+    
+    def get_fret(self, midi_pitch, string):
+        """
+        Get the fret for a given MIDI pitch and string.
+
+        Parameters
+        ----------
+        midi_pitch : int
+          MIDI pitch to query
+        string : int
+          String to query
+
+        Returns
+        ----------
+        fret : int
+          Fret corresponding to the specified pitch/string
+        """
+
+        # Determine the lowest pitch for each string
+        midi_tuning = self.get_midi_tuning()
+        # Subtract the chosen string's lowest pitch
+        fret = midi_pitch - midi_tuning[string]
+
+        # TODO - throw warning for out of bounds (f < 0 || f > num_frets) fret?
+
+        return fret
+
+    def get_pitch(self, string, fret):
+        """
+        Get the MIDI pitch for a given string and fret.
+
+        Parameters
+        ----------
+        string : int
+          String to query
+        fret : int
+          Fret to query
+
+        Returns
+        ----------
+        midi_pitch : int
+          MIDI pitch corresponding to the specified string/fret
+        """
+
+        # TODO - throw warning for out of bounds (f < 0 || f > num_frets) fret?
+
+        # Determine the lowest pitch for each string
+        midi_tuning = self.get_midi_tuning()
+        # Add the chosen string's lowest pitch
+        midi_pitch = midi_tuning[string] + fret
+
+        return midi_pitch
+
+    def get_valid_positions(self, midi_pitch):
+        """
+        Get all the possible fretboard positions for a given MIDI pitch.
+
+        Parameters
+        ----------
+        midi_pitch : int
+          MIDI pitch to query
+
+        Returns
+        ----------
+        valid_positions : list of (string, fret) tuples
+          Guitar positions where the specified pitch can be played
+        """
+
+        # Initialize an empty list to hold valid string/fret positions
+        valid_positions = list()
+
+        # Loop through all strings
+        for s in range(self.get_num_dofs()):
+            # Compute the fret corresponding to the specified pitch
+            fret = self.get_fret(midi_pitch, s)
+
+            if (fret >= 0) and (fret < self.num_pitches):
+                # Add the position if the computed fret is valid
+                valid_positions.append((s, fret))
+
+        return valid_positions
 
 
 class GuitarProfile(TablatureProfile):

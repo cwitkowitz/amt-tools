@@ -77,53 +77,53 @@ class MAPS(TranscriptionDataset):
         data = super().load(track)
 
         # If the track data is being instantiated, it will not have the 'audio' key
-        if tools.KEY_AUDIO not in data.keys():
+        if not tools.query_dict(data, tools.KEY_AUDIO):
             # Construct the path to the track's audio
             wav_path = self.get_wav_path(track)
             # Load and normalize the audio along with the sampling rate
-            data[tools.KEY_AUDIO], data[tools.KEY_FS] = tools.load_normalize_audio(wav_path,
-                                                                                   fs=self.sample_rate,
-                                                                                   norm=self.audio_norm)
+            audio, fs = tools.load_normalize_audio(wav_path,
+                                                   fs=self.sample_rate,
+                                                   norm=self.audio_norm)
+
+            # We need the frame times for the multi pitch array
+            times = self.data_proc.get_times(audio)
 
             # Construct the path to the track's MIDI data
             midi_path = self.get_midi_path(track)
+
             # Load the batch-friendly notes from the MIDI data and remove the velocity
             batched_notes = tools.load_notes_midi(midi_path)[..., :-1]
-            # Add the notes to the dictionary
-            data[tools.KEY_NOTES] = batched_notes
 
             # Convert the batch-friendly notes to notes
             pitches, intervals = tools.batched_notes_to_notes(batched_notes)
 
-            # We need the frame times for the multi pitch array
-            times = self.data_proc.get_times(data[tools.KEY_AUDIO])
-
-            # Obtain the multi pitch array from the notes
-            data[tools.KEY_MULTIPITCH] = tools.notes_to_multi_pitch(pitches, intervals, times, self.profile)
+            # Represent the string-wise notes as a multi pitch array
+            multi_pitch = tools.notes_to_multi_pitch(pitches, intervals, times, self.profile)
 
             # Consider the length of a hop as the ambiguity for onsets/offsets
             ambiguity = self.hop_length / self.sample_rate
 
-            # Obtain note onsets from the notes
-            data[tools.KEY_ONSETS] = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
+            # Obtain onsets and offsets from the notes as stacked multi pitch arrays
+            onsets = tools.notes_to_onsets(pitches, intervals, times, self.profile, ambiguity)
+            offsets = tools.notes_to_offsets(pitches, intervals, times, self.profile, ambiguity)
 
-            # Obtain note offsets from the notes
-            data[tools.KEY_OFFSETS] = tools.notes_to_offsets(pitches, intervals, times, self.profile, ambiguity)
+            # Add all relevant ground-truth to the dictionary
+            data.update({tools.KEY_FS : fs,
+                         tools.KEY_AUDIO : audio,
+                         tools.KEY_MULTIPITCH : multi_pitch,
+                         tools.KEY_ONSETS : onsets,
+                         tools.KEY_OFFSETS : offsets,
+                         tools.KEY_NOTES : batched_notes})
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
 
-                # Create the path if it doesn't exist
+                # Create the (sub-directory) path if it doesn't exist
                 os.makedirs(os.path.dirname(gt_path), exist_ok=True)
 
                 # Save the data as a NumPy zip file
-                keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_MULTIPITCH,
-                        tools.KEY_ONSETS, tools.KEY_OFFSETS, tools.KEY_NOTES)
-                tools.save_pack_npz(gt_path, keys,
-                                    data[tools.KEY_FS], data[tools.KEY_AUDIO],
-                                    data[tools.KEY_MULTIPITCH], data[tools.KEY_ONSETS],
-                                    data[tools.KEY_OFFSETS], data[tools.KEY_NOTES])
+                tools.save_dict_npz(gt_path, data)
 
         return data
 
@@ -230,8 +230,9 @@ class MAPS(TranscriptionDataset):
           Names of pianos used in MAPS
         """
 
-        splits = ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb',
-                  'ENSTDkAm', 'ENSTDkCl', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
+        splits = ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD',
+                  'AkPnStgb', 'ENSTDkAm', 'ENSTDkCl',
+                  'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
 
         return splits
 
@@ -248,6 +249,6 @@ class MAPS(TranscriptionDataset):
           Directory in which to save the contents of MAPS
         """
 
-        # TODO
+        # TODO - add link
 
         assert False, 'MAPS must be requested and downloaded manually'

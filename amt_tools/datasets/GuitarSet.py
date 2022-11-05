@@ -80,13 +80,16 @@ class GuitarSet(TranscriptionDataset):
         data = super().load(track)
 
         # If the track data is being instantiated, it will not have the 'audio' key
-        if tools.KEY_AUDIO not in data.keys():
+        if not tools.query_dict(data, tools.KEY_AUDIO):
             # Construct the path to the track's audio
             wav_path = self.get_wav_path(track)
             # Load and normalize the audio along with the sampling rate
-            data[tools.KEY_AUDIO], data[tools.KEY_FS] = tools.load_normalize_audio(wav_path,
-                                                                                   fs=self.sample_rate,
-                                                                                   norm=self.audio_norm)
+            audio, fs = tools.load_normalize_audio(wav_path,
+                                                   fs=self.sample_rate,
+                                                   norm=self.audio_norm)
+
+            # We need the frame times for the tablature
+            times = self.data_proc.get_times(audio)
 
             # Construct the path to the track's JAMS data
             jams_path = self.get_jams_path(track)
@@ -94,26 +97,27 @@ class GuitarSet(TranscriptionDataset):
             # Load the notes by string from the JAMS file
             stacked_notes = tools.load_stacked_notes_jams(jams_path)
 
-            # We need the frame times for the tablature
-            times = self.data_proc.get_times(data[tools.KEY_AUDIO])
-
-            # Convert the string-wise notes into a stacked multi pitch array
+            # Represent the string-wise notes as a stacked multi pitch array
             stacked_multi_pitch = tools.stacked_notes_to_stacked_multi_pitch(stacked_notes, times, self.profile)
 
-            # Convert the stacked multi pitch array into a single representation
-            data[tools.KEY_MULTIPITCH] = tools.stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch)
-
             # Convert the stacked multi pitch array into tablature
-            data[tools.KEY_TABLATURE] = tools.stacked_multi_pitch_to_tablature(stacked_multi_pitch, self.profile)
+            tablature = tools.stacked_multi_pitch_to_tablature(stacked_multi_pitch, self.profile)
+
+            # Convert the stacked multi pitch array into a single representation
+            multi_pitch = tools.stacked_multi_pitch_to_multi_pitch(stacked_multi_pitch)
+
+            # Add all relevant ground-truth to the dictionary
+            data.update({tools.KEY_FS : fs,
+                         tools.KEY_AUDIO : audio,
+                         tools.KEY_TABLATURE : tablature,
+                         tools.KEY_MULTIPITCH : multi_pitch})
 
             if self.save_data:
                 # Get the appropriate path for saving the track data
                 gt_path = self.get_gt_dir(track)
 
                 # Save the data as a NumPy zip file
-                keys = (tools.KEY_FS, tools.KEY_AUDIO, tools.KEY_TABLATURE, tools.KEY_MULTIPITCH)
-                tools.save_pack_npz(gt_path, keys, data[tools.KEY_FS], data[tools.KEY_AUDIO],
-                                    data[tools.KEY_TABLATURE], data[tools.KEY_MULTIPITCH])
+                tools.save_dict_npz(gt_path, data)
 
         return data
 

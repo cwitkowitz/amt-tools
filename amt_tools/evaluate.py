@@ -9,10 +9,13 @@ from mir_eval.transcription import precision_recall_f1_overlap as evaluate_notes
 from mir_eval.multipitch import evaluate as evaluate_frames
 from abc import abstractmethod
 from scipy.stats import hmean
+from mir_eval import util
 from copy import deepcopy
 
 import numpy as np
+import warnings
 import torch
+import json
 import sys
 import os
 
@@ -38,9 +41,8 @@ __all__ = [
 
 EPSILON = sys.float_info.epsilon
 
-# TODO - add warning when unpack returns None
-# TODO - none of the stacked evaluators have been tested independently
-#      - they will likely break during append, average, log, write, etc.
+# TODO - what to do about null estimates? - mark as None and ignore in averaging?
+#        - see https://stats.stackexchange.com/questions/8025/what-are-correct-values-for-precision-and-recall-when-the-denominators-equal-0
 
 ##################################################
 # EVALUATION LOOP                                #
@@ -91,7 +93,7 @@ def validate(model, dataset, evaluator, estimator=None, online=False):
                 predictions = run_offline(track_data, model, estimator)
 
             # Evaluate the predictions and track the results
-            evaluator.get_track_results(predictions, track_data, track_id)
+            evaluator.process_track(predictions, track_data, track_id)
 
     # Obtain the average results from this validation loop
     average = evaluator.average_results()
@@ -174,7 +176,7 @@ def append_results(tracked_results, new_results):
     return tracked_results
 
 
-def log_results(results, writer, step=0, patterns=None, tag=''):
+def log_results(results, writer, step=0, patterns=None, tag='', prnt=False):
     """
     Log results using TensorBoardX.
 
@@ -190,6 +192,8 @@ def log_results(results, writer, step=0, patterns=None, tag=''):
       Only write metrics containing these patterns (e.g. ['f1', 'pr']) (None for all metrics)
     tag : string
       Tag for organizing different types of results (e.g. 'validation')
+    prnt : bool
+      Whether to additionally print results to console
     """
 
     # Loop through the keys in the dictionary
@@ -206,6 +210,10 @@ def log_results(results, writer, step=0, patterns=None, tag=''):
             if pattern_match(key, patterns) or patterns is None:
                 # Log the entry under the specified key
                 writer.add_scalar(f'{tag}/{key}', entry, global_step=step)
+
+                if prnt:
+                    # Print the results for the entry to the console
+                    print(json.dumps({'iter': step, f'{tag}/{key}': entry}))
 
 
 def write_results(results, file, patterns=None, verbose=False):
@@ -282,14 +290,16 @@ class Evaluator(object):
     Implements a generic music information retrieval evaluator.
     """
 
-    def __init__(self, key, save_dir, patterns, verbose):
+    def __init__(self, unpack_key=None, results_key=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters common to all evaluators and instantiate.
 
         Parameters
         ----------
-        key : string
-          Key to use when unpacking data and organizing results
+        unpack_key : string or None (optional)
+          Key to use when unpacking data for the evaluation
+        results_key : string or None (optional)
+          Key to use when organizing results
         save_dir : string or None (optional)
           Directory where results for each track will be written
         patterns : list of string or None (optional)
@@ -298,7 +308,9 @@ class Evaluator(object):
           Whether to print any written text to console as well
         """
 
-        self.key = key
+        # Set up the dictionary keys to use for extracting data and organizing results
+        self.unpack_key = self.get_default_key() if unpack_key is None else unpack_key
+        self.results_key = self.get_default_key() if results_key is None else results_key
 
         self.save_dir = None
         self.set_save_dir(save_dir)
@@ -375,25 +387,6 @@ class Evaluator(object):
 
         return average
 
-    def get_key(self):
-        """
-        Obtain the key being used for the Evaluator.
-
-        Returns
-        ----------
-        key : string
-          Key to use when unpacking data and organizing results
-        """
-
-        if self.key is None:
-            # Default the key
-            key = self.get_default_key()
-        else:
-            # Use the provided key
-            key = self.key
-
-        return key
-
     @staticmethod
     @abstractmethod
     def get_default_key():
@@ -403,56 +396,41 @@ class Evaluator(object):
 
         return NotImplementedError
 
-    def unpack(self, data):
+    def unpack(self, estimated, reference):
         """
-        Unpack the relevant entry for evaluation if
-        a dictionary is provided and the entry exists.
+        Attempt to unpack data relevant to the evaluator from the provided estimates/ground-truth.
+
+        Note: This method can be overridden in order to insert extra steps, such
+              as for manipulating the format of the estimate and/or ground-truth.
 
         Parameters
         ----------
-        data : object
-          Presumably either a dictionary containing ground-truth
-          or model output, or the already-unpacked entry
-
-        Returns
-        ----------
-        data : object
-          Unpacked entry or same object provided if no dictionary
-        """
-
-        # Determine the relevant key for evaluation
-        key = self.get_key()
-
-        # Check if a dictionary was provided and if the key is in the dictionary
-        data = tools.try_unpack_dict(data, key)
-
-        return data
-
-    def pre_proc(self, estimated, reference):
-        """
-        Handle both dictionary input as well as relevant input for
-        both estimated and reference data.
-
-        Note: This method can be overridden in order to insert extra steps.
-
-        Parameters
-        ----------
-        estimated : object
-          Dictionary containing ground-truth or the already-unpacked entry
-        reference : object
-          Dictionary containing model output or the already-unpacked entry
+        estimated : dict
+          Dictionary containing estimate relevant to evaluation
+        reference : dict
+          Dictionary containing ground-truth relevant to evaluation
 
         Returns
         ----------
         estimated : object
-          Estimate relevant to the evaluation
+          Estimate relevant to evaluation
         reference : object
-          Reference relevant to the evaluation
+          Ground-truth relevant to evaluation
         """
 
-        # Unpacked estimate and reference if dictionaries were provided
-        estimated = self.unpack(estimated)
-        reference = self.unpack(reference)
+        # Unpack estimate and reference from provided dictionaries
+        estimated = tools.unpack_dict(estimated, self.unpack_key)
+        reference = tools.unpack_dict(reference, self.unpack_key)
+
+        if estimated is None:
+            # Estimate relevant to this evaluator does not exist or was not unpacked properly
+            warnings.warn(f'Entry for key \'{self.unpack_key}\' ' +
+                          f'not found in estimates.', category=RuntimeWarning)
+
+        if reference is None:
+            # Ground-truth relevant to this evaluator does not exist or was not unpacked properly
+            warnings.warn(f'Entry for key \'{self.unpack_key}\' ' +
+                          f'not found in ground-truth.', category=RuntimeWarning)
 
         return estimated, reference
 
@@ -464,9 +442,9 @@ class Evaluator(object):
         Parameters
         ----------
         estimated : object
-          Estimate relevant to the evaluation or the dictionary containing it
+          Estimate relevant to evaluation
         reference : object
-          Reference relevant to the evaluation or the dictionary containing it
+          Ground-truth relevant to evaluation
         """
 
         return NotImplementedError
@@ -502,16 +480,16 @@ class Evaluator(object):
                 # Write the results to a text file
                 write_results(results, results_file, self.patterns, self.verbose)
 
-    def get_track_results(self, estimated, reference, track=None):
+    def process_track(self, estimated, reference, track=None):
         """
         Calculate the results, write them, and track them within the evaluator.
 
         Parameters
         ----------
-        estimated : object
-          Estimate relevant to the evaluation or the dictionary containing it
-        reference : object
-          Reference relevant to the evaluation or the dictionary containing it
+        estimated : dict
+          Dictionary containing estimate relevant to evaluation
+        reference : dict
+          Dictionary containing ground-truth relevant to evaluation
         track : string
           Name of the track being processed
 
@@ -521,11 +499,8 @@ class Evaluator(object):
           Dictionary containing results of tracks arranged by metric
         """
 
-        # Make sure the estimated and reference data are unpacked
-        estimated, reference = self.pre_proc(estimated, reference)
-
-        # Calculate the results
-        results = self.evaluate(estimated, reference)
+        # Unpack relevant data and calculate the results
+        results = self.evaluate(*self.unpack(estimated, reference))
 
         # Add the results to the tracked dictionary
         self.results = append_results(self.results, results)
@@ -571,12 +546,12 @@ class ComboEvaluator(Evaluator):
         See Evaluator class...
 
         evaluators : list of Evaluator
-          All of the evaluators to run
+          All evaluators to run
         """
 
         self.evaluators = evaluators
 
-        super().__init__(None, save_dir, patterns, verbose)
+        super().__init__(None, None, save_dir, patterns, verbose)
 
     def reset_results(self):
         """
@@ -608,18 +583,26 @@ class ComboEvaluator(Evaluator):
             results = average_results(evaluator.results)
 
             # Check if there is already an entry for the evaluator's key
-            if tools.query_dict(average, evaluator.get_key()):
+            if tools.query_dict(average, evaluator.results_key):
                 # Add new entries to the results
-                average[evaluator.get_key()].update(results)
+                average[evaluator.results_key].update(results)
             else:
                 # Create a new entry for the results
-                average[evaluator.get_key()] = results
+                average[evaluator.results_key] = results
 
         return average
 
     @staticmethod
     @abstractmethod
     def get_default_key():
+        """
+        This should not be called directly on a ComboEvaluator.
+        """
+
+        return NotImplementedError
+
+    @abstractmethod
+    def unpack(self, estimated, reference):
         """
         This should not be called directly on a ComboEvaluator.
         """
@@ -634,17 +617,17 @@ class ComboEvaluator(Evaluator):
 
         return NotImplementedError
 
-    def get_track_results(self, estimated, reference, track=None):
+    def process_track(self, estimated, reference, track=None):
         """
         Very similar to parent method, except file is written after results are
         calculated for each evaluator and packaged into a single dictionary.
 
         Parameters
         ----------
-        estimated : object
-          Estimate relevant to the evaluation or the dictionary containing it
-        reference : object
-          Reference relevant to the evaluation or the dictionary containing it
+        estimated : dict
+          Dictionary containing estimates relevant to evaluation
+        reference : dict
+          Dictionary containing all ground-truth relevant to evaluation
         track : string
           Name of the track being processed
 
@@ -655,23 +638,20 @@ class ComboEvaluator(Evaluator):
         """
 
         # Copy the raw output dictionary and use it to hold estimates
-        results = {}
+        results = dict()
 
         # Loop through the evaluators
         for evaluator in self.evaluators:
-            # Make sure the estimated and reference data are unpacked
-            estimated_, reference_ = evaluator.pre_proc(estimated, reference)
-
-            # Calculate the results
-            new_results = evaluator.evaluate(estimated_, reference_)
+            # Unpack relevant data and calculate the results
+            new_results = evaluator.evaluate(*evaluator.unpack(estimated, reference))
 
             # Check if there is already an entry for the evaluator's key
-            if tools.query_dict(results, evaluator.get_key()):
+            if tools.query_dict(results, evaluator.results_key):
                 # Add new entries to the results
-                results[evaluator.get_key()].update(new_results)
+                results[evaluator.results_key].update(new_results)
             else:
                 # Create a new entry for the results
-                results[evaluator.get_key()] = new_results
+                results[evaluator.results_key] = new_results
 
             # Add the results to the tracked dictionary
             evaluator.results = append_results(evaluator.results, new_results)
@@ -687,17 +667,6 @@ class LossWrapper(Evaluator):
     Simple wrapper for tracking, writing, and logging loss.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See Evaluator class...
-        """
-
-        super().__init__(key, save_dir, patterns, verbose)
-
     @staticmethod
     def get_default_key():
         """
@@ -705,6 +674,34 @@ class LossWrapper(Evaluator):
         """
 
         return tools.KEY_LOSS
+
+    def unpack(self, estimated, reference=None):
+        """
+        Unpack the loss from the dictionary of estimates and ignore the ground-truth.
+
+        Parameters
+        ----------
+        estimated : dict
+          Dictionary containing loss information
+        reference : irrelevant
+
+        Returns
+        ----------
+        loss : dict
+          Dictionary containing computed loss terms
+        reference : None
+          Null pointer in place of unpacked ground-truth data
+        """
+
+        # Unpack loss from provided dictionary
+        loss = tools.unpack_dict(estimated, self.unpack_key)
+
+        if loss is None:
+            # Loss does not exist or was not unpacked properly
+            warnings.warn(f'Entry for key \'{self.unpack_key}\' ' +
+                          f'not found in estimates.', category=RuntimeWarning)
+
+        return loss, None
 
     def evaluate(self, estimated, reference=None):
         """
@@ -722,28 +719,69 @@ class LossWrapper(Evaluator):
           Dictionary containing loss
         """
 
-        # Package the results into a dictionary
+        # Pass the loss directly through
         results = estimated
 
         return results
 
 
-class StackedMultipitchEvaluator(Evaluator):
+class StackedEvaluator(Evaluator):
     """
-    Implements an evaluator for stacked multi pitch activation maps, i.e.
-    independent multi pitch estimations across degrees of freedom or instruments.
+    Implements an evaluator for stacked representations.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, average_slices=False, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See Evaluator class for others...
+
+        average_slices : bool
+          Whether to collapse the slice dimension of the results by averaging
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(unpack_key, results_key, save_dir, patterns, verbose)
+
+        self.average_slices = average_slices
+
+    @staticmethod
+    def average_slice_results(_results):
+        """
+        Average results split by slices of a stacked representation.
+
+        Parameters
+        ----------
+        _results : dict
+          Results dictionary with an entry for each slice
+
+        Returns
+        ----------
+        results : dict
+          Collapsed results dictionary
+        """
+
+        # Initialize a new dictionary to hold averages
+        results = dict()
+
+        # Loop through all tracked slices
+        for key in _results.keys():
+            # Append the results of each slice to the new dictionary
+            results = append_results(results, _results[key])
+
+        # Average the results across slice
+        results = average_results(results)
+
+        return results
+
+
+class StackedMultipitchEvaluator(StackedEvaluator):
+    """
+    Implements an evaluator for stacked multi pitch activation maps, i.e.
+    independent multi pitch estimations across degrees of freedom or instruments.
+    """
 
     @staticmethod
     def get_default_key():
@@ -771,7 +809,7 @@ class StackedMultipitchEvaluator(Evaluator):
         Returns
         ----------
         results : dict
-          Dictionary containing precision, recall, and f-measure
+          Dictionary containing (slice -> (precision, recall, and f-measure)) pairs
         """
 
         # Determine the shape necessary to flatten the last two dimensions
@@ -797,12 +835,22 @@ class StackedMultipitchEvaluator(Evaluator):
         # Calculate the f1-score using the harmonic mean formula
         f_measure = hmean([precision + EPSILON, recall + EPSILON]) - EPSILON
 
+        # Obtain integer keys for the slices
+        slice_keys = list(range(len(f_measure)))
+
+        # Create a dictionary of results for each slice
+        results = [{
+            tools.KEY_PRECISION : precision[slc],
+            tools.KEY_RECALL : recall[slc],
+            tools.KEY_F1 : f_measure[slc]
+        } for slc in slice_keys]
+
         # Package the results into a dictionary
-        results = {
-            tools.KEY_PRECISION : precision,
-            tools.KEY_RECALL : recall,
-            tools.KEY_F1 : f_measure
-        }
+        results = dict(zip(slice_keys, results))
+
+        if self.average_slices:
+            # Average the results across the slices
+            results = self.average_slice_results(results)
 
         return results
 
@@ -812,16 +860,17 @@ class MultipitchEvaluator(StackedMultipitchEvaluator):
     Implements an evaluator for multi pitch activation maps.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See StackedEvaluator class...
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(True, unpack_key, results_key, save_dir, patterns, verbose)
 
     def evaluate(self, estimated, reference):
         """
@@ -851,30 +900,28 @@ class MultipitchEvaluator(StackedMultipitchEvaluator):
         # case of stacked multi pitch, where there is only one degree of freedom
         results = super().evaluate(stacked_multi_pitch_est, stacked_multi_pitch_ref)
 
-        # Average the results across the degree of freedom - i.e. collapse extraneous dimension
-        results = average_results(results)
-
         return results
 
 
-class StackedNoteEvaluator(Evaluator):
+class StackedNoteEvaluator(StackedEvaluator):
     """
     Implements an evaluator for stacked (independent) note estimations.
     """
 
-    def __init__(self, offset_ratio=None, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, offset_ratio=None, average_slices=False, unpack_key=None,
+                 results_key=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See StackedEvaluator class for others...
 
         offset_ratio : float
           Ratio of the reference note's duration used to define the offset tolerance
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(average_slices, unpack_key, results_key, save_dir, patterns, verbose)
 
         self.offset_ratio = offset_ratio
 
@@ -885,30 +932,6 @@ class StackedNoteEvaluator(Evaluator):
         """
 
         return tools.KEY_NOTES
-
-    def unpack(self, data):
-        """
-        Unpack notes using the default notes key rather than the specified key.
-
-        Parameters
-        ----------
-        data : object
-          Presumably either a dictionary containing ground-truth
-          or model output, or the already-unpacked notes
-
-        Returns
-        ----------
-        data : object
-          Unpacked notes or same object provided if no dictionary
-        """
-
-        # Determine the relevant key for evaluation
-        key = self.get_default_key()
-
-        # Check if a dictionary was provided and if the key is in the dictionary
-        data = tools.try_unpack_dict(data, key)
-
-        return data
 
     def evaluate(self, estimated, reference):
         """
@@ -924,40 +947,42 @@ class StackedNoteEvaluator(Evaluator):
         Returns
         ----------
         results : dict
-          Dictionary containing precision, recall, and f-measure
+          Dictionary containing (slice -> (precision, recall, and f-measure)) pairs
         """
 
-        # Initialize empty arrays to hold results for each degree of freedom
-        precision, recall, f_measure = np.empty(0), np.empty(0), np.empty(0)
+        # Initialize an empty dictionary to hold results for each degree of freedom
+        results = dict()
+
+        # Obtain the keys of both the estimated and reference data
+        keys_est, keys_ref = list(estimated.keys()), list(reference.keys())
 
         # Loop through the stack of notes
-        for key in estimated.keys():
+        for k in range(len(keys_ref)):
             # Extract the loose note groups from the stack
-            pitches_est, intervals_est = estimated[key]
-            pitches_ref, intervals_ref = reference[key]
+            pitches_est, intervals_est = estimated[keys_est[k]]
+            pitches_ref, intervals_ref = reference[keys_ref[k]]
 
             # Convert notes to Hertz
             pitches_ref = tools.notes_to_hz(pitches_ref)
             pitches_est = tools.notes_to_hz(pitches_est)
 
-            # Calculate frame-wise precision, recall, and f1 score with or without offset
+            # Calculate precision, recall, and f1 score of matched notes with or without offset
             p, r, f, _ = evaluate_notes(ref_intervals=intervals_ref,
                                         ref_pitches=pitches_ref,
                                         est_intervals=intervals_est,
                                         est_pitches=pitches_est,
                                         offset_ratio=self.offset_ratio)
 
-            # Add the results to the respective array
-            precision = np.append(precision, p)
-            recall = np.append(recall, r)
-            f_measure = np.append(f_measure, f)
+            # Package the results into a dictionary
+            results.update({keys_est[k] : {
+                tools.KEY_PRECISION : p,
+                tools.KEY_RECALL : r,
+                tools.KEY_F1 : f
+            }})
 
-        # Package the results into a dictionary
-        results = {
-            tools.KEY_PRECISION : precision,
-            tools.KEY_RECALL : recall,
-            tools.KEY_F1 : f_measure
-        }
+        if self.average_slices:
+            # Average the results across the slices
+            results = self.average_slice_results(results)
 
         return results
 
@@ -967,16 +992,17 @@ class NoteEvaluator(StackedNoteEvaluator):
     Implements an evaluator for notes.
     """
 
-    def __init__(self, offset_ratio=None, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, offset_ratio=None, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See StackedNoteEvaluator class...
+        See StackedNoteEvaluator...
         """
 
-        super().__init__(offset_ratio, key, save_dir, patterns, verbose)
+        super().__init__(offset_ratio, True, unpack_key, results_key, save_dir, patterns, verbose)
 
     def evaluate(self, estimated, reference):
         """
@@ -1008,13 +1034,10 @@ class NoteEvaluator(StackedNoteEvaluator):
         # Call the parent class evaluate function
         results = super().evaluate(stacked_notes_est, stacked_notes_ref)
 
-        # Average the results across the degree of freedom - i.e. collapse extraneous dimension
-        results = average_results(results)
-
         return results
 
 
-class StackedPitchListEvaluator(Evaluator):
+class StackedPitchListEvaluator(StackedEvaluator):
     """
     Implements an evaluator for stacked (independent) pitch list estimations.
 
@@ -1022,16 +1045,25 @@ class StackedPitchListEvaluator(Evaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, pitch_tolerances=None, average_slices=False, unpack_key=None,
+                 results_key=None, save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See StackedEvaluator class for others...
+
+        pitch_tolerances : list of float
+          Semitone tolerances for considering a frequency estimate correct relative to a reference
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(average_slices, unpack_key, results_key, save_dir, patterns, verbose)
+
+        if pitch_tolerances is None:
+            pitch_tolerances = [1/2]
+
+        self.pitch_tolerances = pitch_tolerances
 
     @staticmethod
     def get_default_key():
@@ -1055,42 +1087,50 @@ class StackedPitchListEvaluator(Evaluator):
         Returns
         ----------
         results : dict
-          Dictionary containing precision, recall, and f-measure
+          Dictionary containing (slice -> (precision, recall, and f-measure)) pairs
         """
 
-        # Initialize empty arrays to hold results for each degree of freedom
-        precision, recall, f_measure = np.empty(0), np.empty(0), np.empty(0)
+        # Obtain the keys of both the estimated and reference data
+        keys_est, keys_ref = list(estimated.keys()), list(reference.keys())
+
+        # Initialize an empty dictionary to hold results for each degree of freedom
+        results = dict()
 
         # Loop through the stack of pitch lists
-        for key in estimated.keys():
+        for k in range(len(keys_ref)):
             # Extract the pitch lists from the stack
-            times_ref, pitches_ref = estimated[key]
-            times_est, pitches_est = reference[key]
+            times_est, pitches_est = estimated[keys_est[k]]
+            times_ref, pitches_ref = reference[keys_ref[k]]
 
             # Convert pitch lists to Hertz
             pitches_ref = tools.pitch_list_to_hz(pitches_ref)
             pitches_est = tools.pitch_list_to_hz(pitches_est)
 
-            # Calculate frame-wise precision, recall, and f1 score for continuous pitches
-            frame_metrics = evaluate_frames(times_ref, pitches_ref, times_est, pitches_est)
+            for tol in self.pitch_tolerances:
+                # Calculate frame-wise precision, recall, and f1 score for continuous pitches
+                frame_metrics = evaluate_frames(ref_time=times_ref,
+                                                ref_freqs=pitches_ref,
+                                                est_time=times_est,
+                                                est_freqs=pitches_est,
+                                                window=tol)
 
-            # Extract observation-wise precision and recall
-            p, r = frame_metrics['Precision'], frame_metrics['Recall']
+                # Extract observation-wise precision and recall
+                p, r = frame_metrics['Precision'], frame_metrics['Recall']
 
-            # Calculate the f1-score using the harmonic mean formula
-            f = hmean([p + EPSILON, r + EPSILON]) - EPSILON
+                # Calculate the f1-score using the harmonic mean formula
+                f = hmean([p + EPSILON, r + EPSILON]) - EPSILON
 
-            # Add the results to the respective array
-            precision = np.append(precision, p)
-            recall = np.append(recall, r)
-            f_measure = np.append(f_measure, f)
+                # Package the results into a dictionary
+                results.update({keys_est[k]: {
+                    f'{tol}' : {
+                        tools.KEY_PRECISION : p,
+                        tools.KEY_RECALL : r,
+                        tools.KEY_F1 : f}
+                }})
 
-        # Package the results into a dictionary
-        results = {
-            tools.KEY_PRECISION : precision,
-            tools.KEY_RECALL : recall,
-            tools.KEY_F1 : f_measure
-        }
+        if self.average_slices:
+            # Average the results across the slices
+            results = self.average_slice_results(results)
 
         return results
 
@@ -1103,16 +1143,17 @@ class PitchListEvaluator(StackedPitchListEvaluator):
     discrete estimates, but is more general and works for continuous pitch estimations.
     """
 
-    def __init__(self, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, pitch_tolerances=None, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
         Parameters
         ----------
-        See Evaluator class...
+        See StackedPitchListEvaluator class...
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(pitch_tolerances, True, unpack_key, results_key, save_dir, patterns, verbose)
 
     def evaluate(self, estimated, reference):
         """
@@ -1148,9 +1189,6 @@ class PitchListEvaluator(StackedPitchListEvaluator):
         # Call the parent class evaluate function
         results = super().evaluate(stacked_pitch_list_est, stacked_pitch_list_ref)
 
-        # Average the results across the degree of freedom - i.e. collapse extraneous dimension
-        results = average_results(results)
-
         return results
 
 
@@ -1159,7 +1197,8 @@ class TablatureEvaluator(Evaluator):
     Implements an evaluator for tablature.
     """
 
-    def __init__(self, profile, key=None, save_dir=None, patterns=None, verbose=False):
+    def __init__(self, profile, unpack_key=None, results_key=None,
+                 save_dir=None, patterns=None, verbose=False):
         """
         Initialize parameters for the evaluator.
 
@@ -1171,7 +1210,7 @@ class TablatureEvaluator(Evaluator):
           Instrument profile detailing experimental setup
         """
 
-        super().__init__(key, save_dir, patterns, verbose)
+        super().__init__(unpack_key, results_key, save_dir, patterns, verbose)
 
         self.profile = profile
 
@@ -1183,50 +1222,18 @@ class TablatureEvaluator(Evaluator):
 
         return tools.KEY_TABLATURE
 
-    def pre_proc(self, estimated, reference):
-        """
-        By default, we anticipate neither estimate
-        or reference to be in stacked multi pitch format.
-
-        TODO - do something similar for pitch list wrapper reference
-
-        Parameters
-        ----------
-        estimated : object
-          Dictionary containing ground-truth or the already-unpacked entry
-        reference : object
-          Dictionary containing model output or the already-unpacked entry
-
-        Returns
-        ----------
-        estimated : object
-          Estimate relevant to the evaluation
-        reference : object
-          Reference relevant to the evaluation
-        """
-
-        # Unpacked estimate and reference if dictionaries were provided
-        tablature_est, tablature_ref = super().pre_proc(estimated, reference)
-
-        # Convert from tablature format to stacked multi pitch format
-        tablature_est = tools.tablature_to_stacked_multi_pitch(tablature_est, self.profile)
-        tablature_ref = tools.tablature_to_stacked_multi_pitch(tablature_ref, self.profile)
-
-        return tablature_est, tablature_ref
-
     def evaluate(self, estimated, reference):
         """
         Evaluate a stacked multi pitch tablature estimate with respect to a reference.
 
         Parameters
         ----------
-        estimated : ndarray (S x F x T)
-          Array of multiple discrete pitch activation maps
-          S - number of slices in stack
-          F - number of discrete pitches
+        estimated : ndarray (S x T)
+          Array of class membership for multiple degrees of freedom (e.g. strings)
+          S - number of strings or degrees of freedom
           T - number of frames
-        reference : ndarray (S x F x T)
-          Array of multiple discrete pitch activation maps
+        reference : ndarray (S x T)
+          Array of class membership for multiple degrees of freedom (e.g. strings)
           Dimensions same as estimated
 
         Returns
@@ -1235,9 +1242,13 @@ class TablatureEvaluator(Evaluator):
           Dictionary containing precision, recall, f-measure, and tdr
         """
 
+        # Convert from tablature format to logistic activations format
+        tablature_est = tools.tablature_to_logistic(estimated, self.profile, silence=False)
+        tablature_ref = tools.tablature_to_logistic(reference, self.profile, silence=False)
+
         # Flatten the estimated and reference data along the pitch and degree-of-freedom axis
-        flattened_tablature_est = estimated.flatten()
-        flattened_tablature_ref = reference.flatten()
+        flattened_tablature_est = tablature_est.flatten()
+        flattened_tablature_ref = tablature_ref.flatten()
 
         # Count the number of activations predicted
         num_predicted = np.sum(flattened_tablature_est, axis=-1)
@@ -1253,11 +1264,13 @@ class TablatureEvaluator(Evaluator):
         recall = num_correct_tablature / (num_ground_truth + EPSILON)
 
         # Calculate the f1-score using the harmonic mean formula
-        f_measure = hmean([precision + EPSILON, recall + EPSILON]) - EPSILON
+        f_measure = util.f_measure(precision, recall)
 
         # Collapse the stacked multi pitch activations into a single representation
-        multi_pitch_est = tools.stacked_multi_pitch_to_multi_pitch(estimated)
-        multi_pitch_ref = tools.stacked_multi_pitch_to_multi_pitch(reference)
+        multi_pitch_est = tools.stacked_multi_pitch_to_multi_pitch(
+            tools.tablature_to_stacked_multi_pitch(estimated, self.profile))
+        multi_pitch_ref = tools.stacked_multi_pitch_to_multi_pitch(
+            tools.tablature_to_stacked_multi_pitch(reference, self.profile))
 
         # Flatten the estimated and reference multi pitch activations
         flattened_multi_pitch_est = multi_pitch_est.flatten()
@@ -1286,24 +1299,13 @@ class SoftmaxAccuracy(Evaluator):
     Implements an evaluator for calculating accuracy of softmax groups.
     """
 
-    def __init__(self, key, save_dir=None, patterns=None, verbose=False):
-        """
-        Initialize parameters for the evaluator.
-
-        Parameters
-        ----------
-        See Evaluator class for others...
-        """
-
-        super().__init__(key, save_dir, patterns, verbose)
-
     @staticmethod
     def get_default_key():
         """
-        A key must be provided for softmax groups accuracy.
+        Default key for tablature.
         """
 
-        return NotImplementedError
+        return tools.KEY_TABLATURE
 
     def evaluate(self, estimated, reference):
         """
@@ -1315,7 +1317,7 @@ class SoftmaxAccuracy(Evaluator):
           Array of class membership estimates for multiple degrees of freedom (e.g. strings)
           S - number of degrees of freedom
           T - number of samples or frames
-        reference : ndarray (S x F x T)
+        reference : ndarray (S x T)
           Array of class membership ground-truth
           Dimensions same as estimated
 

@@ -24,7 +24,9 @@ __all__ = [
     'load_notes_jams',
     'extract_duration_jams',
     'load_duration_jams',
+    'extract_stacked_pitch_list_jams',
     'load_stacked_pitch_list_jams',
+    'extract_pitch_list_jams',
     'load_pitch_list_jams',
     'load_notes_midi',
     'write_and_print',
@@ -108,7 +110,6 @@ def extract_stacked_notes_jams(jam):
 
     # Loop through the slices of the stack
     for slice_notes in note_data_slices:
-
         # Extract the string label for this slice
         string = slice_notes.annotation_metadata[constants.JAMS_STRING_IDX]
 
@@ -252,27 +253,25 @@ def load_duration_jams(jams_path):
     return duration
 
 
-def load_stacked_pitch_list_jams(jams_path, times=None):
+def extract_stacked_pitch_list_jams(jam, times=None, uniform=True):
     """
-    Load pitch lists spread across slices (e.g. guitar strings) from JAMS file into a dictionary.
-    TODO - same load/extract separation as notes
+    Extract pitch lists spread across slices (e.g. guitar strings) from JAMS annotations into a dictionary.
 
     Parameters
     ----------
-    jams_path : string
-      Path to JAMS file to read
+    jam : JAMS object
+      JAMS file data
     times : ndarray or None (optional) (N)
-      Time in seconds of beginning of each frame
-      N - number of times samples
+      Time in seconds for resampling
+      N - number of time samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
 
     Returns
     ----------
     stacked_pitch_list : dict
       Dictionary containing (slice -> (times, pitch_list)) pairs
     """
-
-    # Load the metadata from the jams file
-    jam = jams.load(jams_path)
 
     # Extract all of the pitch annotations
     pitch_data_slices = jam.annotations[constants.JAMS_PITCH_HZ]
@@ -288,6 +287,9 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
         # Extract the pitch list pertaining to this slice
         slice_pitches = pitch_data_slices[slc]
 
+        # Extract the string label for this slice
+        string = slice_pitches.annotation_metadata[constants.JAMS_STRING_IDX]
+
         # Initialize an array/list to hold the times/frequencies associated with each observation
         entry_times, slice_pitch_list = np.empty(0), list()
 
@@ -296,8 +298,8 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
             # Extract the pitch
             freq = np.array([pitch.value['frequency']])
 
-            # Don't keep track of zero-frequencies
-            if np.sum(freq) == 0:
+            # Don't keep track of zero or unvoiced frequencies
+            if np.sum(freq) == 0 or not pitch.value['voiced']:
                 freq = np.empty(0)
 
             # Append the observation time
@@ -305,38 +307,102 @@ def load_stacked_pitch_list_jams(jams_path, times=None):
             # Append the frequency
             slice_pitch_list.append(freq)
 
-        if times is not None:
-            # Sort the pitch list before resampling just in case it is not already sorted
-            entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
+        # Sort the pitch list before resampling just in case it is not already sorted
+        entry_times, slice_pitch_list = utils.sort_pitch_list(entry_times, slice_pitch_list)
 
-            # Make sure the pitch list is uniform before resampling
+        if uniform:
+            # Align the pitch list with a uniform time grid
             entry_times, slice_pitch_list = utils.time_series_to_uniform(times=entry_times,
                                                                          values=slice_pitch_list,
                                                                          duration=jam.file_metadata.duration)
 
+        if times is not None:
             # Resample the observation times if new times are specified
             slice_pitch_list = resample_multipitch(entry_times, slice_pitch_list, times)
             # Overwrite the entry times with the specified times
             entry_times = times
 
         # Add the pitch list to the stacked pitch list dictionary under the slice key
-        stacked_pitch_list.update(utils.pitch_list_to_stacked_pitch_list(entry_times, slice_pitch_list, slc))
+        stacked_pitch_list.update(utils.pitch_list_to_stacked_pitch_list(entry_times, slice_pitch_list, string))
 
     return stacked_pitch_list
 
 
-def load_pitch_list_jams(jams_path, times):
+def load_stacked_pitch_list_jams(jams_path, times=None, uniform=True):
     """
-    Load pitch list from JAMS file.
-    TODO - same load/extract separation as notes
+    Helper function to load a JAMS file and extract a stacked pitch list.
 
     Parameters
     ----------
     jams_path : string
       Path to JAMS file to read
     times : ndarray or None (optional) (N)
-      Time in seconds of beginning of each frame
+      Time in seconds for resampling
       N - number of times samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
+
+    Returns
+    ----------
+    stacked_pitch_list : dict
+      Dictionary containing (slice -> (times, pitch_list)) pairs
+    """
+
+    # Load the metadata from the jams file
+    jam = jams.load(jams_path)
+
+    # Extract the stacked pitch list
+    stacked_pitch_list = extract_stacked_pitch_list_jams(jam, times, uniform)
+
+    return stacked_pitch_list
+
+
+def extract_pitch_list_jams(jam, _times=None, uniform=True):
+    """
+    Extract a pitch list from JAMS annotations.
+
+    Parameters
+    ----------
+    jam : JAMS object
+      JAMS file data
+    _times : ndarray or None (optional) (N)
+      Time in seconds for resampling
+      N - number of times samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
+
+    Returns
+    ----------
+    times : ndarray (N)
+      Time in seconds of beginning of each frame
+      N - number of time samples (frames)
+    pitch_list : list of ndarray (N x [...])
+      Array of pitches corresponding to notes
+      N - number of pitch observations (frames), sorted by time
+    """
+
+    # Extract the pitch lists into a stack
+    stacked_pitch_list = extract_stacked_pitch_list_jams(jam, _times, uniform)
+
+    # Convert them to a single pitch list
+    times, pitch_list = utils.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
+
+    return times, pitch_list
+
+
+def load_pitch_list_jams(jams_path, _times=None, uniform=True):
+    """
+    Helper function to load a JAMS file and extract a pitch list.
+
+    Parameters
+    ----------
+    jams_path : string
+      Path to JAMS file to read
+    _times : ndarray or None (optional) (N)
+      Time in seconds for resampling
+      N - number of times samples
+    uniform : bool
+      Whether to place annotations on a uniform time grid
 
     Returns
     ----------
@@ -348,11 +414,11 @@ def load_pitch_list_jams(jams_path, times):
       N - number of pitch observations (frames), sorted by time
     """
 
-    # Load the pitch lists into a stack
-    stacked_pitch_list = load_stacked_pitch_list_jams(jams_path, times)
+    # Load the metadata from the jams file
+    jam = jams.load(jams_path)
 
-    # Convert them to a single pitch list
-    times, pitch_list = utils.stacked_pitch_list_to_pitch_list(stacked_pitch_list)
+    # Extract the pitch list
+    times, pitch_list = extract_pitch_list_jams(jam, _times, uniform)
 
     return times, pitch_list
 

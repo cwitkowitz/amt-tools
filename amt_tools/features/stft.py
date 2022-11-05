@@ -56,9 +56,7 @@ class STFT(WaveformWrapper):
 
         if audio.shape[-1] == 0:
             # Handle case of empty audio array
-            spec = np.zeros((0, self.n_fft))
-
-            return spec
+            return np.zeros((1, self.n_fft, 0))
 
         if not self.center:
             # Pad the audio to fill in a final frame

@@ -79,6 +79,8 @@ class TranscriptionDataset(Dataset):
 
         # Check if the dataset exists in memory
         if not os.path.isdir(self.base_dir):
+            warnings.warn(f'Could not find dataset at specified path \'{self.base_dir}\''
+                          '. Attempting to download...', category=RuntimeWarning)
             # Attempt to download the dataset if it is missing and if a procedure exists
             self.download(self.base_dir)
 
@@ -124,6 +126,7 @@ class TranscriptionDataset(Dataset):
             save_loc = tools.DEFAULT_FEATURES_GT_DIR
         self.save_loc = save_loc
 
+        # TODO - shouldn't be any reason to save this
         self.reset_data = reset_data
         # Remove any saved ground-truth for the dataset if reset_data is selected
         if os.path.exists(self.get_gt_dir()) and self.reset_data:
@@ -195,6 +198,10 @@ class TranscriptionDataset(Dataset):
         if tools.query_dict(data, tools.KEY_NOTES):
             data.pop(tools.KEY_NOTES)
 
+        # Remove any pitch lists, as they cannot be batched
+        if tools.query_dict(data, tools.KEY_PITCHLIST):
+            data.pop(tools.KEY_PITCHLIST)
+
         # Remove sampling rate - it can cause problems if it is not an ndarray. Sample rate
         # should be able to be inferred from the dataset object, if no warnings are thrown
         if tools.query_dict(data, tools.KEY_FS):
@@ -232,9 +239,9 @@ class TranscriptionDataset(Dataset):
         feats_path = self.get_feats_dir(track)
 
         # Check if the features already exist
-        if os.path.exists(feats_path):
+        if self.save_data and os.path.exists(feats_path):
             # If so, load the features
-            feats_dict = tools.load_unpack_npz(feats_path)
+            feats_dict = tools.load_dict_npz(feats_path)
             feats = feats_dict[tools.KEY_FEATS]
             feats = feats.item() if feats.size == 1 else feats
 
@@ -253,12 +260,14 @@ class TranscriptionDataset(Dataset):
                 # Get the appropriate path for saving the features
                 os.makedirs(os.path.dirname(feats_path), exist_ok=True)
                 # Save the features to memory as a NumPy zip file
-                keys = (tools.KEY_FEATS, tools.KEY_FS, tools.KEY_HOP)
-                tools.save_pack_npz(feats_path, keys, feats, fs, hop_length)
+                tools.save_dict_npz(feats_path, {tools.KEY_FS : fs,
+                                                 tools.KEY_HOP : hop_length,
+                                                 tools.KEY_FEATS : feats})
 
         # Make sure there is agreement between dataset and features
         if self.sample_rate != fs or self.hop_length != hop_length:
-            warnings.warn('Loaded features\' sampling rate or hop length differs from expected.')
+            warnings.warn('Loaded features\' sampling rate or hop length ' +
+                          'differs from expected.', category=RuntimeWarning)
 
         if tools.query_dict(data, tools.KEY_TIMES):
             # Use the times that were already provided
@@ -317,9 +326,6 @@ class TranscriptionDataset(Dataset):
             # Calculate the features and add to the dictionary
             data.update(self.calculate_feats(data))
 
-        # Determine which keys exist after calculating features
-        keys = list(data.keys())
-
         # Check to see if a specific sequence length was given
         if seq_length is None:
             # If not, and this Dataset object has a sequence length, use it
@@ -347,28 +353,41 @@ class TranscriptionDataset(Dataset):
         # Slice the audio
         data[tools.KEY_AUDIO] = data[tools.KEY_AUDIO][..., sample_start : sample_end]
 
-        # Determine if there is note ground-truth and, if so, get it
-        if tools.KEY_NOTES in keys:
-            # Notes entry has not been popped by a dataloader
-            notes = data[tools.KEY_NOTES]
-        elif self.store_data and tools.KEY_NOTES in self.data[track_id].keys():
-            # Notes entry has been popped and must be added again
-            notes = self.data[track_id][tools.KEY_NOTES]
-        else:
-            # Notes entry never existed
-            notes = None
+        # Determine the time in seconds of the boundary samples
+        sec_start = sample_start / self.sample_rate
+        sec_stop = sample_end / self.sample_rate
 
-        # Slice the ground-truth notes
-        if notes is not None:
-            # Determine the time in seconds of the boundary samples
-            sec_start = sample_start / self.sample_rate
-            sec_stop = sample_end / self.sample_rate
+        if tools.query_dict(data, tools.KEY_NOTES):
+            if isinstance(data[tools.KEY_NOTES], dict):
+                # TODO - assumes stack consists of standard note groups
+                # Extract the stacked notes and convert them to batched representations
+                temp_stacked_notes = tools.apply_func_stacked_representation(data[tools.KEY_NOTES],
+                                                                             tools.notes_to_batched_notes)
+                # Perform time slicing w.r.t. the batched notes along each slice of the stack
+                temp_stacked_notes = tools.apply_func_stacked_representation(temp_stacked_notes,
+                                                                             tools.slice_batched_notes,
+                                                                             start_time=sec_start,
+                                                                             stop_time=sec_stop)
+                # Convert back to standard note groups and update the dictionary
+                data[tools.KEY_NOTES] = tools.apply_func_stacked_representation(temp_stacked_notes,
+                                                                                tools.batched_notes_to_notes)
+            else:
+                # Slice the ground-truth notes if they exist in the ground-truth
+                data[tools.KEY_NOTES] = tools.slice_batched_notes(data[tools.KEY_NOTES], sec_start, sec_stop)
 
-            # Remove notes occurring outside of the sampled window
-            data[tools.KEY_NOTES] = tools.slice_batched_notes(notes, sec_start, sec_stop)
+        if tools.query_dict(data, tools.KEY_PITCHLIST):
+            if isinstance(data[tools.KEY_PITCHLIST], dict):
+                # Slice ground-truth pitch list by slice if exists in the ground-truth
+                data[tools.KEY_PITCHLIST] = tools.apply_func_stacked_representation(data[tools.KEY_PITCHLIST],
+                                                                                    tools.slice_pitch_list,
+                                                                                    start_time=sec_start,
+                                                                                    stop_time=sec_stop)
+            else:
+                # Slice ground-truth pitch list if exists in the ground-truth
+                data[tools.KEY_PITCHLIST] = tools.slice_pitch_list(*data[tools.KEY_PITCHLIST], sec_start, sec_stop)
 
         # Define list of entries to skip during slicing process
-        skipped_keys = [tools.KEY_AUDIO, tools.KEY_FS, tools.KEY_NOTES]
+        skipped_keys = [tools.KEY_AUDIO, tools.KEY_FS, tools.KEY_NOTES, tools.KEY_PITCHLIST]
         # Slice the remaining dictionary entries
         data = tools.slice_track(data, frame_start, frame_end, skipped_keys)
 
@@ -411,17 +430,25 @@ class TranscriptionDataset(Dataset):
         gt_path = self.get_gt_dir(track)
 
         # Check if an entry for the data exists
-        if os.path.exists(gt_path):
+        if self.save_data and os.path.exists(gt_path):
             # Load and unpack the data
-            data = tools.load_unpack_npz(gt_path)
+            data = tools.load_dict_npz(gt_path)
 
             # Make sure there is agreement between dataset and saved data
             if self.sample_rate != data[tools.KEY_FS].item():
-                warnings.warn('Loaded track\'s sampling rate differs from expected.')
+                warnings.warn('Loaded track\'s sampling rate differs from expected.', category=RuntimeWarning)
 
         if data is None:
             # Initialize a new dictionary if there is no saved data
             data = {}
+        else:
+            if tools.query_dict(data, tools.KEY_NOTES) and data[tools.KEY_NOTES].dtype == object:
+                # Unpack the (stacked) notes (which will be in save-friendly format)
+                data[tools.KEY_NOTES] = tools.unpack_stacked_representation(data[tools.KEY_NOTES])
+            if tools.query_dict(data, tools.KEY_PITCHLIST) and data[tools.KEY_PITCHLIST].dtype == object:
+                # TODO - assumes pitch list with type object is always a stacked representation
+                # Unpack the (stacked) pitch list (which will be in save-friendly format)
+                data[tools.KEY_PITCHLIST] = tools.unpack_stacked_representation(data[tools.KEY_PITCHLIST])
 
         # Add the track ID to the dictionary
         data[tools.KEY_TRACK] = track

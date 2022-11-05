@@ -6,8 +6,14 @@ from amt_tools.features import MelSpec
 from amt_tools.datasets import MAPS
 
 from amt_tools.train import train
-from amt_tools.transcribe import *
-from amt_tools.evaluate import *
+from amt_tools.transcribe import ComboEstimator, \
+                                 NoteTranscriber, \
+                                 PitchListWrapper
+from amt_tools.evaluate import ComboEvaluator, \
+                               LossWrapper, \
+                               MultipitchEvaluator, \
+                               NoteEvaluator, \
+                               validate
 
 import amt_tools.tools as tools
 
@@ -46,20 +52,20 @@ def config():
     # Number of samples to gather for a batch
     batch_size = 8
 
-    # The initial learning rate
+    # The fixed learning rate
     learning_rate = 6e-4
 
     # The id of the gpu to use, if available
     gpu_id = 0
 
-    # Flag to re-acquire ground-truth data and re-calculate-features
-    # This is useful if testing out different feature extraction parameters
-    reset_data = True
+    # Flag to re-acquire ground-truth data and re-calculate
+    # features (useful if testing out different parameters)
+    reset_data = False
 
     # The random seed for this experiment
     seed = 0
 
-    # Create the root directory for the experiment to hold train/transcribe/evaluate materials
+    # Create the root directory for the experiment files
     root_dir = os.path.join(tools.DEFAULT_EXPERIMENTS_DIR, EX_NAME)
     os.makedirs(root_dir, exist_ok=True)
 
@@ -76,49 +82,54 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     # Initialize the default piano profile
     profile = tools.PianoProfile()
 
-    # Processing parameters
-    dim_in = 229
-    model_complexity = 2
-
-    # Create the mel spectrogram data processing module
+    # Create a Mel-scaled spectrogram feature extraction module
+    # spanning all frequencies w/ length-2048 FFT and 229 bands
     data_proc = MelSpec(sample_rate=sample_rate,
-                        n_mels=dim_in,
-                        hop_length=hop_length)
+                        hop_length=hop_length,
+                        n_mels=229)
 
-    # Initialize the estimation pipeline
+    # Initialize the estimation pipeline (Multi Pitch / Onsets -> Notes & Pitch List)
     validation_estimator = ComboEstimator([NoteTranscriber(profile=profile),
                                            PitchListWrapper(profile=profile)])
 
-    # Initialize the evaluation pipeline
-    evaluators = [LossWrapper(),
-                  MultipitchEvaluator(),
-                  NoteEvaluator(key=tools.KEY_NOTE_ON),
-                  NoteEvaluator(offset_ratio=0.2, key=tools.KEY_NOTE_OFF)]
-    validation_evaluator = ComboEvaluator(evaluators, patterns=['loss', 'f1'])
+    # Initialize the evaluation pipeline - (Loss | Multi Pitch | Notes)
+    validation_evaluator = ComboEvaluator([LossWrapper(),
+                                           MultipitchEvaluator(),
+                                           NoteEvaluator(results_key=tools.KEY_NOTE_ON),
+                                           NoteEvaluator(offset_ratio=0.2,
+                                                         results_key=tools.KEY_NOTE_OFF)])
 
-    # Get a list of the MAPS splits
-    splits = MAPS.available_splits()
+    # Set validation patterns for logging during training
+    validation_evaluator.set_patterns(['loss', 'pr', 're', 'f1'])
 
-    # Initialize the testing splits as the real piano data
-    test_splits = ['ENSTDkAm', 'ENSTDkCl']
-    # Remove the real piano splits to get the training partition
-    train_splits = splits.copy()
-    for split in test_splits:
-        train_splits.remove(split)
+    # Initialize lists for MAPS training and testing splits
+    train_splits, test_splits = MAPS.available_splits(), list()
+
+    # Transfer the real piano splits to the testing partition
+    for split in train_splits.copy():
+        if split.startswith('E'):
+            train_splits.remove(split)
+            test_splits += [split]
 
     print('Loading training partition...')
 
+    # Keep all cached data/features here
+    maps_cache = os.path.join('..', '..', 'generated', 'data')
+
     # Create a dataset corresponding to the training partition
-    maps_train = MAPS(splits=train_splits,
+    maps_train = MAPS(base_dir=None,
+                      splits=train_splits,
                       hop_length=hop_length,
                       sample_rate=sample_rate,
+                      num_frames=num_frames,
                       data_proc=data_proc,
                       profile=profile,
-                      num_frames=num_frames,
-                      reset_data=reset_data)
+                      reset_data=reset_data,
+                      save_loc=maps_cache)
+
+    print('Removing overlapping tracks from training partition...')
 
     # Remove tracks in both partitions from the training partitions
-    print('Removing overlapping tracks from training partition')
     maps_train.remove_overlapping(test_splits)
 
     # Create a PyTorch data loader for the dataset
@@ -131,9 +142,11 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Loading testing partition...')
 
     # Create a dataset corresponding to the testing partition
-    maps_test = MAPS(splits=test_splits,
+    maps_test = MAPS(base_dir=None,
+                     splits=test_splits,
                      hop_length=hop_length,
                      sample_rate=sample_rate,
+                     num_frames=None,
                      data_proc=data_proc,
                      profile=profile,
                      store_data=True)
@@ -141,14 +154,19 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
     print('Initializing model...')
 
     # Initialize a new instance of the model
-    onsetsframes = OnsetsFrames(dim_in, profile, data_proc.get_num_channels(), model_complexity, False, gpu_id)
+    onsetsframes = OnsetsFrames(dim_in=data_proc.get_feature_size(),
+                                profile=profile,
+                                in_channels=data_proc.get_num_channels(),
+                                model_complexity=2,
+                                detach_heads=False,
+                                device=gpu_id)
     onsetsframes.change_device()
     onsetsframes.train()
 
     # Initialize a new optimizer for the model parameters
     optimizer = torch.optim.Adam(onsetsframes.parameters(), learning_rate)
 
-    print('Training classifier...')
+    print('Training model...')
 
     # Create a log directory for the training experiment
     model_dir = os.path.join(root_dir, 'models')
@@ -160,18 +178,21 @@ def onsets_frames_run(sample_rate, hop_length, num_frames, iterations, checkpoin
                          iterations=iterations,
                          checkpoints=checkpoints,
                          log_dir=model_dir,
-                         val_set=None)
+                         val_set=maps_test,
+                         estimator=validation_estimator,
+                         evaluator=validation_evaluator)
 
     print('Transcribing and evaluating test partition...')
 
     # Add save directories to the estimators
     validation_estimator.set_save_dirs(os.path.join(root_dir, 'estimated'), ['notes', 'pitch'])
 
-    # Add a save directory to the evaluators and reset the patterns
+    # Add a save directory to the evaluators
     validation_evaluator.set_save_dir(os.path.join(root_dir, 'results'))
+    # Reset the evaluation patterns to log everything
     validation_evaluator.set_patterns(None)
 
-    # Get the average results for the testing partition
+    # Compute the average results for the testing partition
     results = validate(onsetsframes, maps_test, evaluator=validation_evaluator, estimator=validation_estimator)
 
     # Log the average results in metrics.json
