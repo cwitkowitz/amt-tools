@@ -79,6 +79,8 @@ class TranscriptionDataset(Dataset):
 
         # Check if the dataset exists in memory
         if not os.path.isdir(self.base_dir):
+            warnings.warn(f'Could not find dataset at specified path \'{self.base_dir}\''
+                          '. Attempting to download...', category=RuntimeWarning)
             # Attempt to download the dataset if it is missing and if a procedure exists
             self.download(self.base_dir)
 
@@ -264,7 +266,8 @@ class TranscriptionDataset(Dataset):
 
         # Make sure there is agreement between dataset and features
         if self.sample_rate != fs or self.hop_length != hop_length:
-            warnings.warn('Loaded features\' sampling rate or hop length differs from expected.')
+            warnings.warn('Loaded features\' sampling rate or hop length ' +
+                          'differs from expected.', category=RuntimeWarning)
 
         if tools.query_dict(data, tools.KEY_TIMES):
             # Use the times that were already provided
@@ -433,7 +436,7 @@ class TranscriptionDataset(Dataset):
 
             # Make sure there is agreement between dataset and saved data
             if self.sample_rate != data[tools.KEY_FS].item():
-                warnings.warn('Loaded track\'s sampling rate differs from expected.')
+                warnings.warn('Loaded track\'s sampling rate differs from expected.', category=RuntimeWarning)
 
         if data is None:
             # Initialize a new dictionary if there is no saved data
