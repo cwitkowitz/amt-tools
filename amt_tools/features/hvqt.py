@@ -162,8 +162,8 @@ class HVQT(FeatureModule):
           Time in seconds of each frame
         """
 
-        # Use the times of the lowest harmonic's transform
-        times = self.modules[0].get_times(audio, at_start)
+        # Use the times of the lowest harmonic's transform, trimmed to the expected frames
+        times = self.modules[0].get_times(audio, at_start)[:self.get_expected_frames(audio)]
 
         return times
 
