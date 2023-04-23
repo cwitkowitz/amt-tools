@@ -15,7 +15,7 @@ setup(
                       'jams', 'mido', 'requests', 'tqdm', 'tensorboard', 'tensorboardX',
                       'scipy', 'pandas', 'mirdata', 'sounddevice', 'pynput'],
     #scripts=['examples/of_1.py', 'examples/of_2.py', 'examples/tabcnn.py'],
-    version='0.3.0',
+    version='0.3.1',
     license='MIT',
     description='Machine learning tools and framework for automatic music transcription',
     long_description=open('README.md').read(),
