@@ -2125,15 +2125,15 @@ def stacked_multi_pitch_to_tablature(stacked_multi_pitch, profile):
         # Obtain the multi pitch array for the degree of freedom
         multi_pitch = stacked_multi_pitch[dof]
 
-        # Determine which frames have no note activations
-        silent_frames = np.sum(multi_pitch, axis=0) == 0
-
         # Lower and upper pitch boundary for this degree of freedom
         lower_bound = tuning[dof] - profile.low
         upper_bound = lower_bound + profile.num_pitches
 
         # Bound the multi pitch array by the support of the degree of freedom
         multi_pitch = multi_pitch[lower_bound : upper_bound]
+
+        # Determine which frames have no note activations
+        silent_frames = np.sum(multi_pitch, axis=0) == 0
 
         # Determine which class has the highest activation across each frame
         highest_class = np.argmax(multi_pitch, axis=0)
