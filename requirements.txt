@@ -1,6 +1,7 @@
 # TODO - probably want to whittle these down as much as possible
 numpy>=1.21.6
 librosa>=0.9.1
+resampy>=0.4.2
 torch>=1.11.0
 matplotlib>=3.5.2
 sacred>=0.8.2
@@ -13,7 +14,6 @@ tensorboard>=2.9.0
 tensorboardX>=2.5
 scipy>=1.8.1
 pandas>=1.4.2
-mirdata>=0.3.6
 sounddevice>=0.4.4
 pynput>=1.7.6
 # TODO - extras - examples?

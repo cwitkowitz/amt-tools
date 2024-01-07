@@ -5,8 +5,6 @@ from .common import TranscriptionDataset
 from .. import tools
 
 # Regular imports
-from mirdata.datasets import guitarset
-
 import os
 
 
@@ -185,13 +183,42 @@ class GuitarSet(TranscriptionDataset):
         Parameters
         ----------
         save_dir : string
-          Directory in which to save the contents of GuitarSet
+          Directory under which to save the contents of GuitarSet
         """
 
+        # Create top-level directory
         TranscriptionDataset.download(save_dir)
 
-        print(f'Downloading {GuitarSet.dataset_name()}')
+        # URL pointing to the zip file containing annotations for all tracks
+        anno_url = 'https://zenodo.org/record/3371780/files/annotation.zip'
 
-        # TODO - can download directly from https://zenodo.org/record/3371780#.X2dWA3VKgk8
-        # Download GuitarSet
-        guitarset.Dataset(data_home=save_dir).download(force_overwrite=True, cleanup=True)
+        # Construct a path to directory to hold annotations
+        anno_dir = os.path.join(save_dir, 'annotation')
+        # Create the annotation directory
+        os.makedirs(anno_dir)
+
+        # Construct a path for saving the annotations
+        anno_path = os.path.join(anno_dir, os.path.basename(anno_url))
+
+        # Download the zip file
+        tools.stream_url_resource(anno_url, anno_path, 1000 * 1024)
+
+        # Unzip the downloaded file and remove it
+        tools.unzip_and_remove(anno_path)
+
+        # URL pointing to the zip file containing audio for all tracks
+        audio_url = 'https://zenodo.org/record/3371780/files/audio_mono-mic.zip'
+
+        # Construct a path to directory to hold audio
+        audio_dir = os.path.join(save_dir, 'audio_mono-mic')
+        # Create the annotation directory
+        os.makedirs(audio_dir)
+
+        # Construct a path for saving the audio
+        audio_path = os.path.join(audio_dir, os.path.basename(audio_url))
+
+        # Download the zip file
+        tools.stream_url_resource(audio_url, audio_path, 1000 * 1024)
+
+        # Unzip the downloaded file and remove it
+        tools.unzip_and_remove(audio_path)
