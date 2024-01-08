@@ -22,7 +22,7 @@ Execution of a script will generate the following under ```<root_dir>```:
   - ```config.json``` - parameter values used for the experiment
   - ```cout.txt``` - contains any text printed to console
   - ```metrics.json``` - evaluation results for the experiment
-  - ```run.json``` system and experiment information
+  - ```run.json``` - system and experiment information
 - ```models/``` - folder containing saved model and optimizer state at each checkpoint, as well as an events file (for each execution) readable by [tensorboard](https://www.tensorflow.org/tensorboard)
 - ```estimated/``` - folder containing final predictions for each track within the test set
 - ```results/``` - folder containing separate evaluation results for each track within the test set

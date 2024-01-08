@@ -15,11 +15,8 @@ import warnings
 import shutil
 import os
 
-# TODO - more datasets - MusicNet, Slakh, Drums
+# TODO - more datasets
 # TODO - optionally download datasets in flac to save memory
-# TODO - possible integration with mirdata
-# TODO - optionally avoud splitting notes...
-#      - see magenta/models/onsets_frames_transcription/audio_label_data_utils.py
 # TODO - multipitch can overlap on last/first frame of notes
 #        - seems correct based on note start/end times but could be problematic
 
@@ -31,8 +28,8 @@ class TranscriptionDataset(Dataset):
     Implements a generic music transcription dataset.
     """
 
-    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, profile, num_frames,
-                 audio_norm, split_notes, reset_data, store_data, save_data, save_loc, seed):
+    def __init__(self, base_dir, splits, hop_length, sample_rate, data_proc, profile,
+                 num_frames, audio_norm, reset_data, store_data, save_data, save_loc, seed):
         """
         Initialize parameters common to all datasets as fields and instantiate
         as a PyTorch Dataset.
@@ -58,8 +55,6 @@ class TranscriptionDataset(Dataset):
           -1 - root-mean-square
           See librosa for others...
             - None case is handled here
-        split_notes : bool
-          Flag to avoiding cutting samples in between notes
         reset_data : bool
           Flag to reset extracted features and ground truth data if they already exists
         store_data : bool
@@ -126,17 +121,15 @@ class TranscriptionDataset(Dataset):
             save_loc = tools.DEFAULT_FEATURES_GT_DIR
         self.save_loc = save_loc
 
-        # TODO - shouldn't be any reason to save this
-        self.reset_data = reset_data
         # Remove any saved ground-truth for the dataset if reset_data is selected
-        if os.path.exists(self.get_gt_dir()) and self.reset_data:
+        if os.path.exists(self.get_gt_dir()) and reset_data:
             shutil.rmtree(self.get_gt_dir())
         if self.save_data:
             # Make sure the directory for saving and loading ground-truth exists
             os.makedirs(self.get_gt_dir(), exist_ok=True)
 
         # Remove any saved features for the dataset if reset_data is selected
-        if os.path.exists(self.get_feats_dir()) and self.reset_data:
+        if os.path.exists(self.get_feats_dir()) and reset_data:
             shutil.rmtree(self.get_feats_dir())
         if self.save_data:
             # Make sure the directory for saving and loading features exists
@@ -391,6 +384,9 @@ class TranscriptionDataset(Dataset):
         # Slice the remaining dictionary entries
         data = tools.slice_track(data, frame_start, frame_end, skipped_keys)
 
+        # Add time boundaries of slice to data
+        data[tools.KEY_SLICE] = np.array([sec_start, sec_stop])
+
         return data
 
     @abstractmethod
@@ -503,45 +499,53 @@ class TranscriptionDataset(Dataset):
 
         return path
 
+    @classmethod
+    @abstractmethod
+    def dataset_name(cls):
+        """
+        Simple helper function to get the class name.
+
+        Returns
+        ----------
+        name : string
+          Identifier for the dataset
+        """
+
+        name = cls.__name__
+
+        return name
+
     @staticmethod
     @abstractmethod
     def available_splits():
         """
-        Get the supported partitions for the dataset.
+        Obtain a list of available (pre-defined) dataset splits.
+
+        Returns
+        ----------
+        splits : list of strings
+          Partitions of dataset
         """
 
         return NotImplementedError
 
     @classmethod
-    def dataset_name(cls):
-        """
-        Retrieve an appropriate tag, the class name, for the dataset.
-
-        Returns
-        ----------
-        tag : str
-          Name of the child class calling the function
-        """
-
-        tag = cls.__name__
-
-        return tag
-
-    @staticmethod
     @abstractmethod
-    def download(save_dir):
+    def download(cls, save_dir):
         """
-        Download the dataset to disk if possible. This is to be extended by a child class.
+        Create the top-level directory for a dataset.
 
         Parameters
         ----------
         save_dir : string
-          Directory under which to save the dataset
+          Directory under which to save dataset contents
         """
 
-        # If the directory already exists, remove it
         if os.path.isdir(save_dir):
+            # Remove directory if it already exists
             shutil.rmtree(save_dir)
 
         # Create the base directory
         os.makedirs(save_dir)
+
+        print(f'Downloading {cls.__name__}...')

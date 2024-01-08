@@ -57,6 +57,7 @@ KEY_TIMES = 'times'
 KEY_NOTES = 'notes'
 KEY_OUTPUT = 'model_output'
 KEY_ACCURACY = 'accuracy'
+KEY_SLICE = 'slice'
 
 KEY_LOSS = 'loss'
 KEY_LOSS_TOTAL = 'loss_total'

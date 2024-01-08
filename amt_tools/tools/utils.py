@@ -319,7 +319,7 @@ def batched_notes_to_midi(batched_notes):
     return batched_notes
 
 
-def slice_batched_notes(batched_notes, start_time, stop_time, relative_times=False):
+def slice_batched_notes(batched_notes, start_time=None, stop_time=None, relative_times=False):
     """
     Remove note entries occurring outside of time window.
 
@@ -342,19 +342,19 @@ def slice_batched_notes(batched_notes, start_time, stop_time, relative_times=Fal
       N - number of notes
     """
 
-    # Remove notes with offsets before the slice start time
-    batched_notes = batched_notes[batched_notes[:, 1] > start_time]
+    if start_time is not None:
+        # Remove notes with offsets before the slice start time
+        batched_notes = batched_notes[batched_notes[:, 1] > start_time]
+        # Clip onsets at the slice start time
+        batched_notes[:, 0] = np.maximum(batched_notes[:, 0], start_time)
 
-    # Remove notes with onsets after the slice stop time
-    batched_notes = batched_notes[batched_notes[:, 0] <= stop_time]
+    if stop_time is not None:
+        # Remove notes with onsets after the slice stop time
+        batched_notes = batched_notes[batched_notes[:, 0] <= stop_time]
+        # Clip offsets at the slice stop time
+        batched_notes[:, 1] = np.minimum(batched_notes[:, 1], stop_time)
 
-    # Clip onsets at the slice start time
-    batched_notes[:, 0] = np.maximum(batched_notes[:, 0], start_time)
-
-    # Clip offsets at the slice stop time
-    batched_notes[:, 1] = np.minimum(batched_notes[:, 1], stop_time)
-
-    if relative_times:
+    if relative_times and start_time is not None:
         # Adjust onset/offset times
         batched_notes[:, :2] -= start_time
 
@@ -3187,7 +3187,6 @@ def seed_everything(seed):
       Seed to use for random number generation
     """
 
-    # TODO - look into 'torch.backends.cudnn.benchmark = False'
     torch.backends.cudnn.deterministic = True
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
